@@ -5,7 +5,6 @@
 #include <strikes.h>
 #include <serial_command.h>
 #include <game_state.h>
-#include <module_tracker.h>
 
 // Global game state
 GameStateManager gameState;
@@ -60,29 +59,30 @@ void setup()
 
 	Serial.begin(115200);
 
-	initCanBus(CAN_ID_TIMER);	   // Register this as the timer module
-	initModuleTracker(&gameState); // Register CAN callback + tracker
+	initCanBus(CAN_ID_TIMER); // Register this as the timer module
 
 	initStrikeDisplay();
 	initCountdownDisplay();
 
 	delay(5000); // Allow other modules to boot
 
-	serialNumber = generateSerialNumber();
-	sendSerialToDisplay(serialNumber.c_str());
+	String newSerial = generateSerialNumber();
+	gameState.setSerial(newSerial);
+	sendSerialToDisplay(newSerial.c_str());
 	Serial.print("Generated Serial Number: ");
-	Serial.println(serialNumber);
+	Serial.println(newSerial);
+
+	gameState.setStrikes(0);
+	gameState.setMaxStrikes(3);
+	gameState.setState(GAME_IDLE);
+	gameState.setTotalModules(0);
+	gameState.setSolvedModules(0);
 }
 
 void loop()
 {
-	if (gameState.is(GAME_RUNNING))
-	{
-		updateCountdownDisplay();
-	}
-
-	updateStrikeCount(gameState.getStrikes());
-
+	updateCountdownDisplay();
+	updateStrikeCount();
 	handleSerialCommands();
-	handleCanMessages(); // Process CAN traffic
+	handleCanMessages();
 }

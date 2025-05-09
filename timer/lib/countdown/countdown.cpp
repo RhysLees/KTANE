@@ -1,23 +1,16 @@
 #include <Arduino.h>
 
 #include <can_bus.h>
-
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
-
-#include <strikes.h>
 #include <countdown.h>
+#include <game_state.h>
+
+extern GameStateManager gameState;
 
 #define HT16K33_SEG_ADDRESS 0x70
 
 Adafruit_7segment display = Adafruit_7segment();
-
-static unsigned long countdownDuration = 0;
-static unsigned long countdownStartMillis = 0;
-static unsigned long lastAdjustedMillis = 0;
-static float adjustedElapsedMillis = 0;
-
-static bool countdownRunning = false;
 
 static unsigned long lastColonToggle = 0;
 static bool colonVisible = false;
@@ -55,60 +48,43 @@ void updateCountdownRaw(const char *str)
 	display.writeDisplay();
 }
 
-float getSpeedMultiplier(uint8_t strikeCount)
-{
-	return 1.0f + 0.25f * strikeCount;
-}
-
 void startCountdown(unsigned long durationMillis)
 {
-	countdownDuration = durationMillis;
-	countdownStartMillis = millis();
-	lastAdjustedMillis = countdownStartMillis;
-	adjustedElapsedMillis = 0;
-	countdownRunning = true;
-	lastSecondSent = 0;
+	gameState.setTimeLimit(durationMillis);
+	gameState.resetTimer();
+	gameState.startTimer();
 }
 
 bool isCountdownRunning()
 {
-	return countdownRunning;
+	return gameState.isTimerRunning();
 }
 
 unsigned long getCountdownStartTime()
 {
-	return countdownStartMillis;
+	// Not used anymore, so return 0 or mock if needed
+	return 0;
 }
 
 void updateCountdownDisplay()
 {
-	if (!countdownRunning)
+	if (!gameState.is(GAME_RUNNING))
+	{
 		return;
+	}
+	
+	gameState.updateRemaining();
 
 	unsigned long now = millis();
-	unsigned long delta = now - lastAdjustedMillis;
-	lastAdjustedMillis = now;
-
-	float speed = getSpeedMultiplier(getStrikes());
-	adjustedElapsedMillis += delta * speed;
-
-	unsigned long remainingMillis = (adjustedElapsedMillis >= countdownDuration)
-										? 0
-										: countdownDuration - adjustedElapsedMillis;
-
-	if (remainingMillis == 0)
-	{
-		countdownRunning = false;
-	}
+	unsigned long remainingMillis = gameState.getRemainingMillis();
 
 	unsigned long seconds = remainingMillis / 1000;
 	int mins = seconds / 60;
 	int secs = seconds % 60;
 	int timeValue = mins * 100 + secs;
-
 	display.print(timeValue);
 
-	unsigned long blinkRate = (getStrikes() >= 2) ? 125 : 500;
+	unsigned long blinkRate = (gameState.getStrikes() >= 2) ? 125 : 500;
 	if (now - lastColonToggle >= blinkRate)
 	{
 		colonVisible = !colonVisible;
@@ -121,19 +97,16 @@ void updateCountdownDisplay()
 	if (seconds != lastSecondSent)
 	{
 		lastSecondSent = seconds;
-
-		uint8_t sound = (getStrikes() == 2) ? AUDIO_BEEP_HIGH : (getStrikes() == 1) ? AUDIO_BEEP_FAST
-																					: AUDIO_BEEP_NORMAL;
-
+		uint8_t sound = (gameState.getStrikes() == 2)	? AUDIO_BEEP_HIGH
+						: (gameState.getStrikes() == 1) ? AUDIO_BEEP_FAST
+														: AUDIO_BEEP_NORMAL;
 		sendCanMessage(CAN_ID_AUDIO, &sound, 1);
 	}
 
 	static unsigned long lastEmergencyAlarmSent = 0;
-
 	if (remainingMillis < 60000 && (now - lastEmergencyAlarmSent >= 2000))
 	{
 		lastEmergencyAlarmSent = now;
-
 		uint8_t emergencySound = AUDIO_ALARM_EMERGENCY;
 		sendCanMessage(CAN_ID_AUDIO, &emergencySound, 1);
 	}

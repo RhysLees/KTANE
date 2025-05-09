@@ -79,6 +79,9 @@ void setup()
   amp.setAGCCompression(TPA2016_AGC_OFF);
   amp.setLimitLevelOn();
   amp.setGain(0);
+
+  initCanBus(CAN_ID_AUDIO);
+  registerCanCallback(handleAudioMessage);
 }
 
 void loop()
