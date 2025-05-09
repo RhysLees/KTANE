@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <can_bus.h>
 
 enum GameState
 {
@@ -69,8 +70,48 @@ public:
     bool allModulesSolved() const { return solvedModules >= totalModules && totalModules > 0; }
 
     // Serial management
-    void setSerial(const String &s) { serial = s.substring(0, 6); }
+    void setSerial(const String &s)
+    {
+        serial = s.substring(0, 6);
+        uint8_t buf[7];
+        buf[0] = SERIAL_DISPLAY_SET_SERIAL;
+        memcpy(&buf[1], serial.c_str(), 6);
+        sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
+    }
+
     String getSerial() const { return serial; }
+
+    void generateSerial()
+    {
+        const char letters[] = "ABCDEFGHJKLMNPQRSTUVWXZ";
+        const char digits[] = "0123456789";
+        char serialBuf[7];
+        bool hasLetter = false;
+        bool hasDigit = false;
+
+        for (int i = 0; i < 5; ++i)
+        {
+            if (random(2) == 0)
+            {
+                serialBuf[i] = letters[random(sizeof(letters) - 1)];
+                hasLetter = true;
+            }
+            else
+            {
+                serialBuf[i] = digits[random(10)];
+                hasDigit = true;
+            }
+        }
+
+        if (!hasLetter)
+            serialBuf[random(5)] = letters[random(sizeof(letters) - 1)];
+        if (!hasDigit)
+            serialBuf[random(5)] = digits[random(10)];
+        serialBuf[5] = digits[random(10)];
+        serialBuf[6] = '\0';
+
+        serial = String(serialBuf);
+    }
 
     // Time configuration
     void setTimeLimit(unsigned long ms)

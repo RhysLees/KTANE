@@ -72,7 +72,7 @@ void updateCountdownDisplay()
 	{
 		return;
 	}
-	
+
 	gameState.updateRemaining();
 
 	unsigned long now = millis();
@@ -104,7 +104,7 @@ void updateCountdownDisplay()
 	}
 
 	static unsigned long lastEmergencyAlarmSent = 0;
-	if (remainingMillis < 60000 && (now - lastEmergencyAlarmSent >= 2000))
+	if (remainingMillis < 60000 && (now - lastEmergencyAlarmSent >= 3000))
 	{
 		lastEmergencyAlarmSent = now;
 		uint8_t emergencySound = AUDIO_ALARM_EMERGENCY;

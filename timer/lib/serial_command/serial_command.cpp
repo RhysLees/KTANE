@@ -61,7 +61,7 @@ void printHelp()
 	Serial.println("  TIME mm:ss    - Set countdown duration");
 	Serial.println("  STRIKE x      - Set strikes (0–2)");
 	Serial.println("  INFO          - Show current state");
-	Serial.println("  SERIAL [CLEAR|SHOW|CREDIT] - Control serial display");
+	Serial.println("  SERIAL [CLEAR|REGENERATE|SHOW|CREDIT] - Control serial display");
 	Serial.println("  HELP          - Show this help message\n");
 }
 
@@ -153,6 +153,16 @@ void handleSerialCommands()
 			uint8_t buf[1] = {SERIAL_DISPLAY_CLEAR};
 			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 1);
 			Serial.println("Serial display cleared.");
+		}
+		else if (args == "REGENERATE")
+		{
+			gameState.generateSerial();
+			uint8_t buf[7];
+			buf[0] = SERIAL_DISPLAY_SET_SERIAL;
+			memcpy(&buf[1], gameState.getSerial().c_str(), 6);
+			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 7);
+			Serial.print("Serial display showing serial number: ");
+			Serial.println(gameState.getSerial());
 		}
 		else if (args == "SHOW")
 		{
