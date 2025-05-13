@@ -29,6 +29,7 @@ void epaperInit()
 
 void epaperDrawTag(const String &serial)
 {
+    epaperInit();
     epaper.firstPage();
     do
     {
@@ -46,6 +47,7 @@ void epaperDrawTag(const String &serial)
 
 void epaperDrawCredit()
 {
+    epaperInit();
     epaper.firstPage();
     do
     {
@@ -63,6 +65,7 @@ void epaperDrawCredit()
 
 void epaperClear()
 {
+    epaperInit();
     epaper.setFullWindow();
     epaper.firstPage();
     do

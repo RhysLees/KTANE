@@ -130,24 +130,32 @@ void lcd1602SetColor(LcdColor color)
     switch (color)
     {
     case LCD_COLOR_WHITE:
-        lcd1602SetRegister(REG_RED, 255);
-        lcd1602SetRegister(REG_GREEN, 255);
-        lcd1602SetRegister(REG_BLUE, 255);
+        lcd1602SetColorRGB(255, 255, 255);
         break;
     case LCD_COLOR_RED:
-        lcd1602SetRegister(REG_RED, 255);
-        lcd1602SetRegister(REG_GREEN, 0);
-        lcd1602SetRegister(REG_BLUE, 0);
+        lcd1602SetColorRGB(255, 0, 0);
         break;
     case LCD_COLOR_GREEN:
-        lcd1602SetRegister(REG_RED, 0);
-        lcd1602SetRegister(REG_GREEN, 255);
-        lcd1602SetRegister(REG_BLUE, 0);
+        lcd1602SetColorRGB(0, 255, 0);
         break;
     case LCD_COLOR_BLUE:
-        lcd1602SetRegister(REG_RED, 0);
-        lcd1602SetRegister(REG_GREEN, 0);
-        lcd1602SetRegister(REG_BLUE, 255);
+        lcd1602SetColorRGB(0, 0, 255);
+        break;
+    case LCD_COLOR_ORANGE:
+        lcd1602SetColorRGB(255, 100, 0);
+        break;
+    case LCD_COLOR_PURPLE:
+        lcd1602SetColorRGB(180, 0, 255);
+        break;
+    case LCD_COLOR_CYAN:
+        lcd1602SetColorRGB(0, 255, 255);
         break;
     }
+}
+
+void lcd1602SetColorRGB(uint8_t r, uint8_t g, uint8_t b)
+{
+    lcd1602SetRegister(REG_RED, r);
+    lcd1602SetRegister(REG_GREEN, g);
+    lcd1602SetRegister(REG_BLUE, b);
 }

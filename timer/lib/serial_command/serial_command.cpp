@@ -151,7 +151,7 @@ void handleSerialCommands()
 		if (args == "CLEAR")
 		{
 			uint8_t buf[1] = {SERIAL_DISPLAY_CLEAR};
-			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 1);
+			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
 			Serial.println("Serial display cleared.");
 		}
 		else if (args == "REGENERATE")
@@ -160,7 +160,7 @@ void handleSerialCommands()
 			uint8_t buf[7];
 			buf[0] = SERIAL_DISPLAY_SET_SERIAL;
 			memcpy(&buf[1], gameState.getSerial().c_str(), 6);
-			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 7);
+			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
 			Serial.print("Serial display showing serial number: ");
 			Serial.println(gameState.getSerial());
 		}
@@ -172,14 +172,14 @@ void handleSerialCommands()
 			uint8_t buf[7];
 			buf[0] = SERIAL_DISPLAY_SET_SERIAL;
 			memcpy(&buf[1], serial, 6);
-			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 7);
+			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
 			Serial.print("Serial display showing serial number: ");
 			Serial.println(serialStr);
 		}
 		else if (args == "CREDIT")
 		{
 			uint8_t buf[1] = {SERIAL_DISPLAY_SHOW_CREDIT};
-			sendCanMessage(CAN_INSTANCE_ID(0x20, 0), buf, 1);
+			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
 			Serial.println("Serial display showing credit.");
 		}
 		else
