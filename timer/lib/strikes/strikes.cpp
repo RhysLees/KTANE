@@ -17,7 +17,7 @@ uint16_t getCustomChar(char c)
   switch (c)
   {
   case 'X':
-    return 0x280A; // Segments 1, 3, 11, 13
+    return 0x280A; // Segments 1, 3, 11, 13 add 4 and 9 to match game -X-
   case ' ':
     return 0x0000;
   default:
