@@ -425,30 +425,90 @@ void GameStateManager::generateSerialNumber() {
 void GameStateManager::setupEdgework() {
     edgework.indicators.clear();
     edgework.ports.clear();
+    edgework.batteryCount = 0;
     
-    // Generate random indicators (0-3 indicators)
+    // Widget type constants
+    const uint8_t WIDGET_BATTERY = 0;
+    const uint8_t WIDGET_INDICATOR = 1;
+    const uint8_t WIDGET_PORTS = 2;
+    
+    // Indicator labels and types
     const char* indicatorLabels[] = {"SND", "CLR", "CAR", "IND", "FRQ", "SIG", "NSA", "MSA", "TRN", "BOB", "FRK"};
-    uint8_t numIndicators = random(0, 4);
+    std::vector<IndicatorType> availableIndicatorTypes = {
+        IndicatorType::SND, IndicatorType::CLR, IndicatorType::CAR, IndicatorType::IND,
+        IndicatorType::FRQ, IndicatorType::SIG, IndicatorType::NSA, IndicatorType::MSA,
+        IndicatorType::TRN, IndicatorType::BOB, IndicatorType::FRK
+    };
     
-    for (uint8_t i = 0; i < numIndicators; i++) {
-        IndicatorType type = static_cast<IndicatorType>(random(11));
-        bool lit = random(2);
-        String label = indicatorLabels[static_cast<uint8_t>(type)];
-        edgework.indicators.emplace_back(type, lit, label);
-    }
-    
-    // Generate random ports (0-3 ports)
+    // Port labels
     const char* portLabels[] = {"PARALLEL", "SERIAL", "PS/2", "RJ-45", "RCA", "DVI-D", "STEREO-RCA"};
-    uint8_t numPorts = random(0, 4);
     
-    for (uint8_t i = 0; i < numPorts; i++) {
-        PortType type = static_cast<PortType>(random(7));
-        String label = portLabels[static_cast<uint8_t>(type)];
-        edgework.ports.emplace_back(type, label);
+    // Generate exactly 5 widgets
+    for (uint8_t widget = 0; widget < 5; widget++) {
+        uint8_t widgetType = random(3); // 0=Battery, 1=Indicator, 2=Ports
+        
+        switch (widgetType) {
+            case WIDGET_BATTERY: {
+                // Coin flip between D Battery (1) or 2 AA Batteries (2)
+                uint8_t batteryType = random(2); // 0 or 1
+                if (batteryType == 0) {
+                    edgework.batteryCount += 1; // D Battery
+                } else {
+                    edgework.batteryCount += 2; // 2 AA Batteries
+                }
+                break;
+            }
+            
+            case WIDGET_INDICATOR: {
+                // Only create indicator if we have available types (no repeats)
+                if (!availableIndicatorTypes.empty()) {
+                    // Select random indicator type from available ones
+                    uint8_t typeIndex = random(availableIndicatorTypes.size());
+                    IndicatorType type = availableIndicatorTypes[typeIndex];
+                    
+                    // Remove this type from available types (no repeats)
+                    availableIndicatorTypes.erase(availableIndicatorTypes.begin() + typeIndex);
+                    
+                    // 60% chance lit (random float > 0.4)
+                    bool lit = (random(1000) / 1000.0f) > 0.4f;
+                    
+                    String label = indicatorLabels[static_cast<uint8_t>(type)];
+                    edgework.indicators.emplace_back(type, lit, label);
+                }
+                break;
+            }
+            
+            case WIDGET_PORTS: {
+                // Choose between Communication or I/O layout (coin flip)
+                bool isCommLayout = random(2) == 0;
+                
+                if (isCommLayout) {
+                    // Communication layout: Parallel, Serial
+                    if (random(2) == 1) { // Coin flip for Parallel
+                        edgework.ports.emplace_back(PortType::PARALLEL, "PARALLEL");
+                    }
+                    if (random(2) == 1) { // Coin flip for Serial
+                        edgework.ports.emplace_back(PortType::SERIAL_PORT, "SERIAL");
+                    }
+                } else {
+                    // I/O layout: DVI-D, PS/2, RJ-45, Stereo RCA
+                    if (random(2) == 1) { // Coin flip for DVI-D
+                        edgework.ports.emplace_back(PortType::DVI, "DVI-D");
+                    }
+                    if (random(2) == 1) { // Coin flip for PS/2
+                        edgework.ports.emplace_back(PortType::PS2, "PS/2");
+                    }
+                    if (random(2) == 1) { // Coin flip for RJ-45
+                        edgework.ports.emplace_back(PortType::RJ45, "RJ-45");
+                    }
+                    if (random(2) == 1) { // Coin flip for Stereo RCA
+                        edgework.ports.emplace_back(PortType::STEREO_RCA, "STEREO-RCA");
+                    }
+                }
+                break;
+            }
+        }
     }
-    
-    // Generate battery count (0-6 batteries)
-    edgework.batteryCount = random(0, 7);
 }
 
 bool GameStateManager::hasIndicator(IndicatorType type) const {
@@ -650,11 +710,20 @@ void GameStateManager::printModules() const {
 void GameStateManager::printEdgework() const {
     Serial.println("=== EDGEWORK ===");
     Serial.print("Batteries: "); Serial.println(edgework.batteryCount);
+    
     Serial.print("Indicators: "); Serial.print(edgework.indicators.size());
     Serial.print(" (Lit: "); Serial.print(getLitIndicatorCount());
     Serial.print(", Unlit: "); Serial.print(getUnlitIndicatorCount());
     Serial.println(")");
+    for (const auto& indicator : edgework.indicators) {
+        Serial.print("  "); Serial.print(indicator.label);
+        Serial.println(indicator.lit ? " (LIT)" : " (UNLIT)");
+    }
+    
     Serial.print("Ports: "); Serial.println(edgework.ports.size());
+    for (const auto& port : edgework.ports) {
+        Serial.print("  "); Serial.println(port.label);
+    }
 }
 
 // ============================================================================
@@ -667,4 +736,6 @@ GameStateManager::GameStats GameStateManager::getStats() const {
 
 void GameStateManager::resetStats() {
     stats = GameStats();
-} 
+}
+
+ 
