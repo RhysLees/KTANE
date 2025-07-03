@@ -222,7 +222,4 @@ void loop()
 	
 	// Update debug interface
 	updateDebugInterface(gameState);
-
-	// Small delay to prevent overwhelming the system
-	delay(10);
 }

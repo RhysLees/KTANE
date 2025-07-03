@@ -57,11 +57,11 @@ uint8_t Edgework::getPortCount() const {
 // ============================================================================
 
 GameStateManager::GameStateManager() : config() {
-    initialize();
+    // Don't call initialize() here - call it manually in setup()
 }
 
 GameStateManager::GameStateManager(const GameConfig& cfg) : config(cfg) {
-    initialize();
+    // Don't call initialize() here - call it manually in setup()
 }
 
 void GameStateManager::initialize() {
