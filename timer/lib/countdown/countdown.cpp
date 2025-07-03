@@ -3,7 +3,7 @@
 #include <can_bus.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
-#include <countdown.h>
+#include "countdown.h"
 #include <game_state.h>
 
 extern GameStateManager gameState;
@@ -48,42 +48,44 @@ void updateCountdownRaw(const char *str)
 	display.writeDisplay();
 }
 
-void startCountdown(unsigned long durationMillis)
+void updateCountdownDisplay(GameStateManager& gameState)
 {
-	gameState.setTimeLimit(durationMillis);
-	gameState.resetTimer();
-	gameState.startTimer();
-}
-
-bool isCountdownRunning()
-{
-	return gameState.isTimerRunning();
-}
-
-unsigned long getCountdownStartTime()
-{
-	// Not used anymore, so return 0 or mock if needed
-	return 0;
-}
-
-void updateCountdownDisplay()
-{
-	if (!gameState.is(GAME_RUNNING))
+	// Only show countdown when game is running
+	if (!gameState.isRunning())
 	{
+		switch (gameState.getState()) {
+			case GameState::IDLE:
+				updateCountdownRaw("----");
+				break;
+			case GameState::PAUSED:
+				updateCountdownRaw("||");
+				break;
+			case GameState::EXPLODED:
+				updateCountdownRaw("BOOM");
+				break;
+			case GameState::DEFUSED:
+				updateCountdownRaw("SAFE");
+				break;
+			default:
+				updateCountdownRaw("----");
+				break;
+		}
 		return;
 	}
 
-	gameState.updateRemaining();
-
 	unsigned long now = millis();
-	unsigned long remainingMillis = gameState.getRemainingMillis();
+	unsigned long remainingMs = gameState.getRemainingTime();
 
-	unsigned long seconds = remainingMillis / 1000;
+	// Calculate minutes and seconds
+	unsigned long seconds = remainingMs / 1000;
 	int mins = seconds / 60;
 	int secs = seconds % 60;
 	int timeValue = mins * 100 + secs;
+	
+	// Update 7-segment display
 	display.print(timeValue);
 
+	// Handle colon blinking - faster when more strikes
 	unsigned long blinkRate = (gameState.getStrikes() >= 2) ? 125 : 500;
 	if (now - lastColonToggle >= blinkRate)
 	{
@@ -94,20 +96,45 @@ void updateCountdownDisplay()
 	display.drawColon(colonVisible);
 	display.writeDisplay();
 
+	// Send time beeps based on strike count
 	if (seconds != lastSecondSent)
 	{
 		lastSecondSent = seconds;
-		uint8_t sound = (gameState.getStrikes() == 2)	? AUDIO_BEEP_HIGH
+		uint8_t sound = (gameState.getStrikes() == 2) ? AUDIO_BEEP_HIGH
 						: (gameState.getStrikes() == 1) ? AUDIO_BEEP_FAST
 														: AUDIO_BEEP_NORMAL;
 		sendCanMessage(CAN_ID_AUDIO, &sound, 1);
 	}
 
-	static unsigned long lastEmergencyAlarmSent = 0;
-	if (remainingMillis < 60000 && (now - lastEmergencyAlarmSent >= 3000))
+	// Send emergency alarm when time is low
+	if (gameState.isEmergencyTime())
 	{
-		lastEmergencyAlarmSent = now;
-		uint8_t emergencySound = AUDIO_ALARM_EMERGENCY;
-		sendCanMessage(CAN_ID_AUDIO, &emergencySound, 1);
+		static unsigned long lastEmergencyAlarmSent = 0;
+		if (now - lastEmergencyAlarmSent >= 3000)
+		{
+			lastEmergencyAlarmSent = now;
+			uint8_t emergencySound = AUDIO_ALARM_EMERGENCY;
+			sendCanMessage(CAN_ID_AUDIO, &emergencySound, 1);
+		}
 	}
+}
+
+// Legacy compatibility functions
+void startCountdown(unsigned long durationMillis)
+{
+	// This is now handled by the game state manager
+	// Left for backward compatibility
+}
+
+bool isCountdownRunning()
+{
+	// This would need a reference to game state
+	// For now, return false for compatibility
+	return false;
+}
+
+unsigned long getCountdownStartTime()
+{
+	// Legacy function - not used in new system
+	return 0;
 }

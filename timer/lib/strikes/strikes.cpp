@@ -80,44 +80,43 @@ void updateAlphaDisplay(const char *txt)
   writeAlphaRaw(1, right); // Right digit
 }
 
-void updateStrikeCount()
+void updateStrikeCount(GameStateManager& gameState)
 {
   uint8_t strikes = gameState.getStrikes();
   static uint8_t lastStrikes = 255;
-  static char display[3] = "  ";
+  static char displayChars[3] = "  ";
 
+  // Check if strikes changed (strike sound is handled by game state callbacks)
   if (strikes != lastStrikes)
   {
     lastStrikes = strikes;
-    if (strikes > 0)
-    {
-      uint8_t payload[1] = {AUDIO_STRIKE};
-      sendCanMessage(CAN_ID_AUDIO, payload, 1);
-    }
   }
 
+  // Determine display characters based on strike count
   if (strikes == 0)
   {
-    display[0] = ' ';
-    display[1] = ' ';
+    displayChars[0] = ' ';
+    displayChars[1] = ' ';
   }
   else if (strikes == 1)
   {
-    display[0] = 'X';
-    display[1] = ' ';
+    displayChars[0] = 'X';
+    displayChars[1] = ' ';
   }
   else
   {
-    display[0] = 'X';
-    display[1] = 'X';
+    displayChars[0] = 'X';
+    displayChars[1] = 'X';
   }
 
+  // If less than 2 strikes, show normally
   if (strikes < 2)
   {
-    updateAlphaDisplay(display);
+    updateAlphaDisplay(displayChars);
     return;
   }
 
+  // If 2+ strikes, blink the display
   unsigned long now = millis();
   if (now - lastStrikeBlink >= 125)
   {
@@ -125,5 +124,5 @@ void updateStrikeCount()
     strikeVisible = !strikeVisible;
   }
 
-  updateAlphaDisplay(strikeVisible ? display : "  ");
+  updateAlphaDisplay(strikeVisible ? displayChars : "  ");
 }

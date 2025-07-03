@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <map>
-#include "game_state.h"
+#include "game_state_v2.h"
 
 // Define an inclusive range for valid module CAN IDs
 #define MODULE_ID_START 0x10
