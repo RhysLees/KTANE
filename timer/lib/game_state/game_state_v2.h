@@ -82,7 +82,7 @@ enum class IndicatorType : uint8_t
 enum class PortType : uint8_t
 {
     PARALLEL = 0,
-    SERIAL = 1,
+    SERIAL_PORT = 1,
     PS2 = 2,
     RJ45 = 3,
     RCA = 4,
@@ -201,8 +201,6 @@ private:
     void updateNeedyModules();
     void checkGameEndConditions();
     void handleModuleTimeout();
-    void generateSerialNumber();
-    void setupEdgework();
     ModuleCategory getModuleCategory(ModuleType type) const;
     bool isNeedyModule(ModuleType type) const;
     bool isIgnoredModule(ModuleType type) const;

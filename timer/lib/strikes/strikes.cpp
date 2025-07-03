@@ -3,7 +3,6 @@
 
 #include <can_bus.h>
 #include <strikes.h>
-#include <game_state.h>
 
 extern GameStateManager gameState;
 

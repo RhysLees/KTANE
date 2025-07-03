@@ -4,7 +4,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
 #include "countdown.h"
-#include <game_state.h>
 
 extern GameStateManager gameState;
 

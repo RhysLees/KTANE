@@ -40,6 +40,7 @@ void onStateChange(GameState oldState, GameState newState) {
 			break;
 			
 		case GameState::EXPLODED:
+		{
 			lcd1602SetColor(LCD_COLOR_RED);
 			lcd1602PrintLine(0, "BOOM!");
 			lcd1602PrintLine(1, "GAME OVER");
@@ -48,8 +49,10 @@ void onStateChange(GameState oldState, GameState newState) {
 			uint8_t explosionSound = AUDIO_EXPLODED;
 			sendCanMessage(CAN_ID_AUDIO, &explosionSound, 1);
 			break;
+		}
 			
 		case GameState::DEFUSED:
+		{
 			lcd1602SetColor(LCD_COLOR_GREEN);
 			lcd1602PrintLine(0, "BOMB DEFUSED!");
 			lcd1602PrintLine(1, "VICTORY!");
@@ -58,8 +61,10 @@ void onStateChange(GameState oldState, GameState newState) {
 			uint8_t defusalSound = AUDIO_DEFUSED;
 			sendCanMessage(CAN_ID_AUDIO, &defusalSound, 1);
 			break;
+		}
 			
 		case GameState::VICTORY:
+		{
 			lcd1602SetColor(LCD_COLOR_CYAN);
 			lcd1602PrintLine(0, "MISSION");
 			lcd1602PrintLine(1, "COMPLETE!");
@@ -68,6 +73,7 @@ void onStateChange(GameState oldState, GameState newState) {
 			uint8_t fanfareSound = AUDIO_GAME_OVER_FANFARE;
 			sendCanMessage(CAN_ID_AUDIO, &fanfareSound, 1);
 			break;
+		}
 	}
 }
 
@@ -128,6 +134,11 @@ void onTimeUpdate(unsigned long remainingMs) {
 
 void setup()
 {
+	// Initialize serial communication
+	Serial.begin(115200);
+	delay(50); // slight delay for entropy
+	randomSeed(millis());
+
 	// Initialize I2C buses
 	Wire.setSDA(0);
 	Wire.setSCL(1);
@@ -136,11 +147,6 @@ void setup()
 	Wire1.setSDA(6);
 	Wire1.setSCL(7);
 	Wire1.begin();
-
-	// Initialize serial communication
-	Serial.begin(115200);
-	delay(50); // slight delay for entropy
-	randomSeed(millis());
 
 	// Initialize LCD
 	initLcd1602(16, 2, Wire1);
