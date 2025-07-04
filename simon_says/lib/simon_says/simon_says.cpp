@@ -214,7 +214,7 @@ void SimonSays::startGame() {
         currentState = SimonState::GENERATING;
         stateStartTime = millis();
         
-        digitalWrite(SIMON_STATUS_LED, HIGH);
+        // Status LED should only be on when solved, not when game starts
     }
 }
 
