@@ -80,6 +80,7 @@ private:
     std::vector<SimonColor> sequence;
     std::vector<SimonColor> playerInput;
     uint8_t currentSequenceLength;
+    uint8_t targetSequenceLength;  // Total stages to complete (3-5)
     uint8_t displayIndex;
     uint8_t inputIndex;
     

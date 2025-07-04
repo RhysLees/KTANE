@@ -10,6 +10,7 @@ SimonSays::SimonSays() {
     gameStarted = false;
     
     currentSequenceLength = 0;
+    targetSequenceLength = 0;
     displayIndex = 0;
     inputIndex = 0;
     
@@ -110,8 +111,32 @@ void SimonSays::update() {
             
         case SimonState::WAITING_INPUT:
             processInput();
+            // Timeout after 5 seconds - replay sequence (no strike)
             if (currentTime - stateStartTime > SIMON_INPUT_TIMEOUT_MS) {
-                handleStrike();
+                Serial.println("Simon Says: Input timeout - replaying sequence");
+                
+                // Show what the player should have pressed
+                Serial.print("Simon Says: Reminder - you should press: ");
+                for (size_t i = 0; i < sequence.size(); i++) {
+                    if (i > 0) Serial.print(" -> ");
+                    SimonColor expectedColor = getFlashColor(sequence[i]);
+                    Serial.print(getColorName(expectedColor));
+                }
+                Serial.println();
+                
+                displayIndex = 0;
+                currentState = SimonState::DISPLAYING;
+                stateStartTime = millis();
+                audioPlayedForCurrentColor = false;
+                
+                // Clear any partial input
+                playerInput.clear();
+                inputIndex = 0;
+                
+                // Turn off all LEDs
+                for (int i = 0; i < 4; i++) {
+                    ledStates[i] = false;
+                }
             }
             break;
             
@@ -124,7 +149,10 @@ void SimonSays::update() {
             break;
             
         case SimonState::WRONG_INPUT:
-            handleStrike();
+            // Wait 5 seconds before replaying sequence after wrong input
+            if (currentTime - stateStartTime > 5000) {
+                handleStrike();
+            }
             break;
             
         case SimonState::SOLVED:
@@ -146,6 +174,7 @@ void SimonSays::reset() {
     gameStarted = false;
     
     currentSequenceLength = 0;
+    targetSequenceLength = 0;
     displayIndex = 0;
     inputIndex = 0;
     
@@ -248,14 +277,16 @@ void SimonSays::initHardware() {
 }
 
 void SimonSays::updateButtons() {
+    // Save previous button states BEFORE updating current states
+    for (int i = 0; i < 4; i++) {
+        lastButtonStates[i] = buttonStates[i];
+    }
+    
+    // Read current button states
     buttonStates[0] = !digitalRead(SIMON_BTN_RED);
     buttonStates[1] = !digitalRead(SIMON_BTN_YELLOW);
     buttonStates[2] = !digitalRead(SIMON_BTN_GREEN);
     buttonStates[3] = !digitalRead(SIMON_BTN_BLUE);
-    
-    for (int i = 0; i < 4; i++) {
-        lastButtonStates[i] = buttonStates[i];
-    }
 }
 
 void SimonSays::updateLEDs() {
@@ -331,14 +362,19 @@ void SimonSays::generateSequence() {
     Serial.println("Simon Says: Generating sequence...");
     
     if (currentSequenceLength == 0) {
-        currentSequenceLength = 3;
+        // First time - generate random target sequence length (3-5 stages)
+        targetSequenceLength = random(3, 6); // 3 to 5 inclusive
+        currentSequenceLength = 1;
         sequence.clear();
         
-        for (int i = 0; i < 3; i++) {
-            SimonColor color = static_cast<SimonColor>(random(4));
-            sequence.push_back(color);
-        }
+        // Start with just one color
+        SimonColor color = static_cast<SimonColor>(random(4));
+        sequence.push_back(color);
+        
+        Serial.print("Simon Says: Target sequence length: ");
+        Serial.println(targetSequenceLength);
     } else {
+        // Add one more color to the sequence
         SimonColor color = static_cast<SimonColor>(random(4));
         sequence.push_back(color);
         currentSequenceLength++;
@@ -367,7 +403,8 @@ void SimonSays::displaySequence() {
         
         if (elapsed >= colorStartTime && elapsed < colorEndTime) {
             // Turn on LED for 500ms and play audio once
-            SimonColor displayColor = sequence[displayIndex]; // Don't use flashing color
+            // Show the actual sequence color (not the mapped color)
+            SimonColor displayColor = sequence[displayIndex];
             
             setLED(displayColor, true);
             
@@ -397,6 +434,16 @@ void SimonSays::displaySequence() {
         inputIndex = 0;
         currentState = SimonState::WAITING_INPUT;
         stateStartTime = millis();
+        
+        // Show what the player should input
+        Serial.println("Simon Says: Sequence complete - waiting for input...");
+        Serial.print("Simon Says: Please press: ");
+        for (size_t i = 0; i < sequence.size(); i++) {
+            if (i > 0) Serial.print(" -> ");
+            SimonColor expectedColor = getFlashColor(sequence[i]);
+            Serial.print(getColorName(expectedColor));
+        }
+        Serial.println();
     }
 }
 
@@ -405,6 +452,9 @@ void SimonSays::processInput() {
         if (buttonStates[i] && !lastButtonStates[i]) {
             SimonColor pressedColor = static_cast<SimonColor>(i);
             playerInput.push_back(pressedColor);
+            
+            Serial.print("Simon Says: Button pressed - ");
+            Serial.println(getColorName(pressedColor));
             
             setLED(pressedColor, true);
             playAudioForColor(pressedColor);
@@ -433,21 +483,36 @@ void SimonSays::checkInput() {
     }
     
     if (playerInput.size() > 0) {
-        SimonColor expectedColor = shouldFlashColor(sequence[inputIndex]) ? 
-                                  getFlashColor(sequence[inputIndex]) : 
-                                  sequence[inputIndex];
+        // Player should press the mapped color, not the sequence color
+        SimonColor expectedColor = getFlashColor(sequence[inputIndex]);
         
         if (playerInput[inputIndex] == expectedColor) {
+            Serial.print("Simon Says: Correct! Pressed ");
+            Serial.print(getColorName(playerInput[inputIndex]));
+            Serial.print(" (expected ");
+            Serial.print(getColorName(expectedColor));
+            Serial.print(") - Progress: ");
+            Serial.print(inputIndex + 1);
+            Serial.print("/");
+            Serial.println(sequence.size());
+            
             inputIndex++;
             
             if (inputIndex >= sequence.size()) {
+                Serial.println("Simon Says: Sequence completed correctly!");
                 currentState = SimonState::CORRECT_SEQUENCE;
                 stateStartTime = millis();
             } else {
+                Serial.println("Simon Says: Waiting for next input (timeout reset)...");
                 currentState = SimonState::WAITING_INPUT;
-                stateStartTime = millis();
+                stateStartTime = millis(); // Reset timeout for next input
             }
         } else {
+            Serial.print("Simon Says: WRONG! Pressed ");
+            Serial.print(getColorName(playerInput[inputIndex]));
+            Serial.print(" but expected ");
+            Serial.println(getColorName(expectedColor));
+            
             currentState = SimonState::WRONG_INPUT;
             stateStartTime = millis();
         }
@@ -455,7 +520,7 @@ void SimonSays::checkInput() {
 }
 
 void SimonSays::nextStage() {
-    if (currentSequenceLength >= SIMON_MAX_SEQUENCE_LENGTH) {
+    if (currentSequenceLength >= targetSequenceLength) {
         solvePuzzle();
     } else {
         generateSequence();
@@ -466,6 +531,11 @@ void SimonSays::handleStrike() {
     Serial.println("Simon Says: Strike!");
     
     strikeCount++;
+    numStrikes++; // Update the strikes used for color mapping rules
+    
+    Serial.print("Simon Says: Strike count now ");
+    Serial.print(strikeCount);
+    Serial.println(" - color mappings will change!");
     
     // Send strike message directly to timer module via CAN bus library
     uint8_t strikeData[2];
@@ -524,10 +594,21 @@ void SimonSays::solvePuzzle() {
 }
 
 void SimonSays::resetModule() {
-    Serial.println("Simon Says: Resetting after strike...");
+    Serial.println("Simon Says: Resetting after strike - replaying same sequence...");
+    Serial.println("Simon Says: NEW color mappings due to strike:");
     
-    currentSequenceLength = 0;
-    sequence.clear();
+    // Show the new color mappings
+    for (int i = 0; i < 4; i++) {
+        SimonColor color = static_cast<SimonColor>(i);
+        SimonColor mapped = getFlashColor(color);
+        Serial.print("  ");
+        Serial.print(getColorName(color));
+        Serial.print(" flash -> press ");
+        Serial.println(getColorName(mapped));
+    }
+    
+    // Don't change currentSequenceLength or sequence - replay the same sequence
+    // Don't clear sequence - keep the same colors
     playerInput.clear();
     
     displayIndex = 0;
@@ -539,8 +620,10 @@ void SimonSays::resetModule() {
         ledStates[i] = false;
     }
     
-    currentState = SimonState::GENERATING;
+    // Go directly to displaying the same sequence
+    currentState = SimonState::DISPLAYING;
     stateStartTime = millis();
+    audioPlayedForCurrentColor = false;
 }
 
 // ============================================================================
@@ -548,61 +631,61 @@ void SimonSays::resetModule() {
 // ============================================================================
 
 bool SimonSays::shouldFlashColor(SimonColor color) const {
-    return true;
+    return true; // Always use color mapping
 }
 
 SimonColor SimonSays::getFlashColor(SimonColor color) const {
-    if (numStrikes == 0) {
-        if (hasVowelInSerial) {
+    if (hasVowelInSerial) {
+        // Serial number contains a vowel
+        if (numStrikes == 0) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::BLUE;
                 case SimonColor::BLUE: return SimonColor::RED;
-                case SimonColor::YELLOW: return SimonColor::YELLOW;
-                case SimonColor::GREEN: return SimonColor::GREEN;
-                default: return color;
-            }
-        } else {
-            switch (color) {
-                case SimonColor::RED: return SimonColor::BLUE;
-                case SimonColor::YELLOW: return SimonColor::RED;
                 case SimonColor::GREEN: return SimonColor::YELLOW;
-                case SimonColor::BLUE: return SimonColor::GREEN;
+                case SimonColor::YELLOW: return SimonColor::GREEN;
                 default: return color;
             }
-        }
-    } else if (numStrikes == 1) {
-        if (hasVowelInSerial) {
+        } else if (numStrikes == 1) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::YELLOW;
                 case SimonColor::BLUE: return SimonColor::GREEN;
-                case SimonColor::YELLOW: return SimonColor::YELLOW;
-                case SimonColor::GREEN: return SimonColor::GREEN;
+                case SimonColor::GREEN: return SimonColor::BLUE;
+                case SimonColor::YELLOW: return SimonColor::RED;
                 default: return color;
             }
-        } else {
+        } else { // 2+ strikes
             switch (color) {
-                case SimonColor::RED: return SimonColor::BLUE;
-                case SimonColor::YELLOW: return SimonColor::RED;
+                case SimonColor::RED: return SimonColor::GREEN;
+                case SimonColor::BLUE: return SimonColor::RED;
                 case SimonColor::GREEN: return SimonColor::YELLOW;
-                case SimonColor::BLUE: return SimonColor::GREEN;
+                case SimonColor::YELLOW: return SimonColor::BLUE;
                 default: return color;
             }
         }
     } else {
-        if (hasVowelInSerial) {
-            switch (color) {
-                case SimonColor::RED: return SimonColor::YELLOW;
-                case SimonColor::GREEN: return SimonColor::BLUE;
-                case SimonColor::YELLOW: return SimonColor::YELLOW;
-                case SimonColor::BLUE: return SimonColor::BLUE;
-                default: return color;
-            }
-        } else {
+        // Serial number does NOT contain a vowel
+        if (numStrikes == 0) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::BLUE;
+                case SimonColor::BLUE: return SimonColor::YELLOW;
+                case SimonColor::GREEN: return SimonColor::GREEN;
                 case SimonColor::YELLOW: return SimonColor::RED;
+                default: return color;
+            }
+        } else if (numStrikes == 1) {
+            switch (color) {
+                case SimonColor::RED: return SimonColor::RED;
+                case SimonColor::BLUE: return SimonColor::BLUE;
                 case SimonColor::GREEN: return SimonColor::YELLOW;
+                case SimonColor::YELLOW: return SimonColor::GREEN;
+                default: return color;
+            }
+        } else { // 2+ strikes
+            switch (color) {
+                case SimonColor::RED: return SimonColor::YELLOW;
                 case SimonColor::BLUE: return SimonColor::GREEN;
+                case SimonColor::GREEN: return SimonColor::BLUE;
+                case SimonColor::YELLOW: return SimonColor::RED;
                 default: return color;
             }
         }
@@ -674,7 +757,7 @@ void SimonSays::printStatus() const {
 }
 
 void SimonSays::printSequence() const {
-    Serial.print("Simon Says: Sequence (");
+    Serial.print("Simon Says: Flashing sequence (");
     Serial.print(sequence.size());
     Serial.print("): ");
     
@@ -683,20 +766,30 @@ void SimonSays::printSequence() const {
         Serial.print(getColorName(sequence[i]));
     }
     Serial.println();
+    
+    // Also show what the player should press
+    Serial.print("Simon Says: Expected input sequence: ");
+    for (size_t i = 0; i < sequence.size(); i++) {
+        if (i > 0) Serial.print(" -> ");
+        SimonColor expectedColor = getFlashColor(sequence[i]);
+        Serial.print(getColorName(expectedColor));
+    }
+    Serial.println();
 }
 
 void SimonSays::printRules() const {
     Serial.println("=== SIMON SAYS RULES ===");
     Serial.print("Strikes: "); Serial.println(numStrikes);
     Serial.print("Serial has vowel: "); Serial.println(hasVowelInSerial ? "YES" : "NO");
-    Serial.println("Color mappings:");
+    Serial.print("Target sequence length: "); Serial.println(targetSequenceLength);
+    Serial.println("Color mappings (Flash -> Press):");
     
     for (int i = 0; i < 4; i++) {
         SimonColor color = static_cast<SimonColor>(i);
         SimonColor mapped = getFlashColor(color);
         Serial.print("  ");
         Serial.print(getColorName(color));
-        Serial.print(" -> ");
+        Serial.print(" flash -> press ");
         Serial.println(getColorName(mapped));
     }
 }
