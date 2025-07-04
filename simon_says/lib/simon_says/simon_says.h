@@ -10,14 +10,14 @@
 
 // Hardware pin definitions
 #define SIMON_LED_RED     6
-#define SIMON_LED_YELLOW  7
-#define SIMON_LED_GREEN   8
-#define SIMON_LED_BLUE    9
+#define SIMON_LED_YELLOW  9
+#define SIMON_LED_GREEN   7
+#define SIMON_LED_BLUE    8
 
 #define SIMON_BTN_RED     2
-#define SIMON_BTN_YELLOW  3
-#define SIMON_BTN_GREEN   4
-#define SIMON_BTN_BLUE    5
+#define SIMON_BTN_YELLOW  5
+#define SIMON_BTN_GREEN   3
+#define SIMON_BTN_BLUE    4
 
 #define SIMON_STATUS_LED  11
 
@@ -26,8 +26,8 @@
 
 // Game configuration
 #define SIMON_MAX_SEQUENCE_LENGTH 5
-#define SIMON_DISPLAY_TIME_MS     800
-#define SIMON_PAUSE_TIME_MS       200
+#define SIMON_DISPLAY_TIME_MS     500
+#define SIMON_PAUSE_TIME_MS       250
 #define SIMON_INPUT_TIMEOUT_MS    5000
 #define SIMON_STRIKE_FLASH_MS     1000
 
@@ -86,6 +86,9 @@ private:
     // Timing
     unsigned long lastUpdateTime;
     unsigned long stateStartTime;
+    
+    // Audio control
+    bool audioPlayedForCurrentColor;
     
     // Hardware state
     bool ledStates[4];

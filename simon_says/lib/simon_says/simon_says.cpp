@@ -16,6 +16,8 @@ SimonSays::SimonSays() {
     lastUpdateTime = 0;
     stateStartTime = 0;
     
+    audioPlayedForCurrentColor = false;
+    
     strikeCount = 0;
     isFlashing = false;
     flashStartTime = 0;
@@ -151,6 +153,8 @@ void SimonSays::reset() {
     
     sequence.clear();
     playerInput.clear();
+    
+    audioPlayedForCurrentColor = false;
     
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
@@ -346,6 +350,9 @@ void SimonSays::generateSequence() {
     currentState = SimonState::DISPLAYING;
     stateStartTime = millis();
     
+    // Reset audio flag for new sequence display
+    audioPlayedForCurrentColor = false;
+    
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
@@ -359,21 +366,33 @@ void SimonSays::displaySequence() {
         unsigned long colorEndTime = colorStartTime + SIMON_DISPLAY_TIME_MS;
         
         if (elapsed >= colorStartTime && elapsed < colorEndTime) {
-            SimonColor displayColor = shouldFlashColor(sequence[displayIndex]) ? 
-                                     getFlashColor(sequence[displayIndex]) : 
-                                     sequence[displayIndex];
+            // Turn on LED for 500ms and play audio once
+            SimonColor displayColor = sequence[displayIndex]; // Don't use flashing color
             
             setLED(displayColor, true);
-            playAudioForColor(displayColor);
+            
+            // Only play audio once per color display
+            if (!audioPlayedForCurrentColor) {
+                playAudioForColor(displayColor);
+                audioPlayedForCurrentColor = true;
+            }
             
         } else if (elapsed >= colorEndTime) {
-            setLED(sequence[displayIndex], false);
+            // Turn off the LED after 500ms
+            SimonColor displayColor = sequence[displayIndex];
+            setLED(displayColor, false);
             
             if (elapsed >= colorStartTime + SIMON_DISPLAY_TIME_MS + SIMON_PAUSE_TIME_MS) {
                 displayIndex++;
+                audioPlayedForCurrentColor = false; // Reset for next color
             }
         }
     } else {
+        // Sequence complete - ensure all LEDs are off and transition to input mode
+        for (int i = 0; i < 4; i++) {
+            ledStates[i] = false;
+        }
+        
         playerInput.clear();
         inputIndex = 0;
         currentState = SimonState::WAITING_INPUT;
