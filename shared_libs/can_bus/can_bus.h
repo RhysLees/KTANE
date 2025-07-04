@@ -63,18 +63,18 @@ enum CanAudioSound : uint8_t {
   AUDIO_ALARM_CLOCK_SNOOZE  = 0x0A,
   AUDIO_ALARM_EMERGENCY     = 0x0B,
   // Simon Says tone frequencies
-  AUDIO_SIMON_RED           = 0x10,  // 550Hz
-  AUDIO_SIMON_BLUE          = 0x11,  // 660Hz
-  AUDIO_SIMON_GREEN         = 0x12,  // 775Hz
-  AUDIO_SIMON_YELLOW        = 0x13   // 985Hz
+  AUDIO_SIMON_RED           = 0x0C,
+  AUDIO_SIMON_GREEN         = 0x0D,
+  AUDIO_SIMON_YELLOW        = 0x0E,
+  AUDIO_SIMON_BLUE          = 0x0F,
 };
 
 // Commands for Serial Display module
 enum CanSerialDisplayCommand : uint8_t
 {
-  SERIAL_DISPLAY_SET_SERIAL = 0x01, // Set serial number (e.g., "C4R7A2")
-  SERIAL_DISPLAY_CLEAR = 0x02,      // Clear the display
-  SERIAL_DISPLAY_SHOW_CREDIT = 0x03 // Show developer credit
+  SERIAL_DISPLAY_SET_SERIAL = 0x01,
+  SERIAL_DISPLAY_CLEAR = 0x02,
+  SERIAL_DISPLAY_SHOW_CREDIT = 0x03
 };
 
 // Function declarations
