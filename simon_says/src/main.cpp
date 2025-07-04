@@ -136,14 +136,12 @@ void handleSerialCommands() {
 void setup() {
     // Initialize serial communication
     Serial.begin(115200);
-    delay(100);
+    delay(50); // slight delay for entropy
+	randomSeed(millis());
     
     Serial.println("===============================");
     Serial.println("KTANE Simon Says Module v1.0");
     Serial.println("===============================");
-    
-    // Initialize random seed
-    randomSeed(analogRead(0) + millis());
     
     // Initialize CAN bus
     initCanBus(SIMON_CAN_ID);
@@ -171,7 +169,4 @@ void loop() {
     
     // Handle serial commands
     handleSerialCommands();
-    
-    // Small delay to prevent overwhelming the system
-    delay(10);
 } 

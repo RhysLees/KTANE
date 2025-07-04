@@ -61,7 +61,12 @@ enum CanAudioSound : uint8_t {
   AUDIO_GAME_OVER_FANFARE   = 0x08,
   AUDIO_ALARM_CLOCK_BEEP    = 0x09,
   AUDIO_ALARM_CLOCK_SNOOZE  = 0x0A,
-  AUDIO_ALARM_EMERGENCY     = 0x0B
+  AUDIO_ALARM_EMERGENCY     = 0x0B,
+  // Simon Says tone frequencies
+  AUDIO_SIMON_RED           = 0x10,  // 550Hz
+  AUDIO_SIMON_BLUE          = 0x11,  // 660Hz
+  AUDIO_SIMON_GREEN         = 0x12,  // 775Hz
+  AUDIO_SIMON_YELLOW        = 0x13   // 985Hz
 };
 
 // Commands for Serial Display module

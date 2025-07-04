@@ -8,6 +8,7 @@
 
 volatile bool canInterruptFlag = false;
 uint16_t thisModuleId = 0xFFFF; // Default uninitialized
+bool canBusInitialized = false;
 
 MCP_CAN CAN(CAN_SPI_PIN);
 
@@ -24,18 +25,22 @@ void initCanBus(uint16_t fullCanId) {
 
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
     Serial.println("CAN init OK");
+    
+    CAN.setMode(MCP_NORMAL);
+    
+    pinMode(CAN_INT_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
+    
+    canBusInitialized = true;
+    
+    Serial.print("CAN module ID set to 0x");
+    Serial.println(thisModuleId, HEX);
   } else {
-    Serial.println("CAN init FAIL");
-    while (1);
+    Serial.println("CAN init FAIL - continuing without CAN bus");
+    canBusInitialized = false;
+    // Don't halt - allow testing without CAN hardware
+    return;
   }
-
-  CAN.setMode(MCP_NORMAL);
-
-  pinMode(CAN_INT_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
-
-  Serial.print("CAN module ID set to 0x");
-  Serial.println(thisModuleId, HEX);
 }
 
 void registerCanCallback(CanMessageCallback callback) {
@@ -45,6 +50,7 @@ void registerCanCallback(CanMessageCallback callback) {
 }
 
 void handleCanMessages() {
+  if (!canBusInitialized) return;
   if (!canInterruptFlag) return;
   canInterruptFlag = false;
 
@@ -69,6 +75,11 @@ void handleCanMessages() {
 }
 
 void sendCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+  if (!canBusInitialized) {
+    // CAN bus not initialized, don't send message
+    return;
+  }
+  
   CAN.sendMsgBuf(id, 0, len, (byte*)data);
   printCanMessage(id, data, len, true);
 }

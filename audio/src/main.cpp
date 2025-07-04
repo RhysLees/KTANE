@@ -50,6 +50,18 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
       case AUDIO_ALARM_EMERGENCY:
         playSound(alarm_emergency, alarm_emergency_len / 2);
         break;
+      case AUDIO_SIMON_RED:
+        playSound(simon_red, simon_red_len / 2); // Red - 550Hz
+        break;
+      case AUDIO_SIMON_BLUE:
+        playSound(simon_blue, simon_blue_len / 2); // Blue - 660Hz
+        break;
+      case AUDIO_SIMON_GREEN:
+        playSound(simon_green, simon_green_len / 2); // Green - 775Hz
+        break;
+      case AUDIO_SIMON_YELLOW:
+        playSound(simon_yellow, simon_yellow_len / 2); // Yellow - 985Hz
+        break;
       default:
         Serial.print("Unknown message ID: ");
         Serial.println(messageId, HEX);

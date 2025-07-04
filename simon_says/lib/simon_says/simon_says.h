@@ -9,15 +9,15 @@
 // ============================================================================
 
 // Hardware pin definitions
-#define SIMON_LED_RED     2
-#define SIMON_LED_YELLOW  3
-#define SIMON_LED_GREEN   4
-#define SIMON_LED_BLUE    5
+#define SIMON_LED_RED     6
+#define SIMON_LED_YELLOW  7
+#define SIMON_LED_GREEN   8
+#define SIMON_LED_BLUE    9
 
-#define SIMON_BTN_RED     6
-#define SIMON_BTN_YELLOW  7
-#define SIMON_BTN_GREEN   8
-#define SIMON_BTN_BLUE    9
+#define SIMON_BTN_RED     2
+#define SIMON_BTN_YELLOW  3
+#define SIMON_BTN_GREEN   4
+#define SIMON_BTN_BLUE    5
 
 #define SIMON_STATUS_LED  11
 
@@ -122,13 +122,13 @@ private:
     void resetModule();
     
     // KTANE rule methods
-    bool shouldFlashColor(SimonColor color);
-    SimonColor getFlashColor(SimonColor color);
+    bool shouldFlashColor(SimonColor color) const;
+    SimonColor getFlashColor(SimonColor color) const;
     
     // Utility methods
-    uint8_t getColorPin(SimonColor color, bool isLED);
-    const char* getColorName(SimonColor color);
-    const char* getStateName(SimonState state);
+    uint8_t getColorPin(SimonColor color, bool isLED) const;
+    const char* getColorName(SimonColor color) const;
+    const char* getStateName(SimonState state) const;
     
 public:
     // Constructor

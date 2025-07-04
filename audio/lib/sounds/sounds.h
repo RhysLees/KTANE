@@ -10,3 +10,7 @@
 #include "sound_headers/alarm_clock_beep.h"
 #include "sound_headers/alarm_clock_snooze.h"
 #include "sound_headers/alarm_emergency.h"
+#include "sound_headers/simon_red.h"
+#include "sound_headers/simon_blue.h"
+#include "sound_headers/simon_green.h"
+#include "sound_headers/simon_yellow.h"

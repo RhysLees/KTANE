@@ -274,19 +274,16 @@ void SimonSays::playAudioForColor(SimonColor color) {
     uint8_t audioType;
     switch (color) {
         case SimonColor::RED:
-            audioType = AUDIO_BEEP_NORMAL;
+            audioType = AUDIO_SIMON_RED;
             break;
         case SimonColor::YELLOW:
-            audioType = AUDIO_BEEP_FAST;
+            audioType = AUDIO_SIMON_YELLOW;
             break;
         case SimonColor::GREEN:
-            audioType = AUDIO_BEEP_HIGH;
+            audioType = AUDIO_SIMON_GREEN;
             break;
         case SimonColor::BLUE:
-            audioType = AUDIO_CORRECT_TIME;
-            break;
-        default:
-            audioType = AUDIO_BEEP_NORMAL;
+            audioType = AUDIO_SIMON_BLUE;
             break;
     }
     
@@ -531,11 +528,11 @@ void SimonSays::resetModule() {
 // KTANE RULE METHODS
 // ============================================================================
 
-bool SimonSays::shouldFlashColor(SimonColor color) {
+bool SimonSays::shouldFlashColor(SimonColor color) const {
     return true;
 }
 
-SimonColor SimonSays::getFlashColor(SimonColor color) {
+SimonColor SimonSays::getFlashColor(SimonColor color) const {
     if (numStrikes == 0) {
         if (hasVowelInSerial) {
             switch (color) {
@@ -597,7 +594,7 @@ SimonColor SimonSays::getFlashColor(SimonColor color) {
 // UTILITY METHODS
 // ============================================================================
 
-uint8_t SimonSays::getColorPin(SimonColor color, bool isLED) {
+uint8_t SimonSays::getColorPin(SimonColor color, bool isLED) const {
     if (isLED) {
         switch (color) {
             case SimonColor::RED: return SIMON_LED_RED;
@@ -617,7 +614,7 @@ uint8_t SimonSays::getColorPin(SimonColor color, bool isLED) {
     }
 }
 
-const char* SimonSays::getColorName(SimonColor color) {
+const char* SimonSays::getColorName(SimonColor color) const {
     switch (color) {
         case SimonColor::RED: return "RED";
         case SimonColor::YELLOW: return "YELLOW";
@@ -627,7 +624,7 @@ const char* SimonSays::getColorName(SimonColor color) {
     }
 }
 
-const char* SimonSays::getStateName(SimonState state) {
+const char* SimonSays::getStateName(SimonState state) const {
     switch (state) {
         case SimonState::IDLE: return "IDLE";
         case SimonState::GENERATING: return "GENERATING";
