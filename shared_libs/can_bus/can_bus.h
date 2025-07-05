@@ -37,6 +37,9 @@
 #define CAN_TYPE_BATTERY_HOLDER 0x22
 #define CAN_TYPE_PORT_PANEL 0x23
 
+// Special Types
+#define CAN_TYPE_BROADCAST 0x3F  // Reserved for broadcast messages
+
 // Build unique CAN ID
 #define CAN_INSTANCE_ID(moduleType, instanceId) \
   (((moduleType & 0x3F) << 5) | (instanceId & 0x1F))
@@ -48,6 +51,37 @@
 #define CAN_ID_INDICATOR_PANEL CAN_INSTANCE_ID(CAN_TYPE_INDICATOR_PANEL, 0x00)
 #define CAN_ID_BATTERY_HOLDER CAN_INSTANCE_ID(CAN_TYPE_BATTERY_HOLDER, 0x00)
 #define CAN_ID_PORT_PANEL CAN_INSTANCE_ID(CAN_TYPE_PORT_PANEL, 0x00)
+
+// Broadcast ID for messages to all modules
+#define CAN_ID_BROADCAST CAN_INSTANCE_ID(CAN_TYPE_BROADCAST, 0x00)
+
+/*
+ * CAN ID Usage Summary:
+ * 
+ * 1. Individual Module IDs:
+ *    - CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x01) = 0x261 (Simon Says instance 1)
+ *    - CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x02) = 0x262 (Simon Says instance 2)
+ *    - Used for: Module-specific communication
+ * 
+ * 2. Global Channel per Module Type:
+ *    - CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00) = 0x260 (Simon Says global)
+ *    - Used for: ID negotiation between modules of same type
+ * 
+ * 3. Fixed Module IDs:
+ *    - CAN_ID_TIMER = 0x00 (Timer module)
+ *    - CAN_ID_AUDIO = 0x20 (Audio module)
+ *    - Used for: Modules with single instance
+ * 
+ * 4. Broadcast ID:
+ *    - CAN_ID_BROADCAST = 0x7E0 (All modules)
+ *    - Used for: Timer sending to all modules (GAME_START, GAME_STOP, etc.)
+ *    - All modules automatically listen to this ID
+ * 
+ * Message Flow Examples:
+ * - Timer broadcasts GAME_START to 0x7E0 → All modules receive it
+ * - Simon Says #1 sends MODULE_SOLVED to 0x00 → Only timer receives it
+ * - Timer sends TIMER_RESET to 0x7E0 → All modules reset
+ */
 
 // Audio sound identifiers
 enum CanAudioSound : uint8_t {
@@ -77,12 +111,47 @@ enum CanSerialDisplayCommand : uint8_t
   SERIAL_DISPLAY_SHOW_CREDIT = 0x03
 };
 
+// Timer to Module messages (sent to individual module CAN IDs)
+enum TimerToModuleMessage : uint8_t {
+  TIMER_GAME_START = 0x10,        // Game started
+  TIMER_GAME_STOP = 0x11,         // Game stopped  
+  TIMER_STRIKE_UPDATE = 0x12,     // Strike count changed [strikes]
+  TIMER_SERIAL_NUMBER = 0x13,     // Serial number [6 chars]
+  TIMER_RESET = 0x14,             // Reset module
+  TIMER_TIME_UPDATE = 0x15        // Time remaining [4 bytes, ms]
+};
+
+// Module to Timer messages (sent to CAN_ID_TIMER)
+enum ModuleToTimerMessage : uint8_t {
+  MODULE_REGISTER = 0x20,         // Register with timer [moduleType, instanceId]
+  MODULE_SOLVED = 0x21,           // Module was solved
+  MODULE_STRIKE = 0x22,           // Module caused a strike  
+  MODULE_STATUS = 0x23,           // Status update [state, progress, etc.]
+  MODULE_HEARTBEAT = 0x24         // Periodic heartbeat
+};
+
+// ID negotiation system (per module type)
+enum IdMessage : uint8_t {
+  ID_PROBE = 0x01,        // "Anyone using this ID?"
+  ID_TAKEN = 0x02         // "Yes, I'm using this ID"
+};
+
+// ID negotiation configuration
+#define ID_PROBE_TIMEOUT_MS 500
+#define ID_MAX_INSTANCE 0x1F  // Max instance ID (31)
+
 // Function declarations
 typedef void (*CanMessageCallback)(uint16_t id, const uint8_t* data, uint8_t len);
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
 void sendCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
 void registerCanCallback(CanMessageCallback callback);
+
+// ID negotiation functions
+bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
+bool assignUniqueId(uint8_t moduleType);
+void updateCanId(uint16_t newCanId);
+uint8_t getCurrentInstanceId();
 
 // Debugging helper
 inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool sent = false);

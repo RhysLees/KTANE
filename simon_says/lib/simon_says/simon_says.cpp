@@ -45,13 +45,8 @@ void SimonSays::begin() {
     
     initHardware();
     
-    // Send registration directly via CAN bus library
-    uint8_t registrationData[3];
-    registrationData[0] = static_cast<uint8_t>(SIMON_MSG_REGISTER);
-    registrationData[1] = static_cast<uint8_t>(CAN_TYPE_SIMON);
-    registrationData[2] = 0x00; // Instance ID
-    sendCanMessage(CAN_ID_TIMER, registrationData, 3);
-    Serial.println("Simon Says: Registration sent");
+    // Module registration will be handled by discovery system
+    // No need to send manual registration message
     
     currentState = SimonState::IDLE;
     stateStartTime = millis();
@@ -68,6 +63,15 @@ void SimonSays::update() {
     updateButtons();
     updateLEDs();
     
+    // Send periodic heartbeat to timer (every 5 seconds)
+    static unsigned long lastHeartbeat = 0;
+    if (currentTime - lastHeartbeat > 5000) {
+        uint8_t heartbeatData[1];
+        heartbeatData[0] = MODULE_HEARTBEAT;
+        sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
+        lastHeartbeat = currentTime;
+    }
+    
     // Send realtime status on state changes
     static SimonState lastState = SimonState::IDLE;
     static bool lastSolved = false;
@@ -76,14 +80,23 @@ void SimonSays::update() {
     if (currentState != lastState || isModuleSolved != lastSolved || 
         currentSequenceLength != lastSeqLength) {
         
-        // Send realtime status directly via CAN bus library
+        // Send status update to timer
         uint8_t statusData[5];
-        statusData[0] = static_cast<uint8_t>(SIMON_MSG_STATUS);
+        statusData[0] = MODULE_STATUS;
         statusData[1] = static_cast<uint8_t>(currentState);
         statusData[2] = isModuleSolved ? 1 : 0;
         statusData[3] = currentSequenceLength;
         statusData[4] = strikeCount;
         sendCanMessage(CAN_ID_TIMER, statusData, 5);
+        
+        // Check for important state changes
+        if (isModuleSolved && !lastSolved) {
+            // Module just got solved!
+            uint8_t solvedData[1];
+            solvedData[0] = MODULE_SOLVED;
+            sendCanMessage(CAN_ID_TIMER, solvedData, 1);
+            Serial.println("Simon Says: Sent MODULE_SOLVED to timer");
+        }
         
         lastState = currentState;
         lastSolved = isModuleSolved;
@@ -191,14 +204,8 @@ void SimonSays::reset() {
     
     digitalWrite(SIMON_STATUS_LED, LOW);
     
-    // Send realtime status update directly via CAN bus library
-    uint8_t statusData[5];
-    statusData[0] = static_cast<uint8_t>(SIMON_MSG_STATUS);
-    statusData[1] = static_cast<uint8_t>(currentState);
-    statusData[2] = isModuleSolved ? 1 : 0;
-    statusData[3] = currentSequenceLength;
-    statusData[4] = strikeCount;
-    sendCanMessage(CAN_ID_TIMER, statusData, 5);
+    // Note: Status update will be sent automatically by update() method
+    // when it detects the state change
     
     Serial.println("Simon Says: Reset complete.");
 }
@@ -537,34 +544,17 @@ void SimonSays::handleStrike() {
     Serial.print(strikeCount);
     Serial.println(" - color mappings will change!");
     
-    // Send strike message directly to timer module via CAN bus library
-    uint8_t strikeData[2];
-    strikeData[0] = static_cast<uint8_t>(SIMON_MSG_STRIKE);
-    strikeData[1] = strikeCount;
-    sendCanMessage(CAN_ID_TIMER, strikeData, 2);
-    
-    // Also send strike update directly to timer module
-    uint8_t timerData[2];
-    timerData[0] = 0x12; // STRIKE_UPDATE message type
-    timerData[1] = strikeCount;
-    sendCanMessage(CAN_ID_TIMER, timerData, 2);
-    
-    Serial.println("Simon Says: Strike message sent");
+    // Send strike notification to timer
+    uint8_t strikeData[1];
+    strikeData[0] = MODULE_STRIKE;
+    sendCanMessage(CAN_ID_TIMER, strikeData, 1);
+    Serial.println("Simon Says: Strike notification sent to timer");
     
     flashAllLEDs(SIMON_STRIKE_FLASH_MS);
     playStrikeSound();
     
     currentState = SimonState::STRIKE;
     stateStartTime = millis();
-    
-    // Send realtime status update directly via CAN bus library
-    uint8_t statusData[5];
-    statusData[0] = static_cast<uint8_t>(SIMON_MSG_STATUS);
-    statusData[1] = static_cast<uint8_t>(currentState);
-    statusData[2] = isModuleSolved ? 1 : 0;
-    statusData[3] = currentSequenceLength;
-    statusData[4] = strikeCount;
-    sendCanMessage(CAN_ID_TIMER, statusData, 5);
 }
 
 void SimonSays::solvePuzzle() {
@@ -577,20 +567,8 @@ void SimonSays::solvePuzzle() {
     digitalWrite(SIMON_STATUS_LED, HIGH);
     playSolvedSound();
     
-    // Send solved message directly via CAN bus library
-    uint8_t solvedData[1];
-    solvedData[0] = static_cast<uint8_t>(SIMON_MSG_SOLVED);
-    sendCanMessage(CAN_ID_TIMER, solvedData, 1);
-    Serial.println("Simon Says: Solved message sent");
-    
-    // Send realtime status update directly via CAN bus library
-    uint8_t statusData[5];
-    statusData[0] = static_cast<uint8_t>(SIMON_MSG_STATUS);
-    statusData[1] = static_cast<uint8_t>(currentState);
-    statusData[2] = isModuleSolved ? 1 : 0;
-    statusData[3] = currentSequenceLength;
-    statusData[4] = strikeCount;
-    sendCanMessage(CAN_ID_TIMER, statusData, 5);
+    // Note: MODULE_SOLVED message is sent automatically by update() method
+    // when it detects the state change to solved
 }
 
 void SimonSays::resetModule() {
@@ -793,8 +771,6 @@ void SimonSays::printRules() const {
         Serial.println(getColorName(mapped));
     }
 }
-
-
 
 // ============================================================================
 // CAN MESSAGE HANDLER
