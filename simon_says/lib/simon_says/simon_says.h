@@ -75,6 +75,7 @@ private:
     SimonState currentState;
     bool isModuleSolved;
     bool gameStarted;
+    bool initializationComplete;
     
     // Sequence management
     std::vector<SimonColor> sequence;
@@ -149,6 +150,7 @@ public:
     void onGameStateChange(bool gameRunning);
     void setStrikeCount(uint8_t strikes);
     void setSerialNumber(const String& serial);
+    void setInitializationComplete(bool complete);
     
     // Status interface
     bool isSolved() const { return isModuleSolved; }

@@ -1,4 +1,5 @@
 #include "game_state_v2.h"
+#include <can_bus.h>
 
 // ============================================================================
 // EDGEWORK HELPER METHODS
@@ -83,6 +84,12 @@ void GameStateManager::initialize() {
     generateSerialNumber();
     setupEdgework();
     resetStats();
+    
+    // Start initialization sequence
+    initialization_start_time = millis();
+    init_state = INIT_WAITING_MODULES;
+    
+    Serial.println("GameState: Initialization sequence started - waiting for modules...");
 }
 
 void GameStateManager::reset() {
@@ -90,6 +97,9 @@ void GameStateManager::reset() {
 }
 
 void GameStateManager::tick() {
+    // Handle initialization sequence before regular game logic
+    handleInitializationSequence();
+    
     updateTimer();
     updateNeedyModules();
     checkGameEndConditions();
@@ -215,8 +225,16 @@ void GameStateManager::setStrikes(uint8_t strikes) {
     uint8_t oldStrikes = strikeCount;
     strikeCount = min(strikes, maxStrikes);
     
-    if (strikeCount != oldStrikes && onStrikeChange) {
-        onStrikeChange(strikeCount);
+    if (strikeCount != oldStrikes) {
+        // Broadcast strike update to all modules
+        uint8_t strikeData[2];
+        strikeData[0] = TIMER_STRIKE_UPDATE;
+        strikeData[1] = strikeCount;
+        sendCanMessage(CAN_ID_BROADCAST, strikeData, 2);
+        
+        if (onStrikeChange) {
+            onStrikeChange(strikeCount);
+        }
     }
 }
 
@@ -736,6 +754,238 @@ GameStateManager::GameStats GameStateManager::getStats() const {
 
 void GameStateManager::resetStats() {
     stats = GameStats();
+}
+
+// ============================================================================
+// CAN COMMUNICATION INTERFACE
+// ============================================================================
+
+void GameStateManager::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    Serial.print("GameState: CAN message received - ID: 0x");
+    Serial.print(id, HEX);
+    Serial.print(", Type: 0x");
+    if (len > 0) Serial.print(data[0], HEX);
+    Serial.print(", Len: ");
+    Serial.println(len);
+    
+    if (len > 0) {
+        uint8_t msgType = data[0];
+        
+        switch (msgType) {
+            case MODULE_REGISTER:
+                if (len >= 3) {
+                    uint8_t moduleType = data[1];
+                    uint8_t instanceId = data[2];
+                    uint16_t moduleCanId = CAN_INSTANCE_ID(moduleType, instanceId);
+                    registerModule(moduleCanId, static_cast<ModuleType>(moduleType));
+                    Serial.print("GameState: Registered module type 0x");
+                    Serial.print(moduleType, HEX);
+                    Serial.print(" instance ");
+                    Serial.print(instanceId);
+                    Serial.print(" with CAN ID 0x");
+                    Serial.println(moduleCanId, HEX);
+                    
+                    // Send current state to newly registered module
+                    broadcastGameState(moduleCanId);
+                }
+                break;
+                
+            case MODULE_STRIKE:
+                Serial.println("GameState: Strike received from module");
+                addStrike();
+                // Strike callback will handle broadcasting
+                break;
+                
+            case MODULE_SOLVED:
+                Serial.print("GameState: Module 0x");
+                Serial.print(id, HEX);
+                Serial.println(" solved!");
+                setModuleSolved(id);
+                // Module solved callback will handle broadcasting
+                break;
+                
+            case MODULE_STATUS:
+                updateModuleSeen(id);
+                // Handle additional status data if needed
+                break;
+                
+            case MODULE_HEARTBEAT:
+                updateModuleSeen(id);
+                break;
+                
+            // Handle epaper display ready signal
+            case SERIAL_DISPLAY_CLEAR:
+                Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
+                Serial.print(id, HEX);
+                Serial.print(" (expected 0x");
+                Serial.print(CAN_ID_SERIAL_DISPLAY, HEX);
+                Serial.println(")");
+                if (id == CAN_ID_SERIAL_DISPLAY) {
+                    epaper_ready = true;
+                    Serial.println("GameState: Epaper display ready - setting flag");
+                } else {
+                    Serial.println("GameState: Wrong CAN ID for epaper ready signal");
+                }
+                break;
+                
+            default:
+                Serial.print("GameState: Unknown message type 0x");
+                Serial.print(msgType, HEX);
+                Serial.print(" from module 0x");
+                Serial.println(id, HEX);
+                break;
+        }
+    }
+}
+
+void GameStateManager::broadcastGameState(uint16_t targetId) {
+    Serial.print("GameState: Broadcasting game state to ID 0x");
+    Serial.println(targetId, HEX);
+    
+    // Send serial number
+    uint8_t serialData[7];
+    serialData[0] = TIMER_SERIAL_NUMBER;
+    memcpy(&serialData[1], serialNumber.c_str(), 6);
+    sendCanMessage(targetId, serialData, 7);
+    Serial.print("GameState: Sent serial number: ");
+    Serial.println(serialNumber);
+    
+    // Send strike count
+    uint8_t strikeData[2];
+    strikeData[0] = TIMER_STRIKE_UPDATE;
+    strikeData[1] = strikeCount;
+    sendCanMessage(targetId, strikeData, 2);
+    Serial.print("GameState: Sent strike count: ");
+    Serial.println(strikeCount);
+    
+    // Send time remaining
+    uint8_t timeData[5];
+    timeData[0] = TIMER_TIME_UPDATE;
+    uint32_t timeMs = remainingMs;
+    memcpy(&timeData[1], &timeMs, 4);
+    sendCanMessage(targetId, timeData, 5);
+    Serial.print("GameState: Sent time remaining: ");
+    Serial.println(timeMs / 1000);
+    
+    // Send game state
+    uint8_t gameStateData[1];
+    if (currentState == GameState::RUNNING) {
+        gameStateData[0] = TIMER_GAME_START;
+        Serial.println("GameState: Sent TIMER_GAME_START");
+    } else {
+        gameStateData[0] = TIMER_GAME_STOP;
+        Serial.println("GameState: Sent TIMER_GAME_STOP");
+    }
+    sendCanMessage(targetId, gameStateData, 1);
+    
+    Serial.println("GameState: Game state broadcast complete");
+}
+
+void GameStateManager::broadcastCountdown(uint8_t seconds) {
+    uint8_t countdownData[2];
+    countdownData[0] = TIMER_COUNTDOWN;
+    countdownData[1] = seconds;
+    sendCanMessage(CAN_ID_BROADCAST, countdownData, 2);
+    
+    Serial.print("GameState: Countdown - ");
+    Serial.print(seconds);
+    Serial.println(" seconds");
+}
+
+// ============================================================================
+// INITIALIZATION SEQUENCE
+// ============================================================================
+
+void GameStateManager::handleInitializationSequence() {
+    unsigned long now = millis();
+    
+    // Debug output every 5 seconds to show current state
+    static unsigned long lastDebug = 0;
+    if (now - lastDebug > 5000) {
+        Serial.print("GameState: Init state: ");
+        Serial.print(static_cast<int>(init_state));
+        Serial.print(", elapsed: ");
+        Serial.print((now - initialization_start_time) / 1000);
+        Serial.println("s");
+        lastDebug = now;
+    }
+    
+    switch (init_state) {
+        case INIT_WAITING_MODULES:
+            // Wait for modules to register (2 seconds after startup)
+            if (now - initialization_start_time > 2000) {
+                Serial.println("GameState: 2-second module wait complete, broadcasting initial state...");
+                // Send initial state to all registered modules
+                broadcastGameState();
+                
+                // Wait for epaper display to be ready
+                init_state = INIT_WAITING_EPAPER;
+                Serial.println("GameState: Switching to INIT_WAITING_EPAPER state");
+                Serial.print("GameState: Sending serial number '");
+                Serial.print(serialNumber);
+                Serial.println("' to epaper display...");
+                
+                // Send serial number to epaper display
+                uint8_t serialCmd[7];
+                serialCmd[0] = SERIAL_DISPLAY_SET_SERIAL;
+                memcpy(&serialCmd[1], serialNumber.c_str(), 6);
+                sendCanMessage(CAN_ID_SERIAL_DISPLAY, serialCmd, 7);
+                Serial.println("GameState: Serial number sent to epaper, waiting for ready signal...");
+            }
+            break;
+            
+        case INIT_WAITING_EPAPER:
+            // Wait for epaper display to be ready (up to 10 seconds)
+            if (epaper_ready || (now - initialization_start_time > 12000)) {
+                if (!epaper_ready) {
+                    Serial.println("GameState: Epaper timeout - proceeding anyway");
+                } else {
+                    Serial.println("GameState: Epaper ready signal received!");
+                }
+                init_state = INIT_COUNTDOWN;
+                countdown_start_time = now;
+                Serial.println("GameState: Switching to INIT_COUNTDOWN state");
+                Serial.println("GameState: Starting 5-second countdown...");
+                broadcastCountdown(5);
+            }
+            break;
+            
+        case INIT_COUNTDOWN:
+            // 5-second countdown
+            {
+                unsigned long countdown_elapsed = now - countdown_start_time;
+                uint8_t seconds_remaining = 5 - (countdown_elapsed / 1000);
+                
+                // Send countdown updates every second
+                static uint8_t last_countdown = 255;
+                if (seconds_remaining != last_countdown && seconds_remaining <= 5) {
+                    if (seconds_remaining > 0) {
+                        broadcastCountdown(seconds_remaining);
+                    }
+                    last_countdown = seconds_remaining;
+                }
+                
+                // Countdown finished
+                if (countdown_elapsed >= 5000) {
+                    init_state = INIT_READY;
+                    game_ready_to_start = true;
+                    Serial.println("GameState: Countdown complete!");
+                    Serial.println("GameState: Setting game_ready_to_start = true");
+                    Serial.println("GameState: System ready! Game can now be started.");
+                    
+                    // Note: LCD update for "SYSTEM READY" should be handled by callback in main.cpp
+                }
+            }
+            break;
+            
+        case INIT_READY:
+            // System is ready, game can be started
+            break;
+    }
+}
+
+bool GameStateManager::isSystemReady() const {
+    return game_ready_to_start;
 }
 
  

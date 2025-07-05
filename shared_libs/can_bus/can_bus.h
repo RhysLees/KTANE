@@ -118,7 +118,8 @@ enum TimerToModuleMessage : uint8_t {
   TIMER_STRIKE_UPDATE = 0x12,     // Strike count changed [strikes]
   TIMER_SERIAL_NUMBER = 0x13,     // Serial number [6 chars]
   TIMER_RESET = 0x14,             // Reset module
-  TIMER_TIME_UPDATE = 0x15        // Time remaining [4 bytes, ms]
+  TIMER_TIME_UPDATE = 0x15,       // Time remaining [4 bytes, ms]
+  TIMER_COUNTDOWN = 0x16          // Initialization countdown [seconds]
 };
 
 // Module to Timer messages (sent to CAN_ID_TIMER)

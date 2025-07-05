@@ -83,6 +83,12 @@ void handleSerialCommands(GameStateManager& gameState)
 	switch (cmdType)
 	{
 	case CMD_START:
+		// Check if system is ready to start
+		if (!gameState.isSystemReady()) {
+			Serial.println("Game not ready to start yet. Please wait for initialization to complete.");
+			break;
+		}
+		
 		if (gameState.getState() == GameState::PAUSED) {
 			gameState.resumeTimer();
 		} else {

@@ -12,6 +12,8 @@
 // Global game state manager (v2)
 GameStateManager gameState;
 
+// These are now handled by GameStateManager
+
 // Callback functions for game state events
 void onStateChange(GameState oldState, GameState newState) {
 	Serial.print("State changed: ");
@@ -75,6 +77,13 @@ void onStateChange(GameState oldState, GameState newState) {
 			break;
 		}
 	}
+	
+	// Handle system ready state
+	if (newState == GameState::IDLE && gameState.isSystemReady()) {
+		lcd1602SetColor(LCD_COLOR_GREEN);
+		lcd1602PrintLine(0, "SYSTEM READY");
+		lcd1602PrintLine(1, "START when ready");
+	}
 }
 
 void onStrikeChange(uint8_t strikes) {
@@ -97,6 +106,8 @@ void onStrikeChange(uint8_t strikes) {
 	} else if (strikes >= 2) {
 		lcd1602SetColor(LCD_COLOR_RED);
 	}
+	
+	// Broadcasting is now handled by GameStateManager
 }
 
 void onModuleSolved(uint8_t solved, uint8_t total) {
@@ -132,6 +143,13 @@ void onTimeUpdate(unsigned long remainingMs) {
 	}
 }
 
+// Simple CAN message callback that delegates to GameStateManager
+void onTimerCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    gameState.handleCanMessage(id, data, len);
+}
+
+// Broadcasting functions moved to GameStateManager
+
 void setup()
 {
 	// Initialize serial communication
@@ -158,6 +176,7 @@ void setup()
 
 	// Initialize hardware systems
 	initCanBus(CAN_ID_TIMER);
+	registerCanCallback(onTimerCanMessage);  // Register our CAN callback
 	initStrikeDisplay();
 	initCountdownDisplay();
 	initDebugInterface();
@@ -182,7 +201,7 @@ void setup()
 	gameState.setModuleSolvedCallback(onModuleSolved);
 	gameState.setTimeUpdateCallback(onTimeUpdate);
 
-	// Initialize game state
+	// Initialize game state (includes initialization sequence)
 	gameState.initialize();
 
 	// Display startup information
@@ -209,7 +228,7 @@ void setup()
 
 void loop()
 {
-	// Update game state (handles timer, needy modules, game logic)
+	// Update game state (handles timer, needy modules, game logic, and initialization)
 	gameState.tick();
 
 	// Update hardware displays
@@ -223,3 +242,5 @@ void loop()
 	// Update debug interface
 	updateDebugInterface(gameState);
 }
+
+// Initialization sequence moved to GameStateManager

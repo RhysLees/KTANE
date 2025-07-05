@@ -196,6 +196,14 @@ private:
     std::function<void(uint8_t, uint8_t)> onModuleSolved;
     std::function<void(unsigned long)> onTimeUpdate;
     
+    // Initialization State
+    bool epaper_ready = false;
+    bool game_ready_to_start = false;
+    unsigned long initialization_start_time = 0;
+    unsigned long countdown_start_time = 0;
+    enum InitState { INIT_WAITING_MODULES, INIT_WAITING_EPAPER, INIT_COUNTDOWN, INIT_READY };
+    InitState init_state = INIT_WAITING_MODULES;
+    
     // Internal Methods
     void updateTimer();
     void updateNeedyModules();
@@ -327,6 +335,19 @@ public:
     void printStatus() const;
     void printModules() const;
     void printEdgework() const;
+    
+    // ========================================================================
+    // CAN COMMUNICATION INTERFACE
+    // ========================================================================
+    void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
+    void broadcastGameState(uint16_t targetId = CAN_ID_BROADCAST); // Default to broadcast ID
+    void broadcastCountdown(uint8_t seconds);
+    
+    // ========================================================================
+    // INITIALIZATION SEQUENCE
+    // ========================================================================
+    void handleInitializationSequence();
+    bool isSystemReady() const;
     
     // ========================================================================
     // GAME LOGIC HELPERS

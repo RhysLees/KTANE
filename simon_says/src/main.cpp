@@ -10,6 +10,8 @@ SimonSays simonSays;
 bool gameRunning = false;
 uint8_t currentStrikes = 0;
 String serialNumber = "";
+bool initialization_complete = false;
+uint8_t countdown_seconds = 0;
 
 // CAN message callback
 void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
@@ -20,8 +22,13 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
         switch (msgType) {
             case TIMER_GAME_START:
                 Serial.println("Simon Says: Game start signal received");
-                gameRunning = true;
-                simonSays.onGameStateChange(true);
+                if (initialization_complete) {
+                    gameRunning = true;
+                    simonSays.onGameStateChange(true);
+                    Serial.println("Simon Says: Game started - module is now interactive!");
+                } else {
+                    Serial.println("Simon Says: Waiting for initialization to complete...");
+                }
                 break;
                 
             case TIMER_GAME_STOP:
@@ -69,6 +76,21 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                     Serial.print("Simon Says: Time remaining: ");
                     Serial.print(timeMs / 1000);
                     Serial.println(" seconds");
+                }
+                break;
+                
+            case TIMER_COUNTDOWN:
+                if (len >= 2) {
+                    countdown_seconds = data[1];
+                    Serial.print("Simon Says: Initialization countdown - ");
+                    Serial.print(countdown_seconds);
+                    Serial.println(" seconds");
+                    
+                    if (countdown_seconds == 0) {
+                        initialization_complete = true;
+                        simonSays.setInitializationComplete(true);
+                        Serial.println("Simon Says: Initialization complete - ready for game!");
+                    }
                 }
                 break;
                 
@@ -158,6 +180,13 @@ void handleSerialCommands() {
         Serial.println(currentStrikes);
         Serial.print("Game Running: ");
         Serial.println(gameRunning ? "YES" : "NO");
+        Serial.print("Initialization Complete: ");
+        Serial.println(initialization_complete ? "YES" : "NO");
+        if (countdown_seconds > 0) {
+            Serial.print("Countdown: ");
+            Serial.print(countdown_seconds);
+            Serial.println(" seconds");
+        }
         Serial.println("==================");
     } else {
         Serial.println("Simon Says: Unknown command. Type HELP for available commands.");
@@ -196,10 +225,12 @@ void setup() {
     sendCanMessage(CAN_ID_TIMER, registerData, 3);
     Serial.println("Simon Says: Registered with timer module");
     
-    // Set default values
-    serialNumber = "A1B2C3"; // Default serial number
-    simonSays.setSerialNumber(serialNumber);
+    // Initialize with empty values - will be received from timer
+    serialNumber = "";
     simonSays.setStrikeCount(0);
+    
+    // Don't set serial number yet - wait for it from timer
+    Serial.println("Simon Says: Waiting for serial number from timer module...");
     
     // Initialize Simon Says module
     simonSays.begin();

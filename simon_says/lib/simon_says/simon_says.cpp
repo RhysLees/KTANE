@@ -8,6 +8,7 @@ SimonSays::SimonSays() {
     currentState = SimonState::IDLE;
     isModuleSolved = false;
     gameStarted = false;
+    initializationComplete = false;
     
     currentSequenceLength = 0;
     targetSequenceLength = 0;
@@ -216,12 +217,16 @@ void SimonSays::reset() {
 
 void SimonSays::startGame() {
     if (currentState == SimonState::IDLE) {
-        Serial.println("Simon Says: Game starting...");
-        gameStarted = true;
-        currentState = SimonState::GENERATING;
-        stateStartTime = millis();
-        
-        // Status LED should only be on when solved, not when game starts
+        if (initializationComplete) {
+            Serial.println("Simon Says: Game starting...");
+            gameStarted = true;
+            currentState = SimonState::GENERATING;
+            stateStartTime = millis();
+            
+            // Status LED should only be on when solved, not when game starts
+        } else {
+            Serial.println("Simon Says: Cannot start game - initialization not complete");
+        }
     }
 }
 
@@ -258,6 +263,12 @@ void SimonSays::setSerialNumber(const String& serial) {
     Serial.print(serial);
     Serial.print(" has vowel: ");
     Serial.println(hasVowelInSerial ? "YES" : "NO");
+}
+
+void SimonSays::setInitializationComplete(bool complete) {
+    initializationComplete = complete;
+    Serial.print("Simon Says: Initialization complete: ");
+    Serial.println(complete ? "YES" : "NO");
 }
 
 // ============================================================================
