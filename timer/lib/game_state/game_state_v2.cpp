@@ -251,25 +251,12 @@ void GameStateManager::clearStrikes() {
 void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
     // Check if module already exists
     if (moduleMap.find(canId) != moduleMap.end()) {
-        Serial.print("GameState: Module 0x");
-        Serial.print(canId, HEX);
-        Serial.println(" already registered - skipping");
         return;
     }
     
     ModuleCategory category = getModuleCategory(type);
     modules.emplace_back(canId, type, category);
     moduleMap[canId] = &modules.back();
-    
-    Serial.print("GameState: Module registered - ID: 0x");
-    Serial.print(canId, HEX);
-    Serial.print(", Type: 0x");
-    Serial.print(static_cast<uint8_t>(type), HEX);
-    Serial.print(", Category: ");
-    Serial.print(category == ModuleCategory::REGULAR ? "REGULAR" : 
-                category == ModuleCategory::NEEDY ? "NEEDY" : "IGNORED");
-    Serial.print(", Total modules: ");
-    Serial.println(modules.size());
     
     // Track last module registration time for adaptive discovery
     last_module_registration_time = millis();
@@ -709,43 +696,7 @@ unsigned long GameStateManager::getTimeUntilExplosion() const {
 // DEBUG & UTILITY
 // ============================================================================
 
-void GameStateManager::printStatus() const {
-    Serial.println("=== GAME STATUS ===");
-    Serial.print("State: ");
-    switch (currentState) {
-        case GameState::IDLE: Serial.println("IDLE"); break;
-        case GameState::RUNNING: Serial.println("RUNNING"); break;
-        case GameState::PAUSED: Serial.println("PAUSED"); break;
-        case GameState::EXPLODED: Serial.println("EXPLODED"); break;
-        case GameState::DEFUSED: Serial.println("DEFUSED"); break;
-        case GameState::VICTORY: Serial.println("VICTORY"); break;
-    }
-    Serial.print("Strikes: "); Serial.print(strikeCount); Serial.print("/"); Serial.println(maxStrikes);
-    Serial.print("Time: "); Serial.print(remainingMs / 1000); Serial.println("s remaining");
-    Serial.print("Modules: "); Serial.print(getSolvedModules()); Serial.print("/"); Serial.println(getTotalModules());
-    Serial.print("Serial: "); Serial.println(serialNumber);
-}
-
-
-
-void GameStateManager::printEdgework() const {
-    Serial.println("=== EDGEWORK ===");
-    Serial.print("Batteries: "); Serial.println(edgework.batteryCount);
-    
-    Serial.print("Indicators: "); Serial.print(edgework.indicators.size());
-    Serial.print(" (Lit: "); Serial.print(getLitIndicatorCount());
-    Serial.print(", Unlit: "); Serial.print(getUnlitIndicatorCount());
-    Serial.println(")");
-    for (const auto& indicator : edgework.indicators) {
-        Serial.print("  "); Serial.print(indicator.label);
-        Serial.println(indicator.lit ? " (LIT)" : " (UNLIT)");
-    }
-    
-    Serial.print("Ports: "); Serial.println(edgework.ports.size());
-    for (const auto& port : edgework.ports) {
-        Serial.print("  "); Serial.println(port.label);
-    }
-}
+// Debug functions removed
 
 // ============================================================================
 // STATISTICS
@@ -764,14 +715,8 @@ void GameStateManager::resetStats() {
 // ============================================================================
 
 void GameStateManager::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    Serial.print("GameState: CAN message received - ID: 0x");
-    Serial.print(id, HEX);
-    Serial.print(", Len: ");
-    Serial.println(len);
-    
     // New standardized message format: [senderType, senderInstance, messageType, ...messageData]
     if (len < 3) {
-        Serial.println("GameState: Message too short for new format");
         return;
     }
     
@@ -779,15 +724,6 @@ void GameStateManager::handleCanMessage(uint16_t id, const uint8_t* data, uint8_
     uint8_t senderInstance = data[1];
     uint8_t msgType = data[2];
     uint16_t senderCanId = CAN_INSTANCE_ID(senderType, senderInstance);
-    
-    Serial.print("GameState: From module 0x");
-    Serial.print(senderCanId, HEX);
-    Serial.print(", Type: 0x");
-    Serial.print(msgType, HEX);
-    Serial.print(", Sender: 0x");
-    Serial.print(senderType, HEX);
-    Serial.print("/");
-    Serial.println(senderInstance);
     
     if (len >= 3) {
         
@@ -1108,43 +1044,6 @@ void GameStateManager::startGame() {
     Serial.println("GameState: Game started successfully!");
 }
 
-void GameStateManager::printModules() const {
-    Serial.println("=== MODULE STATUS ===");
-    Serial.print("Total modules: ");
-    Serial.println(modules.size());
-    Serial.print("Regular modules: ");
-    Serial.println(getTotalModules());
-    Serial.print("Solved modules: ");
-    Serial.println(getSolvedModules());
-    
-    if (modules.empty()) {
-        Serial.println("No modules registered.");
-    } else {
-        Serial.println("Registered modules:");
-        for (const auto& module : modules) {
-            Serial.print("  0x");
-            Serial.print(module.canId, HEX);
-            Serial.print(" - Type: 0x");
-            Serial.print(static_cast<uint8_t>(module.type), HEX);
-            Serial.print(" - Category: ");
-            Serial.print(module.category == ModuleCategory::REGULAR ? "REGULAR" : 
-                        module.category == ModuleCategory::NEEDY ? "NEEDY" : "IGNORED");
-            Serial.print(" - Solved: ");
-            Serial.print(module.isSolved ? "YES" : "NO");
-            Serial.print(" - Active: ");
-            Serial.print(module.isActive ? "YES" : "NO");
-            Serial.print(" - Last seen: ");
-            Serial.print(module.lastSeen > 0 ? String((millis() - module.lastSeen) / 1000) + "s ago" : "never");
-            Serial.println();
-        }
-        
-        Serial.println();
-        Serial.println("🔍 HEARTBEAT-BASED DISCOVERY:");
-        Serial.println("  ✅ Modules auto-register via heartbeats");
-        Serial.println("  ⏱️  Heartbeats every 5s with status updates");
-        Serial.println("  🔧 No explicit registration needed!");
-    }
-    Serial.println("=====================");
-}
+// Debug function removed
 
  

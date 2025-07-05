@@ -16,11 +16,6 @@ GameStateManager gameState;
 
 // Callback functions for game state events
 void onStateChange(GameState oldState, GameState newState) {
-	Serial.print("State changed: ");
-	Serial.print(static_cast<int>(oldState));
-	Serial.print(" -> ");
-	Serial.println(static_cast<int>(newState));
-	
 	// Play audio based on state changes
 	switch (newState) {
 		case GameState::EXPLODED:
@@ -52,11 +47,6 @@ void onStateChange(GameState oldState, GameState newState) {
 }
 
 void onStrikeChange(uint8_t strikes) {
-	Serial.print("Strikes: ");
-	Serial.print(strikes);
-	Serial.print("/");
-	Serial.println(gameState.getMaxStrikes());
-	
 	// Send strike sound when strike is added
 	if (strikes > 0) {
 		uint8_t strikeSound[1] = {AUDIO_STRIKE};
@@ -68,11 +58,6 @@ void onStrikeChange(uint8_t strikes) {
 }
 
 void onModuleSolved(uint8_t solved, uint8_t total) {
-	Serial.print("Module solved! Progress: ");
-	Serial.print(solved);
-	Serial.print("/");
-	Serial.println(total);
-	
 	// Send correct chime
 	uint8_t correctSound[1] = {AUDIO_CORRECT_TIME};
 	sendCanMessage(CAN_ID_AUDIO, correctSound, 1);
@@ -90,9 +75,7 @@ void onTimeUpdate(unsigned long remainingMs) {
 		unsigned long now = millis();
 		if (now - lastWarning >= 10000) { // Every 10 seconds in emergency
 			lastWarning = now;
-			Serial.print("WARNING: Only ");
-			Serial.print(remainingMs / 1000);
-			Serial.println(" seconds remaining!");
+			// Emergency time warning removed - handled by audio system
 		}
 	}
 }

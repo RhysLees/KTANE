@@ -737,54 +737,7 @@ const char* SimonSays::getStateName(SimonState state) const {
 // DEBUG INTERFACE
 // ============================================================================
 
-void SimonSays::printStatus() const {
-    Serial.println("=== SIMON SAYS STATUS ===");
-    Serial.print("State: "); Serial.println(getStateName(currentState));
-    Serial.print("Solved: "); Serial.println(isModuleSolved ? "YES" : "NO");
-    Serial.print("Game Started: "); Serial.println(gameStarted ? "YES" : "NO");
-    Serial.print("Sequence Length: "); Serial.println(currentSequenceLength);
-    Serial.print("Strikes: "); Serial.println(strikeCount);
-    Serial.print("Has Vowel in Serial: "); Serial.println(hasVowelInSerial ? "YES" : "NO");
-    Serial.print("Current Strikes: "); Serial.println(numStrikes);
-}
-
-void SimonSays::printSequence() const {
-    Serial.print("Simon Says: Flashing sequence (");
-    Serial.print(sequence.size());
-    Serial.print("): ");
-    
-    for (size_t i = 0; i < sequence.size(); i++) {
-        if (i > 0) Serial.print(" -> ");
-        Serial.print(getColorName(sequence[i]));
-    }
-    Serial.println();
-    
-    // Also show what the player should press
-    Serial.print("Simon Says: Expected input sequence: ");
-    for (size_t i = 0; i < sequence.size(); i++) {
-        if (i > 0) Serial.print(" -> ");
-        SimonColor expectedColor = getFlashColor(sequence[i]);
-        Serial.print(getColorName(expectedColor));
-    }
-    Serial.println();
-}
-
-void SimonSays::printRules() const {
-    Serial.println("=== SIMON SAYS RULES ===");
-    Serial.print("Strikes: "); Serial.println(numStrikes);
-    Serial.print("Serial has vowel: "); Serial.println(hasVowelInSerial ? "YES" : "NO");
-    Serial.print("Target sequence length: "); Serial.println(targetSequenceLength);
-    Serial.println("Color mappings (Flash -> Press):");
-    
-    for (int i = 0; i < 4; i++) {
-        SimonColor color = static_cast<SimonColor>(i);
-        SimonColor mapped = getFlashColor(color);
-        Serial.print("  ");
-        Serial.print(getColorName(color));
-        Serial.print(" flash -> press ");
-        Serial.println(getColorName(mapped));
-    }
-}
+// Debug functions removed
 
 // ============================================================================
 // CAN MESSAGE HANDLER

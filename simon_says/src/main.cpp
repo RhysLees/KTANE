@@ -59,13 +59,10 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                     serial[6] = '\0';
                     serialNumber = String(serial);
                     simonSays.setSerialNumber(serialNumber);
-                    Serial.print("Simon Says: Serial number updated to ");
-                    Serial.println(serialNumber);
                 }
                 break;
                 
             case TIMER_RESET:
-                Serial.println("Simon Says: Reset signal received");
                 simonSays.reset();
                 gameRunning = false;
                 currentStrikes = 0;
@@ -76,30 +73,21 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                     uint32_t timeMs = 0;
                     memcpy(&timeMs, &data[3], 4);
                     // Could update a time display or handle time-based logic
-                    Serial.print("Simon Says: Time remaining: ");
-                    Serial.print(timeMs / 1000);
-                    Serial.println(" seconds");
                 }
                 break;
                 
             case TIMER_COUNTDOWN:
                 if (len >= 4) {
                     countdown_seconds = data[3];
-                    Serial.print("Simon Says: Initialization countdown - ");
-                    Serial.print(countdown_seconds);
-                    Serial.println(" seconds");
                     
                     if (countdown_seconds == 0) {
                         initialization_complete = true;
                         simonSays.setInitializationComplete(true);
-                        Serial.println("Simon Says: Initialization complete - ready for game!");
                     }
                 }
                 break;
                 
             default:
-                Serial.print("Simon Says: Unknown timer message type: 0x");
-                Serial.println(msgType, HEX);
                 break;
         }
     }
@@ -116,24 +104,18 @@ void handleSerialCommands() {
     input.trim();
     input.toUpperCase();
     
-    if (input == "STATUS") {
-        simonSays.printStatus();
-    } else if (input == "SEQUENCE") {
-        simonSays.printSequence();
-    } else if (input == "RULES") {
-        simonSays.printRules();
-    } else if (input == "RESET") {
+    if (input == "RESET") {
         simonSays.reset();
-        Serial.println("Simon Says: Module reset");
+        Serial.println("Module reset");
     } else if (input.startsWith("SERIAL ")) {
         String newSerial = input.substring(7);
         if (newSerial.length() == 6) {
             serialNumber = newSerial;
             simonSays.setSerialNumber(serialNumber);
-            Serial.print("Simon Says: Serial number set to ");
+            Serial.print("Serial number set to ");
             Serial.println(serialNumber);
         } else {
-            Serial.println("Simon Says: Invalid serial number format (must be 6 characters)");
+            Serial.println("Invalid serial number format (must be 6 characters)");
         }
     } else if (input.startsWith("STRIKES ")) {
         String strikeStr = input.substring(8);
@@ -141,24 +123,21 @@ void handleSerialCommands() {
         if (strikes <= 3) {
             currentStrikes = strikes;
             simonSays.setStrikeCount(strikes);
-            Serial.print("Simon Says: Strike count set to ");
+            Serial.print("Strike count set to ");
             Serial.println(strikes);
         } else {
-            Serial.println("Simon Says: Invalid strike count (must be 0-3)");
+            Serial.println("Invalid strike count (must be 0-3)");
         }
     } else if (input == "START") {
         gameRunning = true;
         simonSays.onGameStateChange(true);
-        Serial.println("Simon Says: Game started");
+        Serial.println("Game started");
     } else if (input == "STOP") {
         gameRunning = false;
         simonSays.onGameStateChange(false);
-        Serial.println("Simon Says: Game stopped");
+        Serial.println("Game stopped");
     } else if (input == "HELP") {
         Serial.println("Simon Says Commands:");
-        Serial.println("  STATUS       - Show module status");
-        Serial.println("  SEQUENCE     - Show current sequence");
-        Serial.println("  RULES        - Show color mapping rules");
         Serial.println("  RESET        - Reset module");
         Serial.println("  SERIAL <xxx> - Set serial number");
         Serial.println("  STRIKES <n>  - Set strike count (0-3)");
@@ -192,7 +171,7 @@ void handleSerialCommands() {
         }
         Serial.println("==================");
     } else {
-        Serial.println("Simon Says: Unknown command. Type HELP for available commands.");
+        Serial.println("Unknown command. Type HELP for available commands.");
     }
 }
 

@@ -158,10 +158,7 @@ public:
     uint8_t getSequenceLength() const { return currentSequenceLength; }
     uint8_t getStrikeCount() const { return strikeCount; }
     
-    // Debug interface
-    void printStatus() const;
-    void printSequence() const;
-    void printRules() const;
+    // Debug interface removed
     
     // CAN message handler
     void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);

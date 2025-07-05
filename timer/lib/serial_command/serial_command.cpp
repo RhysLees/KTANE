@@ -65,8 +65,6 @@ void printHelp()
 	Serial.println("  STRIKE x        - Set strike count (0–3)");
 	Serial.println("  MODULE id type  - Register a module");
 	Serial.println("  SOLVE id        - Mark module as solved");
-	Serial.println("  STATUS          - Show detailed game status");
-	Serial.println("  EDGEWORK        - Show edgework information");
 	Serial.println("  CONFIG          - Show configuration");
 	Serial.println("  SERIAL [cmd]    - Control serial display");
 	Serial.println("  REDISCOVER      - Restart module discovery");
@@ -197,12 +195,11 @@ void handleSerialCommands(GameStateManager& gameState)
 	}
 
 	case CMD_STATUS:
-		gameState.printStatus();
-		gameState.printModules();
+		Serial.println("STATUS command removed - use INFO instead");
 		break;
 
 	case CMD_EDGEWORK:
-		gameState.printEdgework();
+		Serial.println("EDGEWORK command removed - use INFO instead");
 		break;
 
 	case CMD_CONFIG:

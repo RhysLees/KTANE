@@ -163,4 +163,3 @@ void sendHeartbeat(const uint8_t* data, uint8_t len);
 const char* getModuleTypeName(uint8_t moduleType);
 void printCanIdInfo(uint16_t canId, const char* prefix);
 inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool sent = false);
-void printCanBusStatus();

@@ -19,12 +19,7 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
     uint8_t senderInstance = data[1];
     uint8_t messageId = data[2];
     
-    Serial.print("Audio command from 0x");
-    Serial.print(senderType, HEX);
-    Serial.print("/");
-    Serial.print(senderInstance);
-    Serial.print(": 0x");
-    Serial.println(messageId, HEX);
+    // Process audio command
 
     switch (messageId)
     {
@@ -71,8 +66,6 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
         playSound(simon_yellow, simon_yellow_len / 2); // Yellow - 985Hz
         break;
       default:
-        Serial.print("Unknown message ID: ");
-        Serial.println(messageId, HEX);
         break;
     }
   }

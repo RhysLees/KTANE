@@ -26,24 +26,18 @@ void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len)
       memcpy(serial, &data[3], 6);
       serial[6] = '\0';
       epaperDrawTag(String(serial));
-      Serial.print("Set serial: ");
-      Serial.println(serial);
     }
     break;
 
   case SERIAL_DISPLAY_CLEAR:
     epaperClear();
-    Serial.println("Display cleared");
     break;
 
   case SERIAL_DISPLAY_SHOW_CREDIT:
     epaperDrawCredit();
-    Serial.println("Credit displayed");
     break;
 
   default:
-    Serial.print("Unknown serial display command: 0x");
-    Serial.println(command, HEX);
     break;
   }
 }

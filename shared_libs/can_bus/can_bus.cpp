@@ -31,45 +31,18 @@ void onCanInterrupt() {
 void initCanBus(uint16_t fullCanId) {
   thisModuleId = fullCanId;
   
-  Serial.print("DEBUG: Initializing CAN bus with ID 0x");
-  Serial.println(fullCanId, HEX);
-  Serial.flush(); // Ensure debug message is printed
-
   uint8_t initResult = CAN.begin(MCP_NORMAL, CAN_500KBPS, MCP_8MHZ);
-  Serial.print("DEBUG: CAN.begin() returned: ");
-  Serial.println(initResult);
-  Serial.flush();
 
   if (initResult == CAN_OK) {
-    Serial.println("CAN init OK - using MCP_NORMAL directly");
-    Serial.flush();
-    
     pinMode(CAN_INT_PIN, INPUT);
-    Serial.print("DEBUG: Setting up interrupt on pin ");
-    Serial.println(CAN_INT_PIN);
-    Serial.print("DEBUG: Pin state before interrupt setup: ");
-    Serial.println(digitalRead(CAN_INT_PIN));
-    Serial.flush();
-    
     attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
-    Serial.println("DEBUG: Interrupt attached successfully");
-    
-    // Test if INT pin is working by reading it again
-    Serial.print("DEBUG: Pin state after interrupt setup: ");
-    Serial.println(digitalRead(CAN_INT_PIN));
-    Serial.flush();
-    
     canBusInitialized = true;
     
     Serial.print("CAN module ID set to 0x");
     Serial.println(thisModuleId, HEX);
-    Serial.println("DEBUG: CAN bus fully initialized and ready");
-    Serial.flush();
   } else {
     Serial.print("CAN init FAIL - error code: ");
     Serial.println(initResult);
-    Serial.println("DEBUG: Continuing without CAN bus");
-    Serial.flush();
     canBusInitialized = false;
     // Don't halt - allow testing without CAN hardware
     return;
@@ -113,24 +86,16 @@ void handleCanMessages() {
 
     // Read the message
     if (CAN.readMsgBuf(&id, &len, buf) != CAN_OK) {
-      Serial.println("DEBUG: Failed to read CAN message");
       break; // Error reading message
     }
 
     // Validate message length
     if (len > 8) {
-      Serial.println("DEBUG: Invalid CAN message length");
       continue; // Skip invalid message
     }
 
     messageCount++;
 
-    // Log ALL received messages (even filtered ones)
-    Serial.print("DEBUG: Raw CAN message received - ID: 0x");
-    Serial.print(id, HEX);
-    Serial.print(", thisModuleId: 0x");
-    Serial.println(thisModuleId, HEX);
-    
     // Check for loopback (receiving our own messages)
     if (len >= 2) {
       uint8_t senderType = buf[0];
@@ -138,11 +103,6 @@ void handleCanMessages() {
       uint16_t senderCanId = ((senderType & 0x3F) << 5) | (senderInstance & 0x1F);
       
       if (senderCanId == thisModuleId) {
-        Serial.println("DEBUG: LOOPBACK DETECTED - Received our own message!");
-        Serial.print("DEBUG: Our ID: 0x");
-        Serial.print(thisModuleId, HEX);
-        Serial.print(", Sender ID: 0x");
-        Serial.println(senderCanId, HEX);
         continue; // Skip processing our own messages
       }
     }
@@ -161,9 +121,6 @@ void handleCanMessages() {
           // They're probing OUR ID! Tell them it's taken
           uint8_t takenData[3] = {ID_TAKEN, moduleType, instanceId};
           sendCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), takenData, 3);
-          Serial.print("ID Negotiation: Told someone that ID ");
-          Serial.print(instanceId);
-          Serial.println(" is taken");
         }
       }
       else if (msgType == ID_TAKEN && moduleType == currentModuleType) {
@@ -174,31 +131,19 @@ void handleCanMessages() {
 
     // Filter to this module or broadcast messages
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      Serial.print("CAN FILTERED: Message for 0x");
-      Serial.print(id, HEX);
-      Serial.print(" (we are 0x");
-      Serial.print(thisModuleId, HEX);
-      Serial.println(")");
       continue; // Skip to next message
     }
 
-    Serial.println("CAN ACCEPTED: Message passed filter, calling callbacks");
     for (uint8_t i = 0; i < callbackCount; i++) {
       if (canCallbacks[i]) {
         canCallbacks[i](id, buf, len);
       }
     }
   }
-  
-  // If we processed the maximum number of messages, there might be more
-  if (messageCount >= MAX_MESSAGES_PER_CALL) {
-    Serial.println("DEBUG: Processed max messages per call, more may be available");
-  }
 }
 
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
   if (!canBusInitialized) {
-    Serial.println("DEBUG: sendCanMessage called but CAN bus not initialized");
     return;
   }
   
@@ -351,14 +296,8 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
   currentModuleType = moduleType;
   currentInstanceId = 0;
   
-  Serial.print("ID Negotiation: Starting negotiation for module type 0x");
-  Serial.println(moduleType, HEX);
-  
   // Try instance IDs from 0x01 to 0x1F
   for (uint8_t candidateId = 0x01; candidateId <= ID_MAX_INSTANCE; candidateId++) {
-    Serial.print("ID Negotiation: Trying instance ID ");
-    Serial.println(candidateId);
-    
     // Multi-probe approach for better collision detection
     bool idAvailable = true;
     for (int probe = 0; probe < 3; probe++) {
@@ -375,11 +314,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
         handleCanMessages(); // Process incoming messages
         if (idConflictDetected) {
           idAvailable = false;
-          Serial.print("ID Negotiation: ID ");
-          Serial.print(candidateId);
-          Serial.print(" is taken (probe ");
-          Serial.print(probe + 1);
-          Serial.println(")");
           break;
         }
       }
@@ -392,9 +326,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
     
     if (idAvailable) {
       // Final verification probe before claiming
-      Serial.print("ID Negotiation: Final verification for ID ");
-      Serial.println(candidateId);
-      
       uint8_t probeData[3] = {ID_PROBE, moduleType, candidateId};
       CAN.sendMsgBuf(CAN_INSTANCE_ID(moduleType, 0x00), 0, 3, (byte*)probeData);
       printCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), probeData, 3, true);
@@ -404,9 +335,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
       while (millis() - startTime < 200) { // Reduced from ID_PROBE_TIMEOUT_MS (500ms) to 200ms
         handleCanMessages();
         if (idConflictDetected) {
-          Serial.print("ID Negotiation: ID ");
-          Serial.print(candidateId);
-          Serial.println(" was taken during final verification");
           idAvailable = false;
           break;
         }
@@ -416,9 +344,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
         // Success! Claim the ID
         currentInstanceId = candidateId;
         *assignedId = candidateId;
-        
-        Serial.print("ID Negotiation: Successfully claimed ID ");
-        Serial.println(candidateId);
         return true;
       }
     }
@@ -426,28 +351,18 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
     // Add exponential backoff if we've tried several IDs
     if (candidateId >= 3) {
       int backoffDelay = random(100, 500) * candidateId;
-      Serial.print("ID Negotiation: Backing off for ");
-      Serial.print(backoffDelay);
-      Serial.println("ms");
       delay(backoffDelay);
     }
   }
   
-  Serial.println("ID Negotiation: Failed - no available IDs");
   return false;
 }
 
 bool assignUniqueId(uint8_t moduleType) {
   if (!canBusInitialized) return false;
   
-  Serial.print("ID Assignment: Starting for module type 0x");
-  Serial.println(moduleType, HEX);
-  
   // Random delay to prevent simultaneous negotiation (reduced for faster startup)
   int randomDelay = random(50, 500); // 50-500ms delay (reduced from 100-2000ms)
-  Serial.print("ID Assignment: Waiting ");
-  Serial.print(randomDelay);
-  Serial.println("ms before negotiating...");
   delay(randomDelay);
   
   // Negotiate instance ID
@@ -455,14 +370,8 @@ bool assignUniqueId(uint8_t moduleType) {
   if (negotiateInstanceId(moduleType, &assignedId)) {
     uint16_t finalCanId = CAN_INSTANCE_ID(moduleType, assignedId);
     updateCanId(finalCanId);
-    Serial.print("ID Assignment: Successfully assigned instance ID ");
-    Serial.print(assignedId);
-    Serial.print(" (CAN ID 0x");
-    Serial.print(finalCanId, HEX);
-    Serial.println(")");
     return true;
   } else {
-    Serial.println("ID Assignment: Failed to negotiate - using default instance ID 0x01");
     uint16_t defaultCanId = CAN_INSTANCE_ID(moduleType, 0x01);
     updateCanId(defaultCanId);
     return false;
@@ -471,8 +380,6 @@ bool assignUniqueId(uint8_t moduleType) {
 
 void updateCanId(uint16_t newCanId) {
   thisModuleId = newCanId;
-  Serial.print("CAN ID updated to 0x");
-  Serial.println(newCanId, HEX);
 }
 
 uint8_t getCurrentInstanceId() {
@@ -493,17 +400,4 @@ void sendHeartbeat(const uint8_t* data, uint8_t len) {
   sendCanMessage(CAN_ID_TIMER, data, len);
 }
 
-void printCanBusStatus() {
-  Serial.println("=== CAN BUS STATUS ===");
-  Serial.print("CAN Bus Initialized: ");
-  Serial.println(canBusInitialized ? "YES" : "NO");
-  Serial.print("Current Module ID: 0x");
-  Serial.println(thisModuleId, HEX);
-  Serial.print("Current Instance ID: ");
-  Serial.println(getCurrentInstanceId());
-  Serial.print("Current Module Type: 0x");
-  Serial.println(currentModuleType, HEX);
-  Serial.print("Callback Count: ");
-  Serial.println(callbackCount);
-  Serial.println("======================");
-}
+// Debug function removed

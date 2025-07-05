@@ -332,9 +332,7 @@ public:
     // ========================================================================
     // DEBUG & UTILITY
     // ========================================================================
-    void printStatus() const;
-    void printModules() const;
-    void printEdgework() const;
+    // Debug functions removed
     
     // ========================================================================
     // CAN COMMUNICATION INTERFACE
