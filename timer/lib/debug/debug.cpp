@@ -7,42 +7,125 @@
 #define ENCODER_CLK 3
 #define ENCODER_DT 4
 
-// --- UI States ---
-enum DebugScreen
+// --- Simple UI States ---
+enum DebugMode
 {
-    SCREEN_MENU,
-    SCREEN_MODULE_LIST,
-    SCREEN_EDGEWORK,
-    SCREEN_LIVE_VIEW
+    MODE_DASHBOARD,     // Always-on info display
+    MODE_MENU,          // Simple action menu
+    MODE_MODULE_DETECT, // Module detection mode
+    MODE_EDGEWORK,      // Edgework viewer
+    MODE_GAME_CONTROL   // Game control actions
 };
 
-static DebugScreen screenState = SCREEN_MENU;
+static DebugMode currentMode = MODE_DASHBOARD;
 static uint8_t menuIndex = 0;
-static uint8_t submenuIndex = 0;
+static uint8_t viewIndex = 0;
+static bool needsRefresh = true;
 
+// Input handling
 static int lastEncoderState = HIGH;
 static bool lastButtonState = HIGH;
 static unsigned long lastDebounceTime = 0;
-static bool buttonPressed = false;
-static bool longPressDetected = false;
 static unsigned long buttonHoldStart = 0;
+static bool longPressDetected = false;
 
+// Module detection
+static unsigned long lastModuleDetectTime = 0;
+static uint8_t lastModuleCount = 0;
+static bool moduleDetectActive = false;
+
+// Simple menu options
 const char *menuOptions[] = {
+    "Game Control",
+    "Module Detect", 
+    "View Edgework",
+    "Dashboard"
+};
+const int menuCount = sizeof(menuOptions) / sizeof(menuOptions[0]);
+
+const char *gameControlOptions[] = {
     "Start Game",
-    "Pause Timer",
+    "Pause/Resume",
     "Reset Game",
     "Add Strike",
     "Clear Strikes",
     "Solve Module",
-    "Reset Timer",
-    "Show Serial",
-    "View Modules",
-    "View Edgework",
-    "Live View"};
+    "Back to Menu"
+};
+const int gameControlCount = sizeof(gameControlOptions) / sizeof(gameControlOptions[0]);
 
-const int menuCount = sizeof(menuOptions) / sizeof(menuOptions[0]);
+// --- Status Display Functions ---
+void displayStatusInfo(GameStateManager& gameState)
+{
+    // Always show key info on line 2
+    String statusLine = "";
+    
+    // Time
+    unsigned long timeMs = gameState.getRemainingTime();
+    int minutes = timeMs / 60000;
+    int seconds = (timeMs % 60000) / 1000;
+    statusLine += String(minutes) + ":" + (seconds < 10 ? "0" : "") + String(seconds);
+    
+    // Strikes
+    statusLine += " S:" + String(gameState.getStrikes()) + "/" + String(gameState.getMaxStrikes());
+    
+    // Modules
+    statusLine += " M:" + String(gameState.getSolvedModules()) + "/" + String(gameState.getTotalModules());
+    
+    lcd1602PrintLine(1, statusLine);
+}
 
-// --- Encoder Input ---
+void displayGameState(GameStateManager& gameState)
+{
+    String stateLine = "";
+    
+    // Set color and text based on game state
+    switch (gameState.getState()) {
+        case GameState::IDLE:
+            if (gameState.isSystemReady()) {
+                lcd1602SetColor(LCD_COLOR_GREEN);
+                stateLine = "READY - Start";
+            } else {
+                lcd1602SetColor(LCD_COLOR_BLUE);
+                stateLine = "INITIALIZING...";
+            }
+            break;
+        case GameState::RUNNING:
+            // Color based on strikes
+            if (gameState.getStrikes() == 0) {
+                lcd1602SetColor(LCD_COLOR_GREEN);
+            } else if (gameState.getStrikes() == 1) {
+                lcd1602SetColor(LCD_COLOR_ORANGE);
+            } else {
+                lcd1602SetColor(LCD_COLOR_RED);
+            }
+            stateLine = "GAME RUNNING";
+            break;
+        case GameState::PAUSED:
+            lcd1602SetColor(LCD_COLOR_ORANGE);
+            stateLine = "PAUSED";
+            break;
+        case GameState::EXPLODED:
+            lcd1602SetColor(LCD_COLOR_RED);
+            stateLine = "EXPLODED!";
+            break;
+        case GameState::DEFUSED:
+            lcd1602SetColor(LCD_COLOR_GREEN);
+            stateLine = "BOMB DEFUSED!";
+            break;
+        case GameState::VICTORY:
+            lcd1602SetColor(LCD_COLOR_CYAN);
+            stateLine = "VICTORY!";
+            break;
+        default:
+            lcd1602SetColor(LCD_COLOR_BLUE);
+            stateLine = "Unknown State";
+            break;
+    }
+    lcd1602PrintLine(0, stateLine);
+}
+
+// --- Input Handling ---
 void handleEncoder()
 {
     int clkState = digitalRead(ENCODER_CLK);
@@ -50,18 +133,41 @@ void handleEncoder()
     {
         if (digitalRead(ENCODER_DT) != clkState)
         {
-            if (screenState == SCREEN_MENU)
-                menuIndex = (menuIndex + 1) % menuCount;
-            else
-                submenuIndex++;
+            // Clockwise
+            switch (currentMode) {
+                case MODE_MENU:
+                    menuIndex = (menuIndex + 1) % menuCount;
+                    break;
+                case MODE_GAME_CONTROL:
+                    menuIndex = (menuIndex + 1) % gameControlCount;
+                    break;
+                case MODE_MODULE_DETECT:
+                case MODE_EDGEWORK:
+                    viewIndex++;
+                    break;
+                default:
+                    break;
+            }
         }
         else
         {
-            if (screenState == SCREEN_MENU)
-                menuIndex = (menuIndex - 1 + menuCount) % menuCount;
-            else
-                submenuIndex--;
+            // Counter-clockwise
+            switch (currentMode) {
+                case MODE_MENU:
+                    menuIndex = (menuIndex - 1 + menuCount) % menuCount;
+                    break;
+                case MODE_GAME_CONTROL:
+                    menuIndex = (menuIndex - 1 + gameControlCount) % gameControlCount;
+                    break;
+                case MODE_MODULE_DETECT:
+                case MODE_EDGEWORK:
+                    if (viewIndex > 0) viewIndex--;
+                    break;
+                default:
+                    break;
+            }
         }
+        needsRefresh = true;
     }
     lastEncoderState = clkState;
 }
@@ -78,217 +184,255 @@ void handleButton()
         else if (!longPressDetected && millis() - buttonHoldStart > 1500)
         {
             longPressDetected = true;
+            // Long press always goes to menu
+            if (currentMode != MODE_MENU) {
+                currentMode = MODE_MENU;
+                menuIndex = 0;
+                needsRefresh = true;
+            }
         }
     }
     else if (lastButtonState == LOW)
     {
-        if (longPressDetected)
+        if (!longPressDetected)
         {
-            screenState = SCREEN_MENU;
-            menuIndex = 0;
-            submenuIndex = 0;
-            longPressDetected = false;
-        }
-        else
-        {
-            buttonPressed = true;
+            // Short press - select current option
+            needsRefresh = true;
+            switch (currentMode) {
+                case MODE_DASHBOARD:
+                    currentMode = MODE_MENU;
+                    menuIndex = 0;
+                    break;
+                case MODE_MENU:
+                    // Menu selection handled in performMenuAction
+                    break;
+                case MODE_GAME_CONTROL:
+                    // Game control handled in performGameControlAction
+                    break;
+                default:
+                    currentMode = MODE_DASHBOARD;
+                    break;
+            }
         }
         longPressDetected = false;
     }
     lastButtonState = reading;
 }
 
-// --- Menu Actions ---
+// --- Action Handlers ---
 void performMenuAction(uint8_t index, GameStateManager& gameState)
 {
-    switch (index)
-    {
-    case 0: // Start Game
-        gameState.setState(GameState::RUNNING);
-        gameState.startTimer();
-        break;
-    case 1: // Pause Timer
-        gameState.pauseTimer();
-        break;
-    case 2: // Reset Game
-        gameState.reset();
-        break;
-    case 3: // Add Strike
-        gameState.addStrike();
-        break;
-    case 4: // Clear Strikes
-        gameState.clearStrikes();
-        break;
-    case 5: // Solve Module
-        for (uint8_t i = 0; i < gameState.getTotalModules(); ++i)
-        {
-            // Find first unsolved module and solve it
-            // This is a simplified implementation
+    switch (index) {
+        case 0: // Game Control
+            currentMode = MODE_GAME_CONTROL;
+            menuIndex = 0;
             break;
-        }
-        break;
-    case 6: // Reset Timer
-        gameState.resetTimer();
-        break;
-    case 7: // Show Serial
-        lcd1602Clear();
-        lcd1602PrintLine(0, "Serial:");
-        lcd1602PrintLine(1, gameState.getSerialNumber());
-        delay(1500);
-        break;
-    case 8: // View Modules
-        screenState = SCREEN_MODULE_LIST;
-        submenuIndex = 0;
-        break;
-    case 9: // View Edgework
-        screenState = SCREEN_EDGEWORK;
-        submenuIndex = 0;
-        break;
-    case 10: // Live View
-        screenState = SCREEN_LIVE_VIEW;
-        break;
+        case 1: // Module Detect
+            currentMode = MODE_MODULE_DETECT;
+            viewIndex = 0;
+            moduleDetectActive = true;
+            lastModuleDetectTime = millis();
+            break;
+        case 2: // View Edgework
+            currentMode = MODE_EDGEWORK;
+            viewIndex = 0;
+            break;
+        case 3: // Dashboard
+            currentMode = MODE_DASHBOARD;
+            break;
     }
+    needsRefresh = true;
 }
 
-// --- UI Rendering ---
+void performGameControlAction(uint8_t index, GameStateManager& gameState)
+{
+    switch (index) {
+        case 0: // Start Game
+            if (gameState.getState() == GameState::IDLE) {
+                gameState.setState(GameState::RUNNING);
+                gameState.startTimer();
+            }
+            break;
+        case 1: // Pause/Resume
+            if (gameState.getState() == GameState::RUNNING) {
+                gameState.pauseTimer();
+            } else if (gameState.getState() == GameState::PAUSED) {
+                gameState.resumeTimer();
+            }
+            break;
+        case 2: // Reset Game
+            gameState.reset();
+            break;
+        case 3: // Add Strike
+            gameState.addStrike();
+            break;
+        case 4: // Clear Strikes
+            gameState.clearStrikes();
+            break;
+        case 5: // Solve Module
+            // Find first unsolved module and solve it
+            for (uint8_t i = 0x10; i <= 0x6F; i++) {
+                if (gameState.getModule(i) && !gameState.isModuleSolved(i)) {
+                    gameState.setModuleSolved(i);
+                    break;
+                }
+            }
+            break;
+        case 6: // Back to Menu
+            currentMode = MODE_MENU;
+            menuIndex = 0;
+            break;
+    }
+    needsRefresh = true;
+}
+
+// --- Display Functions ---
+void drawDashboard(GameStateManager& gameState)
+{
+    lcd1602Clear();
+    displayGameState(gameState);
+    displayStatusInfo(gameState);
+}
+
 void drawMenu(GameStateManager& gameState)
 {
     lcd1602Clear();
-    String label = String(menuOptions[menuIndex]);
-    lcd1602PrintLine(0, "> " + label.substring(0, min(15, label.length())));
-    lcd1602PrintLine(1, "S:" + String(gameState.getStrikes()) +
-                            " T:" + String(gameState.getRemainingTime() / 1000) + "s");
+    lcd1602PrintLine(0, "> " + String(menuOptions[menuIndex]));
+    displayStatusInfo(gameState);
 }
 
-void drawModuleList(GameStateManager& gameState)
+void drawGameControl(GameStateManager& gameState)
 {
-    uint8_t total = gameState.getTotalModules();
-    if (total == 0)
-    {
-        lcd1602PrintLine(0, "No modules");
-        lcd1602PrintLine(1, " ");
+    lcd1602Clear();
+    lcd1602PrintLine(0, "> " + String(gameControlOptions[menuIndex]));
+    displayStatusInfo(gameState);
+}
+
+void drawModuleDetect(GameStateManager& gameState)
+{
+    lcd1602Clear();
+    
+    // Show module detection info
+    uint8_t totalModules = gameState.getTotalModules();
+    uint8_t solvedModules = gameState.getSolvedModules();
+    
+    if (totalModules == 0) {
+        lcd1602PrintLine(0, "No modules found");
+        lcd1602PrintLine(1, "Scanning...");
         return;
     }
-    submenuIndex %= total;
-
-    // This is simplified - would need access to module details
-    lcd1602Clear();
-    lcd1602PrintLine(0, "Mod #" + String(submenuIndex));
-    lcd1602PrintLine(1, "Count: " + String(total));
+    
+    // Check if modules changed
+    if (totalModules != lastModuleCount) {
+        lastModuleCount = totalModules;
+        lastModuleDetectTime = millis();
+    }
+    
+    // Show detection status
+    if (millis() - lastModuleDetectTime < 2000) {
+        lcd1602PrintLine(0, "Module detected!");
+        lcd1602PrintLine(1, "Tot:" + String(totalModules) + " Sol:" + String(solvedModules));
+    } else {
+        lcd1602PrintLine(0, "Modules: " + String(totalModules));
+        lcd1602PrintLine(1, "Solved:" + String(solvedModules) + " Left:" + String(totalModules - solvedModules));
+    }
 }
 
-void drawEdgeworkView(GameStateManager& gameState)
+void drawEdgework(GameStateManager& gameState)
 {
+    lcd1602Clear();
+    
     const Edgework &edge = gameState.getEdgework();
-    uint8_t total = 1 + edge.indicators.size() + edge.ports.size();
+    uint8_t totalItems = 1 + edge.indicators.size() + edge.ports.size();
     
-    if (total == 0) {
+    if (totalItems == 0) {
         lcd1602PrintLine(0, "No edgework");
-        lcd1602PrintLine(1, " ");
+        lcd1602PrintLine(1, "Generated");
         return;
     }
     
-    submenuIndex %= total;
-
-    lcd1602Clear();
-    if (submenuIndex == 0)
-    {
-        lcd1602PrintLine(0, "Batteries:");
-        lcd1602PrintLine(1, String(edge.batteryCount));
-    }
-    else if (submenuIndex - 1 < edge.indicators.size())
-    {
-        uint8_t indIndex = submenuIndex - 1;
-        lcd1602PrintLine(0, "IND:");
-        lcd1602PrintLine(1, edge.indicators[indIndex].label + 
-                             (edge.indicators[indIndex].lit ? " LIT" : " OFF"));
-    }
-    else
-    {
-        uint8_t portIndex = submenuIndex - 1 - edge.indicators.size();
-        if (portIndex < edge.ports.size())
-        {
+    viewIndex %= totalItems;
+    
+    if (viewIndex == 0) {
+        lcd1602PrintLine(0, "Batteries: " + String(edge.batteryCount));
+        lcd1602PrintLine(1, "Items: " + String(totalItems));
+    } else if (viewIndex - 1 < edge.indicators.size()) {
+        uint8_t indIndex = viewIndex - 1;
+        lcd1602PrintLine(0, "IND: " + edge.indicators[indIndex].label);
+        lcd1602PrintLine(1, edge.indicators[indIndex].lit ? "LIT" : "UNLIT");
+    } else {
+        uint8_t portIndex = viewIndex - 1 - edge.indicators.size();
+        if (portIndex < edge.ports.size()) {
             lcd1602PrintLine(0, "PORT:");
             lcd1602PrintLine(1, edge.ports[portIndex].label);
         }
     }
 }
 
-void drawLiveView(GameStateManager& gameState)
-{
-    lcd1602Clear();
-    
-    // Show state
-    String stateStr;
-    switch (gameState.getState()) {
-        case GameState::IDLE: stateStr = "IDLE"; break;
-        case GameState::RUNNING: stateStr = "RUN"; break;
-        case GameState::PAUSED: stateStr = "PAUSE"; break;
-        case GameState::EXPLODED: stateStr = "BOOM"; break;
-        case GameState::DEFUSED: stateStr = "SAFE"; break;
-        case GameState::VICTORY: stateStr = "WIN"; break;
-        default: stateStr = "???"; break;
-    }
-    
-    lcd1602PrintLine(0, stateStr + " T:" + String(gameState.getRemainingTime() / 1000) + 
-                         "s S:" + String(gameState.getStrikes()));
-    lcd1602PrintLine(1, "M:" + String(gameState.getSolvedModules()) + 
-                         "/" + String(gameState.getTotalModules()) + 
-                         " " + gameState.getSerialNumber());
-}
-
+// --- Main Interface Functions ---
 void updateDebugInterface(GameStateManager& gameState)
 {
     handleEncoder();
     handleButton();
-
-    if (buttonPressed)
-    {
-        if (screenState == SCREEN_MENU)
-        {
-            performMenuAction(menuIndex, gameState);
+    
+    // Handle button press actions
+    static bool lastButtonPressed = false;
+    if (needsRefresh || (!lastButtonPressed && !digitalRead(ENCODER_SW))) {
+        if (!lastButtonPressed && !digitalRead(ENCODER_SW)) {
+            // Button just pressed
+            switch (currentMode) {
+                case MODE_MENU:
+                    performMenuAction(menuIndex, gameState);
+                    break;
+                case MODE_GAME_CONTROL:
+                    performGameControlAction(menuIndex, gameState);
+                    break;
+                default:
+                    break;
+            }
         }
-        else
-        {
-            screenState = SCREEN_MENU;
+        
+        // Update display
+        switch (currentMode) {
+            case MODE_DASHBOARD:
+                drawDashboard(gameState);
+                break;
+            case MODE_MENU:
+                drawMenu(gameState);
+                break;
+            case MODE_GAME_CONTROL:
+                drawGameControl(gameState);
+                break;
+            case MODE_MODULE_DETECT:
+                drawModuleDetect(gameState);
+                break;
+            case MODE_EDGEWORK:
+                drawEdgework(gameState);
+                break;
         }
-        buttonPressed = false;
+        
+        needsRefresh = false;
     }
-
-    // Handle long press for hard reset
-    if (longPressDetected && lastButtonState == LOW)
-    {
-        screenState = SCREEN_MENU;
-        menuIndex = 0;
-        submenuIndex = 0;
-
-        gameState.reset();
-        lcd1602Clear();
-        lcd1602PrintLine(0, "HARD RESET");
-        delay(1500);
-        longPressDetected = false;
+    lastButtonPressed = !digitalRead(ENCODER_SW);
+    
+    // Auto-refresh dashboard every 500ms
+    static unsigned long lastAutoRefresh = 0;
+    if (currentMode == MODE_DASHBOARD && millis() - lastAutoRefresh > 500) {
+        needsRefresh = true;
+        lastAutoRefresh = millis();
     }
-
-    static unsigned long lastDraw = 0;
-    if (millis() - lastDraw > 200)
-    {
-        switch (screenState)
-        {
-        case SCREEN_MENU:
-            drawMenu(gameState);
-            break;
-        case SCREEN_MODULE_LIST:
-            drawModuleList(gameState);
-            break;
-        case SCREEN_EDGEWORK:
-            drawEdgeworkView(gameState);
-            break;
-        case SCREEN_LIVE_VIEW:
-            drawLiveView(gameState);
-            break;
-        }
-        lastDraw = millis();
+    
+    // Auto-refresh module detect every 1000ms
+    if (currentMode == MODE_MODULE_DETECT && millis() - lastAutoRefresh > 1000) {
+        needsRefresh = true;
+        lastAutoRefresh = millis();
     }
+}
+
+void refreshDebugDisplay(GameStateManager& gameState)
+{
+    needsRefresh = true;
+    updateDebugInterface(gameState);
 }
 
 void initDebugInterface()
@@ -297,7 +441,14 @@ void initDebugInterface()
     pinMode(ENCODER_CLK, INPUT_PULLUP);
     pinMode(ENCODER_DT, INPUT_PULLUP);
     
-    screenState = SCREEN_MENU;
-    menuIndex = 0;
-    submenuIndex = 0;
+    // LCD is already initialized in main.cpp
+    // Just start in dashboard mode
+    currentMode = MODE_DASHBOARD;
+    needsRefresh = true;
+    
+    Serial.println("Debug interface initialized");
+    Serial.println("Controls:");
+    Serial.println("- Rotate: Navigate menus");
+    Serial.println("- Short press: Select/Enter");
+    Serial.println("- Long press: Main menu");
 }

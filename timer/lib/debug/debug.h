@@ -7,3 +7,6 @@ void initDebugInterface();
 
 // Update debug interface with game state
 void updateDebugInterface(GameStateManager& gameState);
+
+// Force refresh display (useful for immediate updates)
+void refreshDebugDisplay(GameStateManager& gameState);

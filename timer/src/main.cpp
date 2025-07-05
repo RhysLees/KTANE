@@ -21,32 +21,10 @@ void onStateChange(GameState oldState, GameState newState) {
 	Serial.print(" -> ");
 	Serial.println(static_cast<int>(newState));
 	
-	// Update LCD display based on state
+	// Play audio based on state changes
 	switch (newState) {
-		case GameState::IDLE:
-			lcd1602SetColor(LCD_COLOR_BLUE);
-			lcd1602PrintLine(0, "KTANE v2.0");
-			lcd1602PrintLine(1, "Ready to start");
-			break;
-			
-		case GameState::RUNNING:
-			lcd1602SetColor(LCD_COLOR_GREEN);
-			lcd1602PrintLine(0, "GAME RUNNING");
-			lcd1602PrintLine(1, "Good luck!");
-			break;
-			
-		case GameState::PAUSED:
-			lcd1602SetColor(LCD_COLOR_ORANGE);
-			lcd1602PrintLine(0, "GAME PAUSED");
-			lcd1602PrintLine(1, "Press to resume");
-			break;
-			
 		case GameState::EXPLODED:
 		{
-			lcd1602SetColor(LCD_COLOR_RED);
-			lcd1602PrintLine(0, "BOOM!");
-			lcd1602PrintLine(1, "GAME OVER");
-			
 			// Send explosion sound
 			uint8_t explosionSound = AUDIO_EXPLODED;
 			sendCanMessage(CAN_ID_AUDIO, &explosionSound, 1);
@@ -55,10 +33,6 @@ void onStateChange(GameState oldState, GameState newState) {
 			
 		case GameState::DEFUSED:
 		{
-			lcd1602SetColor(LCD_COLOR_GREEN);
-			lcd1602PrintLine(0, "BOMB DEFUSED!");
-			lcd1602PrintLine(1, "VICTORY!");
-			
 			// Send defusal sound
 			uint8_t defusalSound = AUDIO_DEFUSED;
 			sendCanMessage(CAN_ID_AUDIO, &defusalSound, 1);
@@ -67,10 +41,6 @@ void onStateChange(GameState oldState, GameState newState) {
 			
 		case GameState::VICTORY:
 		{
-			lcd1602SetColor(LCD_COLOR_CYAN);
-			lcd1602PrintLine(0, "MISSION");
-			lcd1602PrintLine(1, "COMPLETE!");
-			
 			// Send victory fanfare
 			uint8_t fanfareSound = AUDIO_GAME_OVER_FANFARE;
 			sendCanMessage(CAN_ID_AUDIO, &fanfareSound, 1);
@@ -78,12 +48,7 @@ void onStateChange(GameState oldState, GameState newState) {
 		}
 	}
 	
-	// Handle system ready state
-	if (newState == GameState::IDLE && gameState.isSystemReady()) {
-		lcd1602SetColor(LCD_COLOR_GREEN);
-		lcd1602PrintLine(0, "SYSTEM READY");
-		lcd1602PrintLine(1, "START when ready");
-	}
+	// LCD display is now handled by debug interface
 }
 
 void onStrikeChange(uint8_t strikes) {
@@ -98,15 +63,7 @@ void onStrikeChange(uint8_t strikes) {
 		sendCanMessage(CAN_ID_AUDIO, &strikeSound, 1);
 	}
 	
-	// Update LCD color based on strike count
-	if (strikes == 0) {
-		lcd1602SetColor(LCD_COLOR_GREEN);
-	} else if (strikes == 1) {
-		lcd1602SetColor(LCD_COLOR_ORANGE);
-	} else if (strikes >= 2) {
-		lcd1602SetColor(LCD_COLOR_RED);
-	}
-	
+	// LCD display is now handled by debug interface
 	// Broadcasting is now handled by GameStateManager
 }
 
@@ -120,10 +77,7 @@ void onModuleSolved(uint8_t solved, uint8_t total) {
 	uint8_t correctSound = AUDIO_CORRECT_TIME;
 	sendCanMessage(CAN_ID_AUDIO, &correctSound, 1);
 	
-	// Update LCD with progress
-	if (gameState.getState() == GameState::RUNNING) {
-		lcd1602PrintLine(1, "Mods: " + String(solved) + "/" + String(total));
-	}
+	// LCD display is now handled by debug interface
 }
 
 void onTimeUpdate(unsigned long remainingMs) {
@@ -166,13 +120,8 @@ void setup()
 	Wire1.setSCL(7);
 	Wire1.begin();
 
-	// Initialize LCD
+	// Initialize LCD (debug interface will handle display)
 	initLcd1602(16, 2, Wire1);
-	lcd1602SetColor(LCD_COLOR_BLUE);
-	lcd1602PrintLine(0, "KTANE v2.0");
-	lcd1602PrintLine(1, "Initializing...");
-
-	delay(1000);
 
 	// Initialize hardware systems
 	initCanBus(CAN_ID_TIMER);
@@ -218,12 +167,7 @@ void setup()
 	Serial.println("Type HELP for commands");
 	Serial.println("===============================");
 
-	// Update LCD to show ready state
-	lcd1602SetColor(LCD_COLOR_BLUE);
-	lcd1602PrintLine(0, "KTANE v2.0");
-	lcd1602PrintLine(1, "Ready! HELP cmd");
-
-	delay(2000);
+	// LCD display is now handled by debug interface
 }
 
 void loop()
