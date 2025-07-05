@@ -1,4 +1,4 @@
-#include <module_tracker.h>
+#include "module_tracker.h"
 #include <can_bus.h>
 
 static ModuleTracker *trackerInstance = nullptr;
@@ -11,6 +11,11 @@ void ModuleTracker::handleCanMessage(uint8_t id, uint8_t *data, uint8_t len)
     if (id >= MODULE_ID_START && id <= MODULE_ID_END)
     {
         modules[id].lastSeen = millis();
+        
+        // Update the game state that we've seen this module
+        if (gameState) {
+            gameState->updateModuleSeen(id);
+        }
     }
 }
 
@@ -23,28 +28,27 @@ void ModuleTracker::update()
     {
         if (now - it->second.lastSeen > timeoutMs)
         {
+            // Module timed out, remove it
+            uint8_t moduleId = it->first;
             it = modules.erase(it);
             changed = true;
+            
+            // Unregister from game state
+            if (gameState) {
+                gameState->unregisterModule(moduleId);
+            }
         }
         else
         {
             ++it;
         }
     }
-
-    if (gameState && changed)
-    {
-        gameState->setTotalModules(modules.size());
-    }
 }
 
 void ModuleTracker::reset()
 {
     modules.clear();
-    if (gameState)
-    {
-        gameState->setTotalModules(0);
-    }
+    // Game state manager handles its own module tracking
 }
 
 static void moduleTrackerCanCallback(uint16_t id, const uint8_t *data, uint8_t len)
