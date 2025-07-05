@@ -177,7 +177,8 @@ public:
             remainingMillis = 0;
             timerRunning = false;
             currentState = GAME_EXPLODED;
-            sendCanMessage(CAN_ID_AUDIO, (uint8_t[]){AUDIO_EXPLODED}, 1);
+            uint8_t explodedSound[1] = {AUDIO_EXPLODED};
+            sendCanMessage(CAN_ID_AUDIO, explodedSound, 1);
         }
         else
         {

@@ -64,12 +64,15 @@ void SimonSays::update() {
     updateButtons();
     updateLEDs();
     
-    // Send periodic heartbeat to timer (every 5 seconds)
+    // Send periodic heartbeat (every 5 seconds)
     static unsigned long lastHeartbeat = 0;
     if (currentTime - lastHeartbeat > 5000) {
-        uint8_t heartbeatData[1];
+        uint8_t heartbeatData[4];
         heartbeatData[0] = MODULE_HEARTBEAT;
-        sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
+        heartbeatData[1] = static_cast<uint8_t>(currentState);
+        heartbeatData[2] = isModuleSolved ? 1 : 0;
+        heartbeatData[3] = currentSequenceLength;
+        sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
         lastHeartbeat = currentTime;
     }
     
@@ -788,9 +791,12 @@ void SimonSays::printRules() const {
 // ============================================================================
 
 void SimonSays::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    if (len == 0) return;
+    if (len < 3) return;
     
-    uint8_t msgType = data[0];
+    // New message format: [senderType, senderInstance, messageType, ...messageData]
+    uint8_t senderType = data[0];
+    uint8_t senderInstance = data[1];
+    uint8_t msgType = data[2];
     
     switch (msgType) {
         case SIMON_MSG_RESET:

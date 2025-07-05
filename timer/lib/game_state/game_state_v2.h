@@ -14,12 +14,13 @@
 // Game States
 enum class GameState : uint8_t
 {
-    IDLE = 0,           // Waiting to start
-    RUNNING = 1,        // Game in progress
-    PAUSED = 2,         // Game paused
-    EXPLODED = 3,       // Bomb exploded (timeout or too many strikes)
-    DEFUSED = 4,        // All modules solved successfully
-    VICTORY = 5         // Game completed with success
+    DISCOVERY = 0,      // Module discovery mode
+    IDLE = 1,           // Ready to start (after discovery)
+    RUNNING = 2,        // Game in progress
+    PAUSED = 3,         // Game paused
+    EXPLODED = 4,       // Bomb exploded (timeout or too many strikes)
+    DEFUSED = 5,        // All modules solved successfully
+    VICTORY = 6         // Game completed with success
 };
 
 // Module Categories
@@ -163,7 +164,7 @@ class GameStateManager
 {
 private:
     // Core State
-    GameState currentState = GameState::IDLE;
+    GameState currentState = GameState::DISCOVERY;
     unsigned long stateChangeTime = 0;
     unsigned long gameStartTime = 0;
     
@@ -196,13 +197,10 @@ private:
     std::function<void(uint8_t, uint8_t)> onModuleSolved;
     std::function<void(unsigned long)> onTimeUpdate;
     
-    // Initialization State
-    bool epaper_ready = false;
-    bool game_ready_to_start = false;
-    unsigned long initialization_start_time = 0;
-    unsigned long countdown_start_time = 0;
-    enum InitState { INIT_WAITING_MODULES, INIT_WAITING_EPAPER, INIT_COUNTDOWN, INIT_READY };
-    InitState init_state = INIT_WAITING_MODULES;
+    // Discovery Mode State
+    bool discoveryMode = true;
+    unsigned long discovery_start_time = 0;
+    unsigned long last_module_registration_time = 0;
     
     // Internal Methods
     void updateTimer();
@@ -223,6 +221,7 @@ public:
     
     void initialize();
     void reset();
+    void createNewGame();  // Create new game after discovery mode
     
     // ========================================================================
     // CORE GAME LOOP
@@ -251,6 +250,7 @@ public:
     void pauseTimer();
     void resumeTimer();
     void resetTimer();
+    void startGame();  // New method: broadcast to modules then start timer
     unsigned long getRemainingTime() const { return remainingMs; }
     unsigned long getElapsedTime() const { return timeLimitMs - remainingMs; }
     bool isTimerRunning() const { return timerRunning; }
@@ -344,10 +344,13 @@ public:
     void broadcastCountdown(uint8_t seconds);
     
     // ========================================================================
-    // INITIALIZATION SEQUENCE
+    // DISCOVERY MODE
     // ========================================================================
-    void handleInitializationSequence();
-    bool isSystemReady() const;
+    void enterDiscoveryMode();
+    void exitDiscoveryMode();
+    bool isInDiscoveryMode() const;
+    void updateDiscoveryMode();
+    unsigned long getDiscoveryDuration() const;
     
     // ========================================================================
     // GAME LOGIC HELPERS

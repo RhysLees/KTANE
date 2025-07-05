@@ -16,8 +16,11 @@ uint8_t countdown_seconds = 0;
 // CAN message callback
 void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
     // Handle messages from the timer module (direct or broadcast)
-    if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len > 0) {
-        uint8_t msgType = data[0];
+    if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 3) {
+        // New message format: [senderType, senderInstance, messageType, ...messageData]
+        uint8_t senderType = data[0];
+        uint8_t senderInstance = data[1];
+        uint8_t msgType = data[2];
         
         switch (msgType) {
             case TIMER_GAME_START:
@@ -38,8 +41,8 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 break;
                 
             case TIMER_STRIKE_UPDATE:
-                if (len >= 2) {
-                    uint8_t strikes = data[1];
+                if (len >= 4) {
+                    uint8_t strikes = data[3];
                     if (strikes != currentStrikes) {
                         currentStrikes = strikes;
                         simonSays.setStrikeCount(strikes);
@@ -50,9 +53,9 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 break;
                 
             case TIMER_SERIAL_NUMBER:
-                if (len >= 7) {
+                if (len >= 9) {
                     char serial[7];
-                    memcpy(serial, &data[1], 6);
+                    memcpy(serial, &data[3], 6);
                     serial[6] = '\0';
                     serialNumber = String(serial);
                     simonSays.setSerialNumber(serialNumber);
@@ -69,9 +72,9 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 break;
                 
             case TIMER_TIME_UPDATE:
-                if (len >= 5) {
+                if (len >= 7) {
                     uint32_t timeMs = 0;
-                    memcpy(&timeMs, &data[1], 4);
+                    memcpy(&timeMs, &data[3], 4);
                     // Could update a time display or handle time-based logic
                     Serial.print("Simon Says: Time remaining: ");
                     Serial.print(timeMs / 1000);
@@ -80,8 +83,8 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 break;
                 
             case TIMER_COUNTDOWN:
-                if (len >= 2) {
-                    countdown_seconds = data[1];
+                if (len >= 4) {
+                    countdown_seconds = data[3];
                     Serial.print("Simon Says: Initialization countdown - ");
                     Serial.print(countdown_seconds);
                     Serial.println(" seconds");
@@ -218,11 +221,9 @@ void setup() {
     Serial.println(instanceId);
     
     // Register with timer module
-    uint8_t registerData[3];
+    uint8_t registerData[1];
     registerData[0] = MODULE_REGISTER;
-    registerData[1] = CAN_TYPE_SIMON;
-    registerData[2] = instanceId;
-    sendCanMessage(CAN_ID_TIMER, registerData, 3);
+                         sendCanMessage(CAN_ID_TIMER, registerData, 1);
     Serial.println("Simon Says: Registered with timer module");
     
     // Initialize with empty values - will be received from timer

@@ -26,24 +26,24 @@ void onStateChange(GameState oldState, GameState newState) {
 		case GameState::EXPLODED:
 		{
 			// Send explosion sound
-			uint8_t explosionSound = AUDIO_EXPLODED;
-			sendCanMessage(CAN_ID_AUDIO, &explosionSound, 1);
+			uint8_t explosionSound[1] = {AUDIO_EXPLODED};
+			sendCanMessage(CAN_ID_AUDIO, explosionSound, 1);
 			break;
 		}
 			
 		case GameState::DEFUSED:
 		{
 			// Send defusal sound
-			uint8_t defusalSound = AUDIO_DEFUSED;
-			sendCanMessage(CAN_ID_AUDIO, &defusalSound, 1);
+			uint8_t defusalSound[1] = {AUDIO_DEFUSED};
+			sendCanMessage(CAN_ID_AUDIO, defusalSound, 1);
 			break;
 		}
 			
 		case GameState::VICTORY:
 		{
 			// Send victory fanfare
-			uint8_t fanfareSound = AUDIO_GAME_OVER_FANFARE;
-			sendCanMessage(CAN_ID_AUDIO, &fanfareSound, 1);
+			uint8_t fanfareSound[1] = {AUDIO_GAME_OVER_FANFARE};
+			sendCanMessage(CAN_ID_AUDIO, fanfareSound, 1);
 			break;
 		}
 	}
@@ -59,8 +59,8 @@ void onStrikeChange(uint8_t strikes) {
 	
 	// Send strike sound when strike is added
 	if (strikes > 0) {
-		uint8_t strikeSound = AUDIO_STRIKE;
-		sendCanMessage(CAN_ID_AUDIO, &strikeSound, 1);
+		uint8_t strikeSound[1] = {AUDIO_STRIKE};
+		sendCanMessage(CAN_ID_AUDIO, strikeSound, 1);
 	}
 	
 	// LCD display is now handled by debug interface
@@ -74,8 +74,8 @@ void onModuleSolved(uint8_t solved, uint8_t total) {
 	Serial.println(total);
 	
 	// Send correct chime
-	uint8_t correctSound = AUDIO_CORRECT_TIME;
-	sendCanMessage(CAN_ID_AUDIO, &correctSound, 1);
+	uint8_t correctSound[1] = {AUDIO_CORRECT_TIME};
+	sendCanMessage(CAN_ID_AUDIO, correctSound, 1);
 	
 	// LCD display is now handled by debug interface
 }
@@ -130,6 +130,8 @@ void setup()
 	initCountdownDisplay();
 	initDebugInterface();
 	initModuleTracker(&gameState);
+
+	delay(10000);
 
 	// Configure game state
 	GameConfig config;

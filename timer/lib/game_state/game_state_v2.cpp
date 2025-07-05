@@ -66,30 +66,23 @@ GameStateManager::GameStateManager(const GameConfig& cfg) : config(cfg) {
 }
 
 void GameStateManager::initialize() {
-    currentState = GameState::IDLE;
+    // Start in discovery mode - don't initialize game state yet
+    currentState = GameState::DISCOVERY;
     stateChangeTime = millis();
-    gameStartTime = millis();
     
-    timeLimitMs = config.timeLimitMs;
-    remainingMs = timeLimitMs;
-    lastUpdateTime = millis();
-    timerRunning = false;
-    
-    strikeCount = 0;
-    maxStrikes = config.maxStrikes;
-    
+    // Clear any existing modules
     modules.clear();
     moduleMap.clear();
     
+    // Generate serial number and edgework for display during discovery
     generateSerialNumber();
     setupEdgework();
-    resetStats();
     
-    // Start initialization sequence
-    initialization_start_time = millis();
-    init_state = INIT_WAITING_MODULES;
+    // Enter discovery mode
+    enterDiscoveryMode();
     
-    Serial.println("GameState: Initialization sequence started - waiting for modules...");
+    Serial.println("Timer: Starting in Discovery Mode");
+    Serial.println("Timer: Power on modules and press rotary wheel when ready");
 }
 
 void GameStateManager::reset() {
@@ -97,13 +90,16 @@ void GameStateManager::reset() {
 }
 
 void GameStateManager::tick() {
-    // Handle initialization sequence before regular game logic
-    handleInitializationSequence();
+    // Handle discovery mode if active
+    updateDiscoveryMode();
     
-    updateTimer();
-    updateNeedyModules();
-    checkGameEndConditions();
-    handleModuleTimeout();
+    // Only run game logic if not in discovery mode
+    if (!isInDiscoveryMode()) {
+        updateTimer();
+        updateNeedyModules();
+        checkGameEndConditions();
+        handleModuleTimeout();
+    }
 }
 
 void GameStateManager::update() {
@@ -255,12 +251,28 @@ void GameStateManager::clearStrikes() {
 void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
     // Check if module already exists
     if (moduleMap.find(canId) != moduleMap.end()) {
+        Serial.print("GameState: Module 0x");
+        Serial.print(canId, HEX);
+        Serial.println(" already registered - skipping");
         return;
     }
     
     ModuleCategory category = getModuleCategory(type);
     modules.emplace_back(canId, type, category);
     moduleMap[canId] = &modules.back();
+    
+    Serial.print("GameState: Module registered - ID: 0x");
+    Serial.print(canId, HEX);
+    Serial.print(", Type: 0x");
+    Serial.print(static_cast<uint8_t>(type), HEX);
+    Serial.print(", Category: ");
+    Serial.print(category == ModuleCategory::REGULAR ? "REGULAR" : 
+                category == ModuleCategory::NEEDY ? "NEEDY" : "IGNORED");
+    Serial.print(", Total modules: ");
+    Serial.println(modules.size());
+    
+    // Track last module registration time for adaptive discovery
+    last_module_registration_time = millis();
     
     // Set activation time for needy modules
     if (category == ModuleCategory::NEEDY) {
@@ -714,16 +726,7 @@ void GameStateManager::printStatus() const {
     Serial.print("Serial: "); Serial.println(serialNumber);
 }
 
-void GameStateManager::printModules() const {
-    Serial.println("=== MODULES ===");
-    for (const auto& module : modules) {
-        Serial.print("ID: 0x"); Serial.print(module.canId, HEX);
-        Serial.print(" Type: 0x"); Serial.print(static_cast<uint8_t>(module.type), HEX);
-        Serial.print(" Solved: "); Serial.print(module.isSolved ? "YES" : "NO");
-        Serial.print(" Active: "); Serial.print(module.isActive ? "YES" : "NO");
-        Serial.println();
-    }
-}
+
 
 void GameStateManager::printEdgework() const {
     Serial.println("=== EDGEWORK ===");
@@ -763,69 +766,157 @@ void GameStateManager::resetStats() {
 void GameStateManager::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
     Serial.print("GameState: CAN message received - ID: 0x");
     Serial.print(id, HEX);
-    Serial.print(", Type: 0x");
-    if (len > 0) Serial.print(data[0], HEX);
     Serial.print(", Len: ");
     Serial.println(len);
     
-    if (len > 0) {
-        uint8_t msgType = data[0];
+    // New standardized message format: [senderType, senderInstance, messageType, ...messageData]
+    if (len < 3) {
+        Serial.println("GameState: Message too short for new format");
+        return;
+    }
+    
+    uint8_t senderType = data[0];
+    uint8_t senderInstance = data[1];
+    uint8_t msgType = data[2];
+    uint16_t senderCanId = CAN_INSTANCE_ID(senderType, senderInstance);
+    
+    Serial.print("GameState: From module 0x");
+    Serial.print(senderCanId, HEX);
+    Serial.print(", Type: 0x");
+    Serial.print(msgType, HEX);
+    Serial.print(", Sender: 0x");
+    Serial.print(senderType, HEX);
+    Serial.print("/");
+    Serial.println(senderInstance);
+    
+    if (len >= 3) {
         
         switch (msgType) {
             case MODULE_REGISTER:
-                if (len >= 3) {
-                    uint8_t moduleType = data[1];
-                    uint8_t instanceId = data[2];
-                    uint16_t moduleCanId = CAN_INSTANCE_ID(moduleType, instanceId);
-                    registerModule(moduleCanId, static_cast<ModuleType>(moduleType));
-                    Serial.print("GameState: Registered module type 0x");
-                    Serial.print(moduleType, HEX);
-                    Serial.print(" instance ");
-                    Serial.print(instanceId);
-                    Serial.print(" with CAN ID 0x");
-                    Serial.println(moduleCanId, HEX);
+            {
+                // Registration info is now in sender fields
+                // Check if already registered (from heartbeat)
+                bool alreadyRegistered = (moduleMap.find(senderCanId) != moduleMap.end());
+                
+                if (!alreadyRegistered) {
+                    registerModule(senderCanId, static_cast<ModuleType>(senderType));
+                    Serial.print("Discovery: Explicit registration - ID: 0x");
+                    Serial.print(senderCanId, HEX);
+                    Serial.print(", Type: 0x");
+                    Serial.println(senderType, HEX);
                     
-                    // Send current state to newly registered module
-                    broadcastGameState(moduleCanId);
+                    // In discovery mode, this counts as a new registration
+                    if (isInDiscoveryMode()) {
+                        last_module_registration_time = millis();
+                    }
+                } else {
+                    Serial.print("Discovery: Module 0x");
+                    Serial.print(senderCanId, HEX);
+                    Serial.println(" already registered via heartbeat");
+                }
+                
+                // Send current state to newly registered module (if not in discovery mode)
+                if (!isInDiscoveryMode()) {
+                    broadcastGameState(senderCanId);
                 }
                 break;
+            }
                 
             case MODULE_STRIKE:
-                Serial.println("GameState: Strike received from module");
+                Serial.print("GameState: Strike received from module 0x");
+                Serial.println(senderCanId, HEX);
                 addStrike();
                 // Strike callback will handle broadcasting
                 break;
                 
             case MODULE_SOLVED:
                 Serial.print("GameState: Module 0x");
-                Serial.print(id, HEX);
+                Serial.print(senderCanId, HEX);
                 Serial.println(" solved!");
-                setModuleSolved(id);
+                setModuleSolved(senderCanId);
                 // Module solved callback will handle broadcasting
                 break;
                 
             case MODULE_STATUS:
-                updateModuleSeen(id);
-                // Handle additional status data if needed
+                updateModuleSeen(senderCanId);
+                
+                // Handle additional status data if available (starts at index 3)
+                if (len >= 7) {
+                    uint8_t moduleState = data[3];
+                    bool isSolved = (data[4] != 0);
+                    uint8_t progress = data[5];
+                    uint8_t strikes = data[6];
+                    
+                    // Update module solved status if changed
+                    Module* module = moduleMap[senderCanId];
+                    if (module && module->isSolved != isSolved) {
+                        module->isSolved = isSolved;
+                        if (isSolved) {
+                            Serial.print("Status: Module 0x");
+                            Serial.print(senderCanId, HEX);
+                            Serial.println(" solved via status update");
+                        }
+                    }
+                }
                 break;
                 
             case MODULE_HEARTBEAT:
-                updateModuleSeen(id);
+                // Auto-register unknown modules from heartbeats
+                if (moduleMap.find(senderCanId) == moduleMap.end()) {
+                    Serial.print("Discovery: Auto-registering module from heartbeat - ID: 0x");
+                    Serial.print(senderCanId, HEX);
+                    Serial.print(", Type: 0x");
+                    Serial.println(senderType, HEX);
+                    
+                    registerModule(senderCanId, static_cast<ModuleType>(senderType));
+                    
+                    // In discovery mode, this counts as a new registration
+                    if (isInDiscoveryMode()) {
+                        last_module_registration_time = millis();
+                    }
+                } else {
+                    // Known module - update last seen time
+                    updateModuleSeen(senderCanId);
+                }
+                
+                // Process enhanced heartbeat data if available (starts at index 3)
+                if (len >= 6) {
+                    uint8_t moduleState = data[3];
+                    bool isSolved = (data[4] != 0);
+                    uint8_t progress = data[5];
+                    
+                    // Update module solved status if changed
+                    Module* module = moduleMap[senderCanId];
+                    if (module && module->isSolved != isSolved) {
+                        module->isSolved = isSolved;
+                        if (isSolved) {
+                            Serial.print("Discovery: Module 0x");
+                            Serial.print(senderCanId, HEX);
+                            Serial.println(" solved via heartbeat");
+                        }
+                    }
+                    
+                    // Optional: Log detailed status for debugging
+                    static unsigned long lastDetailedLog = 0;
+                    if (millis() - lastDetailedLog > 30000) { // Every 30 seconds
+                        Serial.print("Heartbeat: Module 0x");
+                        Serial.print(senderCanId, HEX);
+                        Serial.print(" - State:");
+                        Serial.print(moduleState);
+                        Serial.print(" Solved:");
+                        Serial.print(isSolved);
+                        Serial.print(" Progress:");
+                        Serial.println(progress);
+                        lastDetailedLog = millis();
+                    }
+                }
                 break;
                 
-            // Handle epaper display ready signal
+            // Handle epaper display messages
             case SERIAL_DISPLAY_CLEAR:
                 Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
                 Serial.print(id, HEX);
-                Serial.print(" (expected 0x");
-                Serial.print(CAN_ID_SERIAL_DISPLAY, HEX);
-                Serial.println(")");
-                if (id == CAN_ID_SERIAL_DISPLAY) {
-                    epaper_ready = true;
-                    Serial.println("GameState: Epaper display ready - setting flag");
-                } else {
-                    Serial.println("GameState: Wrong CAN ID for epaper ready signal");
-                }
+                Serial.println(" - epaper display ready");
                 break;
                 
             default:
@@ -885,6 +976,8 @@ void GameStateManager::broadcastCountdown(uint8_t seconds) {
     uint8_t countdownData[2];
     countdownData[0] = TIMER_COUNTDOWN;
     countdownData[1] = seconds;
+    Serial.print("DEBUG: About to send countdown broadcast: ");
+    Serial.println(seconds);
     sendCanMessage(CAN_ID_BROADCAST, countdownData, 2);
     
     Serial.print("GameState: Countdown - ");
@@ -892,100 +985,166 @@ void GameStateManager::broadcastCountdown(uint8_t seconds) {
     Serial.println(" seconds");
 }
 
+
+
 // ============================================================================
-// INITIALIZATION SEQUENCE
+// DISCOVERY MODE IMPLEMENTATION
 // ============================================================================
 
-void GameStateManager::handleInitializationSequence() {
+void GameStateManager::enterDiscoveryMode() {
+    discoveryMode = true;
+    discovery_start_time = millis();
+    last_module_registration_time = 0;
+    setState(GameState::DISCOVERY);
+    
+    Serial.println("Discovery: Entered discovery mode - actively scanning for modules");
+    Serial.print("Discovery: Current modules registered: ");
+    Serial.println(modules.size());
+}
+
+void GameStateManager::exitDiscoveryMode() {
+    discoveryMode = false;
+    
+    Serial.println("Discovery: Exiting discovery mode");
+    Serial.print("Discovery: Final module count: ");
+    Serial.println(modules.size());
+    
+    // Create new game with discovered modules
+    createNewGame();
+}
+
+bool GameStateManager::isInDiscoveryMode() const {
+    return discoveryMode && currentState == GameState::DISCOVERY;
+}
+
+void GameStateManager::updateDiscoveryMode() {
+    if (!isInDiscoveryMode()) return;
+    
+    // Discovery mode just handles module registration
+    // UI interaction is handled by debug interface
+    
+    // Optional: periodic status updates
+    static unsigned long lastStatusUpdate = 0;
     unsigned long now = millis();
-    
-    // Debug output every 5 seconds to show current state
-    static unsigned long lastDebug = 0;
-    if (now - lastDebug > 5000) {
-        Serial.print("GameState: Init state: ");
-        Serial.print(static_cast<int>(init_state));
-        Serial.print(", elapsed: ");
-        Serial.print((now - initialization_start_time) / 1000);
-        Serial.println("s");
-        lastDebug = now;
-    }
-    
-    switch (init_state) {
-        case INIT_WAITING_MODULES:
-            // Wait for modules to register (2 seconds after startup)
-            if (now - initialization_start_time > 2000) {
-                Serial.println("GameState: 2-second module wait complete, broadcasting initial state...");
-                // Send initial state to all registered modules
-                broadcastGameState();
-                
-                // Wait for epaper display to be ready
-                init_state = INIT_WAITING_EPAPER;
-                Serial.println("GameState: Switching to INIT_WAITING_EPAPER state");
-                Serial.print("GameState: Sending serial number '");
-                Serial.print(serialNumber);
-                Serial.println("' to epaper display...");
-                
-                // Send serial number to epaper display
-                uint8_t serialCmd[7];
-                serialCmd[0] = SERIAL_DISPLAY_SET_SERIAL;
-                memcpy(&serialCmd[1], serialNumber.c_str(), 6);
-                sendCanMessage(CAN_ID_SERIAL_DISPLAY, serialCmd, 7);
-                Serial.println("GameState: Serial number sent to epaper, waiting for ready signal...");
-            }
-            break;
-            
-        case INIT_WAITING_EPAPER:
-            // Wait for epaper display to be ready (up to 10 seconds)
-            if (epaper_ready || (now - initialization_start_time > 12000)) {
-                if (!epaper_ready) {
-                    Serial.println("GameState: Epaper timeout - proceeding anyway");
-                } else {
-                    Serial.println("GameState: Epaper ready signal received!");
-                }
-                init_state = INIT_COUNTDOWN;
-                countdown_start_time = now;
-                Serial.println("GameState: Switching to INIT_COUNTDOWN state");
-                Serial.println("GameState: Starting 5-second countdown...");
-                broadcastCountdown(5);
-            }
-            break;
-            
-        case INIT_COUNTDOWN:
-            // 5-second countdown
-            {
-                unsigned long countdown_elapsed = now - countdown_start_time;
-                uint8_t seconds_remaining = 5 - (countdown_elapsed / 1000);
-                
-                // Send countdown updates every second
-                static uint8_t last_countdown = 255;
-                if (seconds_remaining != last_countdown && seconds_remaining <= 5) {
-                    if (seconds_remaining > 0) {
-                        broadcastCountdown(seconds_remaining);
-                    }
-                    last_countdown = seconds_remaining;
-                }
-                
-                // Countdown finished
-                if (countdown_elapsed >= 5000) {
-                    init_state = INIT_READY;
-                    game_ready_to_start = true;
-                    Serial.println("GameState: Countdown complete!");
-                    Serial.println("GameState: Setting game_ready_to_start = true");
-                    Serial.println("GameState: System ready! Game can now be started.");
-                    
-                    // Note: LCD update for "SYSTEM READY" should be handled by callback in main.cpp
-                }
-            }
-            break;
-            
-        case INIT_READY:
-            // System is ready, game can be started
-            break;
+    if (now - lastStatusUpdate > 10000) { // Every 10 seconds
+        Serial.print("Discovery: Active for ");
+        Serial.print((now - discovery_start_time) / 1000);
+        Serial.print("s, modules found: ");
+        Serial.println(modules.size());
+        lastStatusUpdate = now;
     }
 }
 
-bool GameStateManager::isSystemReady() const {
-    return game_ready_to_start;
+unsigned long GameStateManager::getDiscoveryDuration() const {
+    if (!isInDiscoveryMode()) return 0;
+    return millis() - discovery_start_time;
+}
+
+void GameStateManager::createNewGame() {
+    Serial.println("GameState: Creating new game...");
+    
+    // Initialize game state
+    gameStartTime = millis();
+    
+    timeLimitMs = config.timeLimitMs;
+    remainingMs = timeLimitMs;
+    lastUpdateTime = millis();
+    timerRunning = false;
+    
+    strikeCount = 0;
+    maxStrikes = config.maxStrikes;
+    
+    resetStats();
+    
+    // Set to IDLE state (ready to start)
+    setState(GameState::IDLE);
+    
+    Serial.println("GameState: New game created - ready to start!");
+    Serial.print("GameState: Found ");
+    Serial.print(getTotalModules());
+    Serial.println(" regular modules");
+    
+    // Send serial number to epaper display
+    uint8_t serialCmd[7];
+    serialCmd[0] = SERIAL_DISPLAY_SET_SERIAL;
+    memcpy(&serialCmd[1], serialNumber.c_str(), 6);
+    sendCanMessage(CAN_ID_SERIAL_DISPLAY, serialCmd, 7);
+    Serial.print("GameState: Sent serial number to display: ");
+    Serial.println(serialNumber);
+}
+
+void GameStateManager::startGame() {
+    if (currentState != GameState::IDLE) {
+        Serial.println("GameState: Cannot start game - not in IDLE state");
+        return;
+    }
+    
+    Serial.println("GameState: Starting game...");
+    
+    // First, broadcast game start to all modules
+    Serial.print("GameState: Broadcasting GAME_START to ");
+    Serial.print(modules.size());
+    Serial.println(" modules...");
+    
+    for (const auto& module : modules) {
+        if (module.category == ModuleCategory::REGULAR) {
+            // Send full game state to each module
+            broadcastGameState(module.canId);
+            
+            // Send game start message
+            uint8_t gameStartData[1] = {TIMER_GAME_START};
+            sendCanMessage(module.canId, gameStartData, 1);
+        }
+    }
+    
+    // Also broadcast to all modules via broadcast ID
+    uint8_t gameStartData[1] = {TIMER_GAME_START};
+    sendCanMessage(CAN_ID_BROADCAST, gameStartData, 1);
+    
+    // Then start the timer
+    setState(GameState::RUNNING);
+    startTimer();
+    
+    Serial.println("GameState: Game started successfully!");
+}
+
+void GameStateManager::printModules() const {
+    Serial.println("=== MODULE STATUS ===");
+    Serial.print("Total modules: ");
+    Serial.println(modules.size());
+    Serial.print("Regular modules: ");
+    Serial.println(getTotalModules());
+    Serial.print("Solved modules: ");
+    Serial.println(getSolvedModules());
+    
+    if (modules.empty()) {
+        Serial.println("No modules registered.");
+    } else {
+        Serial.println("Registered modules:");
+        for (const auto& module : modules) {
+            Serial.print("  0x");
+            Serial.print(module.canId, HEX);
+            Serial.print(" - Type: 0x");
+            Serial.print(static_cast<uint8_t>(module.type), HEX);
+            Serial.print(" - Category: ");
+            Serial.print(module.category == ModuleCategory::REGULAR ? "REGULAR" : 
+                        module.category == ModuleCategory::NEEDY ? "NEEDY" : "IGNORED");
+            Serial.print(" - Solved: ");
+            Serial.print(module.isSolved ? "YES" : "NO");
+            Serial.print(" - Active: ");
+            Serial.print(module.isActive ? "YES" : "NO");
+            Serial.print(" - Last seen: ");
+            Serial.print(module.lastSeen > 0 ? String((millis() - module.lastSeen) / 1000) + "s ago" : "never");
+            Serial.println();
+        }
+        
+        Serial.println();
+        Serial.println("🔍 HEARTBEAT-BASED DISCOVERY:");
+        Serial.println("  ✅ Modules auto-register via heartbeats");
+        Serial.println("  ⏱️  Heartbeats every 5s with status updates");
+        Serial.println("  🔧 No explicit registration needed!");
+    }
+    Serial.println("=====================");
 }
 
  

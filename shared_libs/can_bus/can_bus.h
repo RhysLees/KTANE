@@ -143,9 +143,10 @@ enum IdMessage : uint8_t {
 
 // Function declarations
 typedef void (*CanMessageCallback)(uint16_t id, const uint8_t* data, uint8_t len);
+
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
-void sendCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
+void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
 void registerCanCallback(CanMessageCallback callback);
 
 // ID negotiation functions
@@ -153,6 +154,13 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
 bool assignUniqueId(uint8_t moduleType);
 void updateCanId(uint16_t newCanId);
 uint8_t getCurrentInstanceId();
+uint16_t getCurrentModuleId();
 
-// Debugging helper
+// Module communication helpers
+void sendHeartbeat(const uint8_t* data, uint8_t len);
+
+// Debugging helpers
+const char* getModuleTypeName(uint8_t moduleType);
+void printCanIdInfo(uint16_t canId, const char* prefix);
 inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool sent = false);
+void printCanBusStatus();

@@ -12,10 +12,18 @@ Adafruit_TPA2016 amp;
 // Handle incoming CAN message
 void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
 {
-  if (id == CAN_ID_AUDIO && len == 1)
+  if (id == CAN_ID_AUDIO && len >= 3)
   {
-    uint8_t messageId = data[0];
-    Serial.print("Audio command: 0x");
+    // New message format: [senderType, senderInstance, audioCommand]
+    uint8_t senderType = data[0];
+    uint8_t senderInstance = data[1];
+    uint8_t messageId = data[2];
+    
+    Serial.print("Audio command from 0x");
+    Serial.print(senderType, HEX);
+    Serial.print("/");
+    Serial.print(senderInstance);
+    Serial.print(": 0x");
     Serial.println(messageId, HEX);
 
     switch (messageId)

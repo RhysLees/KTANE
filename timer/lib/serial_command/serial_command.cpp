@@ -23,7 +23,9 @@ enum CommandType
 	CMD_SOLVE,
 	CMD_EDGEWORK,
 	CMD_STATUS,
-	CMD_CONFIG
+	CMD_CONFIG,
+	CMD_REDISCOVER,
+	CMD_EXIT_DISCOVERY
 };
 
 CommandType parseCommand(const String &input, String &args)
@@ -47,6 +49,8 @@ CommandType parseCommand(const String &input, String &args)
 	if (cmd == "EDGEWORK") return CMD_EDGEWORK;
 	if (cmd == "STATUS") return CMD_STATUS;
 	if (cmd == "CONFIG") return CMD_CONFIG;
+	if (cmd == "REDISCOVER") return CMD_REDISCOVER;
+	if (cmd == "EXIT_DISCOVERY" || cmd == "EXIT") return CMD_EXIT_DISCOVERY;
 
 	return CMD_UNKNOWN;
 }
@@ -65,6 +69,8 @@ void printHelp()
 	Serial.println("  EDGEWORK        - Show edgework information");
 	Serial.println("  CONFIG          - Show configuration");
 	Serial.println("  SERIAL [cmd]    - Control serial display");
+	Serial.println("  REDISCOVER      - Restart module discovery");
+	Serial.println("  EXIT            - Exit discovery mode");
 	Serial.println("  INFO            - Show basic game info");
 	Serial.println("  HELP            - Show this help message\n");
 }
@@ -83,19 +89,20 @@ void handleSerialCommands(GameStateManager& gameState)
 	switch (cmdType)
 	{
 	case CMD_START:
-		// Check if system is ready to start
-		if (!gameState.isSystemReady()) {
-			Serial.println("Game not ready to start yet. Please wait for initialization to complete.");
+		if (gameState.getState() == GameState::DISCOVERY) {
+			Serial.println("Cannot start - still in discovery mode. Exit discovery first.");
 			break;
 		}
 		
 		if (gameState.getState() == GameState::PAUSED) {
 			gameState.resumeTimer();
+			Serial.println("Game resumed.");
+		} else if (gameState.getState() == GameState::IDLE) {
+			gameState.startGame();
+			Serial.println("Game started.");
 		} else {
-			gameState.setState(GameState::RUNNING);
-			gameState.startTimer();
+			Serial.println("Game cannot be started from current state.");
 		}
-		Serial.println("Game started/resumed.");
 		break;
 
 	case CMD_STOP:
@@ -253,6 +260,9 @@ void handleSerialCommands(GameStateManager& gameState)
 		Serial.print("State: ");
 		switch (gameState.getState())
 		{
+		case GameState::DISCOVERY:
+			Serial.println("DISCOVERY");
+			break;
 		case GameState::IDLE:
 			Serial.println("IDLE");
 			break;
@@ -282,6 +292,25 @@ void handleSerialCommands(GameStateManager& gameState)
 		Serial.print("Timer: "); Serial.println(gameState.isTimerRunning() ? "Running" : "Stopped");
 		Serial.print("Time Remaining: "); Serial.print(gameState.getRemainingTime() / 1000); Serial.println("s");
 		Serial.print("Serial Number: "); Serial.println(gameState.getSerialNumber());
+		break;
+
+	case CMD_REDISCOVER:
+		if (gameState.getState() == GameState::IDLE || gameState.getState() == GameState::EXPLODED || 
+		    gameState.getState() == GameState::DEFUSED || gameState.getState() == GameState::VICTORY) {
+			gameState.enterDiscoveryMode();
+			Serial.println("Discovery mode started. Modules can now register.");
+		} else {
+			Serial.println("Cannot restart discovery from current state.");
+		}
+		break;
+	
+	case CMD_EXIT_DISCOVERY:
+		if (gameState.getState() == GameState::DISCOVERY) {
+			gameState.exitDiscoveryMode();
+			Serial.println("Discovery mode exited. Game is now ready to start.");
+		} else {
+			Serial.println("Not in discovery mode.");
+		}
 		break;
 
 	case CMD_HELP:

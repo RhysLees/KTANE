@@ -102,7 +102,8 @@ void updateCountdownDisplay(GameStateManager& gameState)
 		uint8_t sound = (gameState.getStrikes() == 2) ? AUDIO_BEEP_HIGH
 						: (gameState.getStrikes() == 1) ? AUDIO_BEEP_FAST
 														: AUDIO_BEEP_NORMAL;
-		sendCanMessage(CAN_ID_AUDIO, &sound, 1);
+		uint8_t soundData[1] = {sound};
+		sendCanMessage(CAN_ID_AUDIO, soundData, 1);
 	}
 
 	// Send emergency alarm when time is low
@@ -112,8 +113,8 @@ void updateCountdownDisplay(GameStateManager& gameState)
 		if (now - lastEmergencyAlarmSent >= 3000)
 		{
 			lastEmergencyAlarmSent = now;
-			uint8_t emergencySound = AUDIO_ALARM_EMERGENCY;
-			sendCanMessage(CAN_ID_AUDIO, &emergencySound, 1);
+			uint8_t emergencySound[1] = {AUDIO_ALARM_EMERGENCY};
+			sendCanMessage(CAN_ID_AUDIO, emergencySound, 1);
 		}
 	}
 }
