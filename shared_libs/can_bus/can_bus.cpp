@@ -37,7 +37,23 @@ void onCanInterrupt() {
 
 void initCanBus(uint16_t fullCanId) {
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
-    Serial.println("CAN init OK");
+    // Disable all CAN filters and masks to receive all messages
+    // Set all receive masks to 0 (no bits masked, all messages pass through)
+    CAN.init_Mask(0, 0, 0x00000000);    // Mask 0 (for RXF0 and RXF1)
+    CAN.init_Mask(1, 0, 0x00000000);    // Mask 1 (for RXF2, RXF3, RXF4, RXF5)
+    
+    // Set all receive filters to 0 (with masks disabled, filter values don't matter)
+    CAN.init_Filt(0, 0, 0x00000000);    // Filter 0
+    CAN.init_Filt(1, 0, 0x00000000);    // Filter 1
+    CAN.init_Filt(2, 0, 0x00000000);    // Filter 2
+    CAN.init_Filt(3, 0, 0x00000000);    // Filter 3
+    CAN.init_Filt(4, 0, 0x00000000);    // Filter 4
+    CAN.init_Filt(5, 0, 0x00000000);    // Filter 5
+
+    CAN.enOneShotTX();
+    CAN.setMode(MCP_NORMAL);
+    
+    Serial.println("CAN init OK - All filters and masks disabled");
   } else {
     Serial.println("CAN init FAIL");
     delay(1000);
@@ -142,8 +158,6 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
   }
   
   // Check if target module is connected (only for fixed modules)
-  // Temporarily disabled for debugging physical layer
-  /*
   if (receiverID == CAN_ID_AUDIO && !audioModuleConnected) {
     Serial.println("CAN: Audio module not connected - message skipped");
     return;
@@ -152,7 +166,6 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     Serial.println("CAN: Serial Display module not connected - message skipped");
     return;
   }
-  */
   
   // Build standardized message: [senderType, senderInstance, messageType, ...messageData]
   uint8_t fullMessage[8];
@@ -278,16 +291,14 @@ inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool 
 }
 
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
-  Serial.print("CRITICAL ERROR: negotiateInstanceId called with moduleType=0x");
-  Serial.println(moduleType, HEX);
-  Serial.print("This should NEVER happen for Timer module!");
-  Serial.println();
-  
   // Prevent Timer module from doing ID negotiation
   if (thisModuleId == CAN_ID_TIMER) {
     Serial.println("ERROR: Timer module should never negotiate IDs - blocking call");
     return false;
   }
+  
+  Serial.print("Starting ID negotiation for moduleType=0x");
+  Serial.println(moduleType, HEX);
   
   if (!canBusInitialized) return false;
   
@@ -353,16 +364,14 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
 }
 
 bool assignUniqueId(uint8_t moduleType) {
-  Serial.print("CRITICAL ERROR: assignUniqueId called with moduleType=0x");
-  Serial.println(moduleType, HEX);
-  Serial.print("This should NEVER happen for Timer module!");
-  Serial.println();
-  
   // Prevent Timer module from doing ID negotiation
   if (thisModuleId == CAN_ID_TIMER) {
     Serial.println("ERROR: Timer module should never negotiate IDs - blocking call");
     return false;
   }
+  
+  Serial.print("Assigning unique ID for moduleType=0x");
+  Serial.println(moduleType, HEX);
   
   if (!canBusInitialized) return false;
   
