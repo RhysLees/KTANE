@@ -69,61 +69,27 @@ void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len) {
 }
 
 void handleCanMessages() {
-  if (!canBusInitialized) {
-    return;
-  }
-  
-  // Check if interrupt flag is set OR if INT pin is LOW (messages available)
-  // This handles both interrupt-driven and polling scenarios
-  if (!canInterruptFlag && digitalRead(CAN_INT_PIN) == HIGH) {
-    // No interrupt flag and INT pin is HIGH = no messages available
-    return;
-  }
-  
+  if (!canInterruptFlag) return;
   canInterruptFlag = false;
-  
-  uint8_t messageCount = 0;
-  const uint8_t MAX_MESSAGES_PER_CALL = 3; // Prevent blocking main loop
-  
-  while (messageCount < MAX_MESSAGES_PER_CALL) {
-    if (CAN.checkReceive() != CAN_MSGAVAIL) {
-      break;
-    }
-    
+
+  if (CAN.checkReceive() == CAN_MSGAVAIL) {
     long unsigned int id;
     unsigned char len = 0;
     unsigned char buf[8];
 
-    if (CAN.readMsgBuf(&id, &len, buf) != CAN_OK) {
-      break;
-    }
-
-    if (len > 8) {
-      continue;
-    }
-
-    messageCount++;
+    CAN.readMsgBuf(&id, &len, buf);
 
     // Always log all received messages with ! prefix
     Serial.print("!");
     printCanMessage(id, buf, len, false);
 
-    // Check for loopback (receiving our own messages)
-    if (len >= 2) {
-      uint8_t senderType = buf[0];
-      uint8_t senderInstance = buf[1];
-      uint16_t senderCanId = ((senderType & 0x3F) << 5) | (senderInstance & 0x1F);
-      
-      if (senderCanId == thisModuleId) {
-        continue;
-      }
-    }
-
+    // Filter to this module only
+    if (id != thisModuleId) return;
     // Handle ID negotiation messages
     handleIdNegotiation(id, buf, len);
 
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      continue;
+      return;
     }
 
     for (uint8_t i = 0; i < callbackCount; i++) {
