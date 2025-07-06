@@ -29,29 +29,42 @@ void onCanInterrupt() {
 }
 
 void initCanBus(uint16_t fullCanId) {
-  thisModuleId = fullCanId;
-  
-  uint8_t initResult = CAN.begin(MCP_NORMAL, CAN_500KBPS, MCP_8MHZ);
-
-  if (initResult == CAN_OK) {
-    pinMode(CAN_INT_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
-    canBusInitialized = true;
-    
-    Serial.print("CAN module ID set to 0x");
-    Serial.println(thisModuleId, HEX);
+  if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
+    Serial.println("CAN init OK");
   } else {
-    Serial.print("CAN init FAIL - error code: ");
-    Serial.println(initResult);
-    canBusInitialized = false;
-    // Don't halt - allow testing without CAN hardware
-    return;
+    Serial.println("CAN init FAIL");
+    delay(1000);
+    initCanBus(fullCanId);
   }
+
+  CAN.setMode(MCP_NORMAL);
+
+  pinMode(CAN_INT_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
 }
 
 void registerCanCallback(CanMessageCallback callback) {
   if (callbackCount < MAX_CAN_CALLBACKS) {
     canCallbacks[callbackCount++] = callback;
+  }
+}
+
+void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len) {
+  // Handle ID negotiation messages on global channels
+  if (len >= 3 && (id & 0x1F) == 0x00) { // Global channel (instance 0x00)
+    uint8_t msgType = buf[0];
+    uint8_t moduleType = buf[1];
+    uint8_t instanceId = buf[2];
+    
+    if (msgType == ID_PROBE && moduleType == currentModuleType) {
+      if (instanceId == currentInstanceId && currentInstanceId != 0) {
+        uint8_t takenData[3] = {ID_TAKEN, moduleType, instanceId};
+        sendCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), takenData, 3);
+      }
+    }
+    else if (msgType == ID_TAKEN && moduleType == currentModuleType) {
+      idConflictDetected = true;
+    }
   }
 }
 
@@ -106,22 +119,8 @@ void handleCanMessages() {
       }
     }
 
-    // Handle ID negotiation messages on global channels
-    if (len >= 3 && (id & 0x1F) == 0x00) { // Global channel (instance 0x00)
-      uint8_t msgType = buf[0];
-      uint8_t moduleType = buf[1];
-      uint8_t instanceId = buf[2];
-      
-      if (msgType == ID_PROBE && moduleType == currentModuleType) {
-        if (instanceId == currentInstanceId && currentInstanceId != 0) {
-          uint8_t takenData[3] = {ID_TAKEN, moduleType, instanceId};
-          sendCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), takenData, 3);
-        }
-      }
-      else if (msgType == ID_TAKEN && moduleType == currentModuleType) {
-        idConflictDetected = true;
-      }
-    }
+    // Handle ID negotiation messages
+    handleIdNegotiation(id, buf, len);
 
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
       continue;
@@ -240,32 +239,8 @@ inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool 
   }
   
   if (len > 0) {
-    Serial.print(" - ");
-    
-    // Context-aware message type detection
-    if (id == CAN_ID_AUDIO && len == 1) {
-      Serial.print("AUDIO_");
-      switch (data[0]) {
-        case 0x01: Serial.print("BEEP_NORMAL"); break;
-        case 0x02: Serial.print("BEEP_FAST"); break;
-        case 0x03: Serial.print("BEEP_HIGH"); break;
-        case 0x04: Serial.print("STRIKE"); break;
-        case 0x05: Serial.print("DEFUSED"); break;
-        case 0x06: Serial.print("EXPLODED"); break;
-        case 0x07: Serial.print("CORRECT_TIME"); break;
-        case 0x08: Serial.print("GAME_OVER_FANFARE"); break;
-        case 0x09: Serial.print("ALARM_CLOCK_BEEP"); break;
-        case 0x0A: Serial.print("ALARM_CLOCK_SNOOZE"); break;
-        case 0x0B: Serial.print("ALARM_EMERGENCY"); break;
-        case 0x0C: Serial.print("SIMON_RED"); break;
-        case 0x0D: Serial.print("SIMON_GREEN"); break;
-        case 0x0E: Serial.print("SIMON_YELLOW"); break;
-        case 0x0F: Serial.print("SIMON_BLUE"); break;
-        default: Serial.print("UNKNOWN_0x"); Serial.print(data[0], HEX); break;
-      }
-    } else {
-      Serial.print(getMessageTypeName(data[0]));
-    }
+    Serial.print(" - 0x");
+    Serial.print(data[0], HEX);
   }
 
   Serial.println();

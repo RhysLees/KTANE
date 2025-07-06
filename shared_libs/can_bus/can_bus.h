@@ -146,6 +146,7 @@ typedef void (*CanMessageCallback)(uint16_t id, const uint8_t* data, uint8_t len
 
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
+void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len);
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
 void registerCanCallback(CanMessageCallback callback);
 
