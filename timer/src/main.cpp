@@ -9,12 +9,7 @@
 #include <lcd1602.h>
 #include <module_tracker.h>
 
-// Global game state manager (v2)
 GameStateManager gameState;
-
-// These are now handled by GameStateManager
-
-// Callback functions for game state events
 void onStateChange(GameState oldState, GameState newState) {
 	// Play audio based on state changes
 	switch (newState) {
