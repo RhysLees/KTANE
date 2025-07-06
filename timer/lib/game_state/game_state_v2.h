@@ -14,13 +14,12 @@
 // Game States
 enum class GameState : uint8_t
 {
-    DISCOVERY = 0,      // Module discovery mode
-    IDLE = 1,           // Ready to start (after discovery)
-    RUNNING = 2,        // Game in progress
-    PAUSED = 3,         // Game paused
-    EXPLODED = 4,       // Bomb exploded (timeout or too many strikes)
-    DEFUSED = 5,        // All modules solved successfully
-    VICTORY = 6         // Game completed with success
+    IDLE = 0,           // Ready to start
+    RUNNING = 1,        // Game in progress
+    PAUSED = 2,         // Game paused
+    EXPLODED = 3,       // Bomb exploded (timeout or too many strikes)
+    DEFUSED = 4,        // All modules solved successfully
+    VICTORY = 5         // Game completed with success
 };
 
 // Module Categories
@@ -164,7 +163,7 @@ class GameStateManager
 {
 private:
     // Core State
-    GameState currentState = GameState::DISCOVERY;
+    GameState currentState = GameState::IDLE;
     unsigned long stateChangeTime = 0;
     unsigned long gameStartTime = 0;
     
@@ -197,11 +196,6 @@ private:
     std::function<void(uint8_t, uint8_t)> onModuleSolved;
     std::function<void(unsigned long)> onTimeUpdate;
     
-    // Discovery Mode State
-    bool discoveryMode = true;
-    unsigned long discovery_start_time = 0;
-    unsigned long last_module_registration_time = 0;
-    
     // Internal Methods
     void updateTimer();
     void updateNeedyModules();
@@ -221,7 +215,7 @@ public:
     
     void initialize();
     void reset();
-    void createNewGame();  // Create new game after discovery mode
+    void createNewGame();
     
     // ========================================================================
     // CORE GAME LOOP
@@ -340,15 +334,6 @@ public:
     void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
     void broadcastGameState(uint16_t targetId = CAN_ID_BROADCAST); // Default to broadcast ID
     void broadcastCountdown(uint8_t seconds);
-    
-    // ========================================================================
-    // DISCOVERY MODE
-    // ========================================================================
-    void enterDiscoveryMode();
-    void exitDiscoveryMode();
-    bool isInDiscoveryMode() const;
-    void updateDiscoveryMode();
-    unsigned long getDiscoveryDuration() const;
     
     // ========================================================================
     // GAME LOGIC HELPERS

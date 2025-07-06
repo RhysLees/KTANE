@@ -12,13 +12,12 @@ enum DebugMode
 {
     MODE_DASHBOARD,     // Always-on info display
     MODE_MENU,          // Simple action menu
-    MODE_DISCOVERY,     // Module discovery mode (primary mode)
     MODE_MODULE_DETECT, // Module detection mode
     MODE_EDGEWORK,      // Edgework viewer
     MODE_GAME_CONTROL   // Game control actions
 };
 
-static DebugMode currentMode = MODE_DISCOVERY;
+static DebugMode currentMode = MODE_DASHBOARD;
 static uint8_t menuIndex = 0;
 static uint8_t viewIndex = 0;
 static bool needsRefresh = true;
@@ -38,7 +37,6 @@ static bool moduleDetectActive = false;
 // Simple menu options  
 const char *menuOptions[] = {
     "Game Control",
-    "Discovery Mode",
     "Module Detect", 
     "View Edgework",
     "Dashboard"
@@ -83,10 +81,6 @@ void displayGameState(GameStateManager& gameState)
     
     // Set color and text based on game state
     switch (gameState.getState()) {
-        case GameState::DISCOVERY:
-            lcd1602SetColor(LCD_COLOR_BLUE);
-            stateLine = "DISCOVERY MODE";
-            break;
         case GameState::IDLE:
             lcd1602SetColor(LCD_COLOR_GREEN);
             stateLine = "READY - Start";
@@ -228,25 +222,17 @@ void performMenuAction(uint8_t index, GameStateManager& gameState)
             currentMode = MODE_GAME_CONTROL;
             menuIndex = 0;
             break;
-        case 1: // Discovery Mode
-            if (gameState.getState() == GameState::IDLE || gameState.getState() == GameState::EXPLODED || 
-                gameState.getState() == GameState::DEFUSED || gameState.getState() == GameState::VICTORY) {
-                gameState.enterDiscoveryMode();
-                currentMode = MODE_DISCOVERY;
-                viewIndex = 0;
-            }
-            break;
-        case 2: // Module Detect
+        case 1: // Module Detect
             currentMode = MODE_MODULE_DETECT;
             viewIndex = 0;
             moduleDetectActive = true;
             lastModuleDetectTime = millis();
             break;
-        case 3: // View Edgework
+        case 2: // View Edgework
             currentMode = MODE_EDGEWORK;
             viewIndex = 0;
             break;
-        case 4: // Dashboard
+        case 3: // Dashboard
             currentMode = MODE_DASHBOARD;
             break;
     }
@@ -316,85 +302,7 @@ void drawGameControl(GameStateManager& gameState)
     displayStatusInfo(gameState);
 }
 
-void drawDiscovery(GameStateManager& gameState)
-{
-    lcd1602Clear();
-    
-    // Set color for discovery mode
-    lcd1602SetColor(LCD_COLOR_BLUE);
-    
-    // Show different information based on view index
-    uint8_t totalModules = gameState.getTotalModules();
-    unsigned long discoveryTime = gameState.getDiscoveryDuration();
-    
-    // Cycle through different views every 3 seconds or when encoder is turned
-    static unsigned long lastAutoSwitch = 0;
-    static uint8_t autoViewIndex = 0;
-    
-    if (millis() - lastAutoSwitch > 3000) {
-        autoViewIndex = (autoViewIndex + 1) % 4;
-        lastAutoSwitch = millis();
-    }
-    
-    // Use manual view index if encoder was turned recently
-    static unsigned long lastEncoderTime = 0;
-    if (needsRefresh) {
-        lastEncoderTime = millis();
-    }
-    
-    uint8_t displayIndex = (millis() - lastEncoderTime < 5000) ? viewIndex % 4 : autoViewIndex;
-    
-    switch (displayIndex) {
-        case 0: // Serial number and discovery status
-            lcd1602PrintLine(0, "SN: " + gameState.getSerialNumber());
-            lcd1602PrintLine(1, "DISCOVERY " + String(discoveryTime / 1000) + "s");
-            break;
-            
-        case 1: // Module count
-            lcd1602PrintLine(0, "Modules: " + String(totalModules));
-            if (totalModules == 0) {
-                lcd1602PrintLine(1, "Power on modules");
-            } else {
-                lcd1602PrintLine(1, "Press to continue");
-            }
-            break;
-            
-        case 2: // Edgework - Indicators
-            {
-                const Edgework &edge = gameState.getEdgework();
-                lcd1602PrintLine(0, "Indicators: " + String(edge.indicators.size()));
-                if (edge.indicators.size() > 0) {
-                    String indLine = "";
-                    for (uint8_t i = 0; i < min(3, (int)edge.indicators.size()); i++) {
-                        if (i > 0) indLine += " ";
-                        indLine += edge.indicators[i].label;
-                        if (edge.indicators[i].lit) indLine += "*";
-                    }
-                    lcd1602PrintLine(1, indLine);
-                } else {
-                    lcd1602PrintLine(1, "None");
-                }
-            }
-            break;
-            
-        case 3: // Edgework - Ports and Batteries
-            {
-                const Edgework &edge = gameState.getEdgework();
-                lcd1602PrintLine(0, "Batt:" + String(edge.batteryCount) + " Ports:" + String(edge.ports.size()));
-                if (edge.ports.size() > 0) {
-                    String portLine = "";
-                    for (uint8_t i = 0; i < min(2, (int)edge.ports.size()); i++) {
-                        if (i > 0) portLine += " ";
-                        portLine += edge.ports[i].label;
-                    }
-                    lcd1602PrintLine(1, portLine);
-                } else {
-                    lcd1602PrintLine(1, "No ports");
-                }
-            }
-            break;
-    }
-}
+
 
 void drawModuleDetect(GameStateManager& gameState)
 {
@@ -403,7 +311,6 @@ void drawModuleDetect(GameStateManager& gameState)
     // Show module detection info
     uint8_t totalModules = gameState.getTotalModules();
     uint8_t solvedModules = gameState.getSolvedModules();
-    bool inDiscoveryMode = gameState.isInDiscoveryMode();
     
     // Check if modules changed
     if (totalModules != lastModuleCount) {
@@ -411,21 +318,10 @@ void drawModuleDetect(GameStateManager& gameState)
         lastModuleDetectTime = millis();
     }
     
-    // Show discovery status if in discovery mode
-    if (inDiscoveryMode) {
-        lcd1602PrintLine(0, "Discovery mode");
-        if (totalModules == 0) {
-            lcd1602PrintLine(1, "Awaiting modules");
-        } else {
-            lcd1602PrintLine(1, "Found:" + String(totalModules) + " Waiting");
-        }
-        return;
-    }
-    
-    // System is ready - show normal detection status
+    // Show module status
     if (totalModules == 0) {
         lcd1602PrintLine(0, "No modules found");
-        lcd1602PrintLine(1, "Type REDISCOVER");
+        lcd1602PrintLine(1, "Register modules");
         return;
     }
     
@@ -488,12 +384,7 @@ void updateDebugInterface(GameStateManager& gameState)
                 case MODE_GAME_CONTROL:
                     performGameControlAction(menuIndex, gameState);
                     break;
-                case MODE_DISCOVERY:
-                    // Exit discovery mode and create new game
-                    gameState.exitDiscoveryMode();
-                    currentMode = MODE_DASHBOARD;
-                    viewIndex = 0;
-                    break;
+
                 default:
                     break;
             }
@@ -506,9 +397,6 @@ void updateDebugInterface(GameStateManager& gameState)
                 break;
             case MODE_MENU:
                 drawMenu(gameState);
-                break;
-            case MODE_DISCOVERY:
-                drawDiscovery(gameState);
                 break;
             case MODE_GAME_CONTROL:
                 drawGameControl(gameState);
@@ -537,12 +425,6 @@ void updateDebugInterface(GameStateManager& gameState)
         needsRefresh = true;
         lastAutoRefresh = millis();
     }
-    
-    // Auto-refresh discovery mode every 1000ms
-    if (currentMode == MODE_DISCOVERY && millis() - lastAutoRefresh > 1000) {
-        needsRefresh = true;
-        lastAutoRefresh = millis();
-    }
 }
 
 void refreshDebugDisplay(GameStateManager& gameState)
@@ -558,8 +440,8 @@ void initDebugInterface()
     pinMode(ENCODER_DT, INPUT_PULLUP);
     
     // LCD is already initialized in main.cpp
-    // Start in discovery mode
-    currentMode = MODE_DISCOVERY;
+    // Start in dashboard mode
+    currentMode = MODE_DASHBOARD;
     needsRefresh = true;
     
     Serial.println("Debug interface initialized");

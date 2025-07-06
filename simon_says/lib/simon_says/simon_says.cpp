@@ -46,7 +46,7 @@ void SimonSays::begin() {
     
     initHardware();
     
-    // Module registration will be handled by discovery system
+    // Module registration will be handled by explicit registration
     // No need to send manual registration message
     
     currentState = SimonState::IDLE;

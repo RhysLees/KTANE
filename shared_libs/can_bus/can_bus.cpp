@@ -91,6 +91,10 @@ void handleCanMessages() {
 
     messageCount++;
 
+    // Always log all received messages with ! prefix
+    Serial.print("!");
+    printCanMessage(id, buf, len, false);
+
     // Check for loopback (receiving our own messages)
     if (len >= 2) {
       uint8_t senderType = buf[0];
@@ -101,8 +105,6 @@ void handleCanMessages() {
         continue;
       }
     }
-    
-    printCanMessage(id, buf, len, false);
 
     // Handle ID negotiation messages on global channels
     if (len >= 3 && (id & 0x1F) == 0x00) { // Global channel (instance 0x00)
