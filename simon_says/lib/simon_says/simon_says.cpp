@@ -401,7 +401,13 @@ void SimonSays::generateSequence() {
         currentSequenceLength++;
     }
     
-    printSequence();
+    // Debug: Show current sequence
+    Serial.print("Simon Says: Current sequence: ");
+    for (size_t i = 0; i < sequence.size(); i++) {
+        if (i > 0) Serial.print(" -> ");
+        Serial.print(getColorName(sequence[i]));
+    }
+    Serial.println();
     
     displayIndex = 0;
     currentState = SimonState::DISPLAYING;

@@ -3,19 +3,15 @@
 #include <can_bus.h>
 #include <simon_says.h>
 
-// Global Simon Says instance
 SimonSays simonSays;
 
-// Game state variables
 bool gameRunning = false;
 uint8_t currentStrikes = 0;
 String serialNumber = "";
 bool initialization_complete = false;
 uint8_t countdown_seconds = 0;
 
-// CAN message callback
 void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    // Handle messages from the timer module (direct or broadcast)
     if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 3) {
         // New message format: [senderType, senderInstance, messageType, ...messageData]
         uint8_t senderType = data[0];
@@ -72,7 +68,6 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 if (len >= 7) {
                     uint32_t timeMs = 0;
                     memcpy(&timeMs, &data[3], 4);
-                    // Could update a time display or handle time-based logic
                 }
                 break;
                 
@@ -92,11 +87,9 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
         }
     }
     
-    // Forward message to Simon Says handler
     simonSays.handleCanMessage(id, data, len);
 }
 
-// Serial command handler
 void handleSerialCommands() {
     if (!Serial.available()) return;
     
@@ -178,7 +171,6 @@ void handleSerialCommands() {
 
 
 void setup() {
-    // Initialize serial communication
     Serial.begin(115200);
     delay(50); // slight delay for entropy
 	randomSeed(millis());
@@ -187,14 +179,11 @@ void setup() {
     Serial.println("KTANE Simon Says Module v1.0");
     Serial.println("===============================");
     
-    // Initialize CAN bus with global/temporary ID
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
     registerCanCallback(onCanMessage);
     
-    // Assign unique instance ID for this module type
     assignUniqueId(CAN_TYPE_SIMON);
     
-    // Show final assignment
     uint8_t instanceId = getCurrentInstanceId();
     Serial.print("Simon Says: Final instance ID is ");
     Serial.println(instanceId);

@@ -4,12 +4,10 @@
 #include <audio_mixer.h>
 #include <Adafruit_TPA2016.h>
 
-// Include audio headers (ensure these exist and are correctly formatted)
 #include <sounds.h>
 
 Adafruit_TPA2016 amp;
 
-// Handle incoming CAN message
 void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
 {
   if (id == CAN_ID_AUDIO && len >= 3)
@@ -19,8 +17,6 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
     uint8_t senderInstance = data[1];
     uint8_t messageId = data[2];
     
-    // Process audio command
-
     switch (messageId)
     {
       case AUDIO_BEEP_NORMAL:

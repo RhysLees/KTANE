@@ -67,31 +67,26 @@ void handleCanMessages() {
     return;
   }
   
-  // Clear interrupt flag at start of processing
   canInterruptFlag = false;
   
-  // Process messages while available (but limit to prevent blocking)
   uint8_t messageCount = 0;
   const uint8_t MAX_MESSAGES_PER_CALL = 3; // Prevent blocking main loop
   
   while (messageCount < MAX_MESSAGES_PER_CALL) {
-    // Check if messages are actually available
     if (CAN.checkReceive() != CAN_MSGAVAIL) {
-      break; // No more messages
+      break;
     }
     
     long unsigned int id;
     unsigned char len = 0;
     unsigned char buf[8];
 
-    // Read the message
     if (CAN.readMsgBuf(&id, &len, buf) != CAN_OK) {
-      break; // Error reading message
+      break;
     }
 
-    // Validate message length
     if (len > 8) {
-      continue; // Skip invalid message
+      continue;
     }
 
     messageCount++;
@@ -103,7 +98,7 @@ void handleCanMessages() {
       uint16_t senderCanId = ((senderType & 0x3F) << 5) | (senderInstance & 0x1F);
       
       if (senderCanId == thisModuleId) {
-        continue; // Skip processing our own messages
+        continue;
       }
     }
     
@@ -116,22 +111,18 @@ void handleCanMessages() {
       uint8_t instanceId = buf[2];
       
       if (msgType == ID_PROBE && moduleType == currentModuleType) {
-        // Someone is probing for an ID within our module type
         if (instanceId == currentInstanceId && currentInstanceId != 0) {
-          // They're probing OUR ID! Tell them it's taken
           uint8_t takenData[3] = {ID_TAKEN, moduleType, instanceId};
           sendCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), takenData, 3);
         }
       }
       else if (msgType == ID_TAKEN && moduleType == currentModuleType) {
-        // Someone told us an ID is taken during our negotiation
         idConflictDetected = true;
       }
     }
 
-    // Filter to this module or broadcast messages
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      continue; // Skip to next message
+      continue;
     }
 
     for (uint8_t i = 0; i < callbackCount; i++) {
@@ -148,17 +139,15 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
   }
   
   // Build standardized message: [senderType, senderInstance, messageType, ...messageData]
-  uint8_t fullMessage[8]; // CAN max is 8 bytes
+  uint8_t fullMessage[8];
   uint8_t senderType = (thisModuleId >> 5) & 0x7F;
   uint8_t senderInstance = thisModuleId & 0x1F;
   
-  // First 3 bytes are always: sender type, sender instance, message type
   fullMessage[0] = senderType;
   fullMessage[1] = senderInstance;
   if (dataLen > 0) {
     fullMessage[2] = data[0]; // First byte of data is message type
     
-    // Copy remaining message data (up to 4 more bytes)
     uint8_t maxDataBytes = min(dataLen - 1, 5);
     for (uint8_t i = 0; i < maxDataBytes; i++) {
       fullMessage[3 + i] = data[1 + i];
@@ -168,7 +157,6 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     CAN.sendMsgBuf(receiverID, 0, totalLen, (byte*)fullMessage);
     printCanMessage(receiverID, fullMessage, totalLen, true);
   } else {
-    // No message data, just send sender info
     CAN.sendMsgBuf(receiverID, 0, 2, (byte*)fullMessage);
     printCanMessage(receiverID, fullMessage, 2, true);
   }
@@ -235,14 +223,12 @@ void printCanIdInfo(uint16_t canId, const char* prefix) {
 }
 
 inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool sent) {
-  // Direction
   if (sent) {
     Serial.print("CAN TX");
   } else {
     Serial.print("CAN RX");
   }
   
-  // Show sender (this module) and receiver (target)
   if (sent) {
     printCanIdInfo(thisModuleId, " - S");
     printCanIdInfo(id, " - R");
@@ -251,13 +237,11 @@ inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool 
     printCanIdInfo(thisModuleId, " - R");
   }
   
-  // Message type only
   if (len > 0) {
     Serial.print(" - ");
     
     // Context-aware message type detection
     if (id == CAN_ID_AUDIO && len == 1) {
-      // Audio messages - interpret as audio commands
       Serial.print("AUDIO_");
       switch (data[0]) {
         case 0x01: Serial.print("BEEP_NORMAL"); break;
@@ -278,7 +262,6 @@ inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool 
         default: Serial.print("UNKNOWN_0x"); Serial.print(data[0], HEX); break;
       }
     } else {
-      // Regular protocol messages
       Serial.print(getMessageTypeName(data[0]));
     }
   }
@@ -286,32 +269,24 @@ inline void printCanMessage(uint16_t id, const uint8_t* data, uint8_t len, bool 
   Serial.println();
 }
 
-// ============================================================================
-// ID NEGOTIATION SYSTEM IMPLEMENTATION
-// ============================================================================
-
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
   if (!canBusInitialized) return false;
   
   currentModuleType = moduleType;
   currentInstanceId = 0;
   
-  // Try instance IDs from 0x01 to 0x1F
   for (uint8_t candidateId = 0x01; candidateId <= ID_MAX_INSTANCE; candidateId++) {
-    // Multi-probe approach for better collision detection
     bool idAvailable = true;
     for (int probe = 0; probe < 3; probe++) {
-      // Send probe message to global channel (direct send during negotiation)
       uint8_t probeData[3] = {ID_PROBE, moduleType, candidateId};
       CAN.sendMsgBuf(CAN_INSTANCE_ID(moduleType, 0x00), 0, 3, (byte*)probeData);
       printCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), probeData, 3, true);
       
-      // Wait for responses with jitter (reduced timeout for faster startup)
       idConflictDetected = false;
       int probeDelay = 200 + random(0, 50); // Reduced from 500ms to 200ms + jitter
       unsigned long startTime = millis();
       while (millis() - startTime < probeDelay) {
-        handleCanMessages(); // Process incoming messages
+        handleCanMessages();
         if (idConflictDetected) {
           idAvailable = false;
           break;
@@ -320,12 +295,10 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
       
       if (!idAvailable) break;
       
-      // Small delay between probes (reduced for faster startup)
-      delay(20 + random(0, 30));
+      delay(20 + random(0, 30)); // Small delay between probes
     }
     
     if (idAvailable) {
-      // Final verification probe before claiming
       uint8_t probeData[3] = {ID_PROBE, moduleType, candidateId};
       CAN.sendMsgBuf(CAN_INSTANCE_ID(moduleType, 0x00), 0, 3, (byte*)probeData);
       printCanMessage(CAN_INSTANCE_ID(moduleType, 0x00), probeData, 3, true);
@@ -341,14 +314,12 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
       }
       
       if (idAvailable) {
-        // Success! Claim the ID
         currentInstanceId = candidateId;
         *assignedId = candidateId;
         return true;
       }
     }
     
-    // Add exponential backoff if we've tried several IDs
     if (candidateId >= 3) {
       int backoffDelay = random(100, 500) * candidateId;
       delay(backoffDelay);
@@ -361,11 +332,9 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
 bool assignUniqueId(uint8_t moduleType) {
   if (!canBusInitialized) return false;
   
-  // Random delay to prevent simultaneous negotiation (reduced for faster startup)
   int randomDelay = random(50, 500); // 50-500ms delay (reduced from 100-2000ms)
   delay(randomDelay);
   
-  // Negotiate instance ID
   uint8_t assignedId = 0;
   if (negotiateInstanceId(moduleType, &assignedId)) {
     uint16_t finalCanId = CAN_INSTANCE_ID(moduleType, assignedId);
@@ -392,12 +361,8 @@ uint16_t getCurrentModuleId() {
 
 void sendHeartbeat(const uint8_t* data, uint8_t len) {
   if (!canBusInitialized || thisModuleId == 0xFFFF) {
-    // CAN bus not initialized or no valid module ID
     return;
   }
   
-  // Legacy function - use implementation directly since we have a pointer, not array
   sendCanMessage(CAN_ID_TIMER, data, len);
 }
-
-// Debug function removed

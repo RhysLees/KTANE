@@ -1,10 +1,6 @@
 #include "game_state_v2.h"
 #include <can_bus.h>
 
-// ============================================================================
-// EDGEWORK HELPER METHODS
-// ============================================================================
-
 bool Edgework::hasIndicator(IndicatorType type) const {
     for (const auto& ind : indicators) {
         if (ind.type == type) return true;
@@ -53,32 +49,22 @@ uint8_t Edgework::getPortCount() const {
     return ports.size();
 }
 
-// ============================================================================
-// GAME STATE MANAGER IMPLEMENTATION
-// ============================================================================
-
 GameStateManager::GameStateManager() : config() {
-    // Don't call initialize() here - call it manually in setup()
 }
 
 GameStateManager::GameStateManager(const GameConfig& cfg) : config(cfg) {
-    // Don't call initialize() here - call it manually in setup()
 }
 
 void GameStateManager::initialize() {
-    // Start in discovery mode - don't initialize game state yet
     currentState = GameState::DISCOVERY;
     stateChangeTime = millis();
     
-    // Clear any existing modules
     modules.clear();
     moduleMap.clear();
     
-    // Generate serial number and edgework for display during discovery
     generateSerialNumber();
     setupEdgework();
     
-    // Enter discovery mode
     enterDiscoveryMode();
     
     Serial.println("Timer: Starting in Discovery Mode");
@@ -90,10 +76,8 @@ void GameStateManager::reset() {
 }
 
 void GameStateManager::tick() {
-    // Handle discovery mode if active
     updateDiscoveryMode();
     
-    // Only run game logic if not in discovery mode
     if (!isInDiscoveryMode()) {
         updateTimer();
         updateNeedyModules();
@@ -105,10 +89,6 @@ void GameStateManager::tick() {
 void GameStateManager::update() {
     tick();
 }
-
-// ============================================================================
-// STATE MANAGEMENT
-// ============================================================================
 
 void GameStateManager::setState(GameState newState) {
     if (currentState != newState) {
@@ -140,10 +120,6 @@ void GameStateManager::setState(GameState newState) {
         if (onStateChange) onStateChange(oldState, newState);
     }
 }
-
-// ============================================================================
-// TIMER MANAGEMENT
-// ============================================================================
 
 void GameStateManager::setTimeLimit(unsigned long ms) {
     timeLimitMs = ms;
@@ -213,16 +189,11 @@ void GameStateManager::updateTimer() {
     if (onTimeUpdate) onTimeUpdate(remainingMs);
 }
 
-// ============================================================================
-// STRIKE MANAGEMENT
-// ========================================================================
-
 void GameStateManager::setStrikes(uint8_t strikes) {
     uint8_t oldStrikes = strikeCount;
     strikeCount = min(strikes, maxStrikes);
     
     if (strikeCount != oldStrikes) {
-        // Broadcast strike update to all modules
         uint8_t strikeData[2];
         strikeData[0] = TIMER_STRIKE_UPDATE;
         strikeData[1] = strikeCount;
@@ -244,12 +215,7 @@ void GameStateManager::clearStrikes() {
     setStrikes(0);
 }
 
-// ============================================================================
-// MODULE MANAGEMENT
-// ============================================================================
-
 void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
-    // Check if module already exists
     if (moduleMap.find(canId) != moduleMap.end()) {
         return;
     }
@@ -258,10 +224,8 @@ void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
     modules.emplace_back(canId, type, category);
     moduleMap[canId] = &modules.back();
     
-    // Track last module registration time for adaptive discovery
-    last_module_registration_time = millis();
+    last_module_registration_time = millis(); // Track for adaptive discovery
     
-    // Set activation time for needy modules
     if (category == ModuleCategory::NEEDY) {
         Module* module = moduleMap[canId];
         module->intervalMs = getNeedyModuleInterval(type);
@@ -404,10 +368,6 @@ bool GameStateManager::hasActiveNeedyModules() const {
     return getActiveModules() > 0;
 }
 
-// ============================================================================
-// SERIAL NUMBER
-// ============================================================================
-
 void GameStateManager::setSerialNumber(const String& serial) {
     serialNumber = serial.substring(0, 6);
     
@@ -434,10 +394,6 @@ void GameStateManager::generateSerialNumber() {
     
     setSerialNumber(String(serialBuf));
 }
-
-// ============================================================================
-// EDGEWORK MANAGEMENT
-// ============================================================================
 
 void GameStateManager::setupEdgework() {
     edgework.indicators.clear();
@@ -556,10 +512,6 @@ uint8_t GameStateManager::getPortCount() const {
     return edgework.getPortCount();
 }
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-
 void GameStateManager::setConfig(const GameConfig& cfg) {
     config = cfg;
     maxStrikes = config.maxStrikes;
@@ -568,10 +520,6 @@ void GameStateManager::setConfig(const GameConfig& cfg) {
         remainingMs = timeLimitMs;
     }
 }
-
-// ============================================================================
-// CALLBACKS
-// ============================================================================
 
 void GameStateManager::setStateChangeCallback(std::function<void(GameState, GameState)> callback) {
     onStateChange = callback;
@@ -588,10 +536,6 @@ void GameStateManager::setModuleSolvedCallback(std::function<void(uint8_t, uint8
 void GameStateManager::setTimeUpdateCallback(std::function<void(unsigned long)> callback) {
     onTimeUpdate = callback;
 }
-
-// ============================================================================
-// INTERNAL METHODS
-// ============================================================================
 
 void GameStateManager::updateNeedyModules() {
     if (!config.enableNeedyModules) return;
