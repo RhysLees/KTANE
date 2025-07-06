@@ -179,19 +179,26 @@ void setup() {
     Serial.println("KTANE Simon Says Module v1.0");
     Serial.println("===============================");
     
+    // Initialize CAN bus with temporary ID for negotiation
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
     registerCanCallback(onCanMessage);
     
+    // Negotiate unique ID
     assignUniqueId(CAN_TYPE_SIMON);
     
     uint8_t instanceId = getCurrentInstanceId();
+    uint16_t finalCanId = getCurrentModuleId();
     Serial.print("Simon Says: Final instance ID is ");
     Serial.println(instanceId);
+    Serial.print("Simon Says: Final CAN ID is 0x");
+    Serial.println(finalCanId, HEX);
     
     // Register with timer module
     uint8_t registerData[1];
     registerData[0] = MODULE_REGISTER;
-                         sendCanMessage(CAN_ID_TIMER, registerData, 1);
+    Serial.print("Simon Says: Sending MODULE_REGISTER = 0x");
+    Serial.println(MODULE_REGISTER, HEX);
+    sendCanMessage(CAN_ID_TIMER, registerData, 1);
     Serial.println("Simon Says: Registered with timer module");
     
     // Initialize with empty values - will be received from timer

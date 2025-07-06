@@ -2,6 +2,16 @@
 #include <can_bus.h>
 #include "serial_command.h"
 
+// External declarations for CAN bus status variables
+extern bool canBusInitialized;
+extern uint16_t thisModuleId;
+extern volatile uint32_t canInterruptCount;
+extern bool audioModuleConnected;
+extern bool serialDisplayConnected;
+extern unsigned long lastAudioPing;
+extern unsigned long lastSerialDisplayPing;
+extern bool idConflictDetected;
+
 static unsigned long customCountdownMillis = 5 * 60 * 1000UL;
 
 #define SERIAL_DISPLAY_CLEAR 0x00
@@ -23,7 +33,8 @@ enum CommandType
 	CMD_SOLVE,
 	CMD_EDGEWORK,
 	CMD_STATUS,
-	CMD_CONFIG
+	CMD_CONFIG,
+	CMD_CAN
 };
 
 CommandType parseCommand(const String &input, String &args)
@@ -47,6 +58,7 @@ CommandType parseCommand(const String &input, String &args)
 	if (cmd == "EDGEWORK") return CMD_EDGEWORK;
 	if (cmd == "STATUS") return CMD_STATUS;
 	if (cmd == "CONFIG") return CMD_CONFIG;
+	if (cmd == "CAN") return CMD_CAN;
 
 	return CMD_UNKNOWN;
 }
@@ -63,6 +75,7 @@ void printHelp()
 	Serial.println("  SOLVE id        - Mark module as solved");
 	Serial.println("  CONFIG          - Show configuration");
 	Serial.println("  SERIAL [cmd]    - Control serial display");
+	Serial.println("  CAN             - Show CAN bus status");
 	Serial.println("  INFO            - Show basic game info");
 	Serial.println("  HELP            - Show this help message\n");
 }
@@ -277,10 +290,92 @@ void handleSerialCommands(GameStateManager& gameState)
 		Serial.print("Serial Number: "); Serial.println(gameState.getSerialNumber());
 		break;
 
-
-
 	case CMD_HELP:
 		printHelp();
+		break;
+
+	case CMD_CAN:
+		{
+			Serial.println("=== CAN BUS STATUS ===");
+			
+			// Basic CAN bus status
+			Serial.print("CAN Bus Initialized: ");
+			Serial.println(canBusInitialized ? "YES" : "NO");
+			
+			// Current module information
+			Serial.print("Module CAN ID: 0x");
+			Serial.print(thisModuleId, HEX);
+			Serial.print(" (");
+			Serial.print(thisModuleId);
+			Serial.println(")");
+			
+			uint8_t moduleType = (thisModuleId >> 5) & 0x7F;
+			uint8_t instanceId = thisModuleId & 0x1F;
+			Serial.print("Module Type: 0x");
+			Serial.print(moduleType, HEX);
+			Serial.print(" (");
+			Serial.print(getModuleTypeName(moduleType));
+			Serial.println(")");
+			Serial.print("Instance ID: 0x");
+			Serial.print(instanceId, HEX);
+			Serial.print(" (");
+			Serial.print(instanceId);
+			Serial.println(")");
+			
+			// ID negotiation status
+			Serial.print("ID Conflict Detected: ");
+			Serial.println(idConflictDetected ? "YES" : "NO");
+			
+			// Connection status
+			Serial.println("\n--- MODULE CONNECTIONS ---");
+			Serial.print("Audio Module: ");
+			if (audioModuleConnected) {
+				Serial.print("CONNECTED (last ping: ");
+				Serial.print((millis() - lastAudioPing) / 1000);
+				Serial.println("s ago)");
+			} else {
+				Serial.println("DISCONNECTED");
+			}
+			
+			Serial.print("Serial Display: ");
+			if (serialDisplayConnected) {
+				Serial.print("CONNECTED (last ping: ");
+				Serial.print((millis() - lastSerialDisplayPing) / 1000);
+				Serial.println("s ago)");
+			} else {
+				Serial.println("DISCONNECTED");
+			}
+			
+			// Message statistics
+			Serial.println("\n--- MESSAGE STATISTICS ---");
+			Serial.print("CAN Interrupts: ");
+			Serial.println(canInterruptCount);
+			
+			// Fixed CAN IDs reference
+			Serial.println("\n--- CAN ID REFERENCE ---");
+			Serial.print("CAN_ID_TIMER: 0x");
+			Serial.print(CAN_ID_TIMER, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_TIMER);
+			Serial.println(")");
+			Serial.print("CAN_ID_AUDIO: 0x");
+			Serial.print(CAN_ID_AUDIO, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_AUDIO);
+			Serial.println(")");
+			Serial.print("CAN_ID_SERIAL_DISPLAY: 0x");
+			Serial.print(CAN_ID_SERIAL_DISPLAY, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_SERIAL_DISPLAY);
+			Serial.println(")");
+			Serial.print("CAN_ID_BROADCAST: 0x");
+			Serial.print(CAN_ID_BROADCAST, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_BROADCAST);
+			Serial.println(")");
+			
+			Serial.println("=======================");
+		}
 		break;
 
 	default:

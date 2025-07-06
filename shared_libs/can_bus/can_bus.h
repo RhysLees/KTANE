@@ -159,6 +159,7 @@ uint16_t getCurrentModuleId();
 
 // Module communication helpers
 void sendHeartbeat(const uint8_t* data, uint8_t len);
+void updateModuleConnections();
 
 // Debugging helpers
 const char* getModuleTypeName(uint8_t moduleType);

@@ -72,6 +72,8 @@ void SimonSays::update() {
         heartbeatData[1] = static_cast<uint8_t>(currentState);
         heartbeatData[2] = isModuleSolved ? 1 : 0;
         heartbeatData[3] = currentSequenceLength;
+        Serial.print("Simon Says: Sending heartbeat, MODULE_HEARTBEAT = 0x");
+        Serial.println(MODULE_HEARTBEAT, HEX);
         sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
         lastHeartbeat = currentTime;
     }
@@ -91,6 +93,8 @@ void SimonSays::update() {
         statusData[2] = isModuleSolved ? 1 : 0;
         statusData[3] = currentSequenceLength;
         statusData[4] = strikeCount;
+        Serial.print("Simon Says: Sending status, MODULE_STATUS = 0x");
+        Serial.println(MODULE_STATUS, HEX);
         sendCanMessage(CAN_ID_TIMER, statusData, 5);
         
         // Check for important state changes
@@ -98,6 +102,8 @@ void SimonSays::update() {
             // Module just got solved!
             uint8_t solvedData[1];
             solvedData[0] = MODULE_SOLVED;
+            Serial.print("Simon Says: Sending solved, MODULE_SOLVED = 0x");
+            Serial.println(MODULE_SOLVED, HEX);
             sendCanMessage(CAN_ID_TIMER, solvedData, 1);
             Serial.println("Simon Says: Sent MODULE_SOLVED to timer");
         }

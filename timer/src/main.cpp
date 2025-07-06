@@ -77,6 +77,11 @@ void setup()
 
 	initLcd1602(16, 2, Wire1);
 
+	Serial.print("DEBUG: CAN_ID_TIMER = 0x");
+	Serial.println(CAN_ID_TIMER, HEX);
+	Serial.print("DEBUG: CAN_TYPE_TIMER = 0x");
+	Serial.println(CAN_TYPE_TIMER, HEX);
+	
 	initCanBus(CAN_ID_TIMER);
 	registerCanCallback(onTimerCanMessage);
 	initStrikeDisplay();
@@ -85,6 +90,9 @@ void setup()
 	initModuleTracker(&gameState);
 
 	delay(10000);
+	
+	// Test broadcast every 2 seconds
+	Serial.println("Timer: Starting test broadcasts...");
 
 	GameConfig config;
 	config.timeLimitMs = 300000;  // 5 minutes default
@@ -128,6 +136,16 @@ void loop()
 
 	handleSerialCommands(gameState);
 	handleCanMessages();
+	updateModuleConnections(); // Check for module timeouts
+	
+	// Test broadcast every 2 seconds
+	static unsigned long lastBroadcast = 0;
+	if (millis() - lastBroadcast > 2000) {
+		lastBroadcast = millis();
+		uint8_t testData[1] = {TIMER_GAME_START};
+		Serial.println("Timer: Sending test broadcast...");
+		sendCanMessage(CAN_ID_BROADCAST, testData, 1);
+	}
 	
 	updateDebugInterface(gameState);
 }

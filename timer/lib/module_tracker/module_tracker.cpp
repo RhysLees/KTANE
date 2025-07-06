@@ -6,7 +6,7 @@ static ModuleTracker *trackerInstance = nullptr;
 ModuleTracker::ModuleTracker(GameStateManager *gsm)
     : gameState(gsm) {}
 
-void ModuleTracker::handleCanMessage(uint8_t id, uint8_t *data, uint8_t len)
+void ModuleTracker::handleCanMessage(uint16_t id, uint8_t *data, uint8_t len)
 {
     if (id >= MODULE_ID_START && id <= MODULE_ID_END)
     {
@@ -29,7 +29,7 @@ void ModuleTracker::update()
         if (now - it->second.lastSeen > timeoutMs)
         {
             // Module timed out, remove it
-            uint8_t moduleId = it->first;
+            uint16_t moduleId = it->first;
             it = modules.erase(it);
             changed = true;
             
