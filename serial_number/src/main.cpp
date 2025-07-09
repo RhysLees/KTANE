@@ -9,38 +9,35 @@
 // Handle incoming CAN message
 void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len)
 {
-  if (id != CAN_ID_SERIAL_DISPLAY || len == 0)
+  if (id != CAN_ID_SERIAL_DISPLAY || len < 3)
     return;
 
-  uint8_t command = data[0];
+  // New message format: [senderType, senderInstance, command, ...commandData]
+  uint8_t senderType = data[0];
+  uint8_t senderInstance = data[1];
+  uint8_t command = data[2];
 
   switch (command)
   {
   case SERIAL_DISPLAY_SET_SERIAL:
-    if (len == 7)
+    if (len >= 9)
     {
       char serial[7]; // 6 characters + null terminator
-      memcpy(serial, &data[1], 6);
+      memcpy(serial, &data[3], 6);
       serial[6] = '\0';
       epaperDrawTag(String(serial));
-      Serial.print("Set serial: ");
-      Serial.println(serial);
     }
     break;
 
   case SERIAL_DISPLAY_CLEAR:
     epaperClear();
-    Serial.println("Display cleared");
     break;
 
   case SERIAL_DISPLAY_SHOW_CREDIT:
     epaperDrawCredit();
-    Serial.println("Credit displayed");
     break;
 
   default:
-    Serial.print("Unknown serial display command: 0x");
-    Serial.println(command, HEX);
     break;
   }
 }

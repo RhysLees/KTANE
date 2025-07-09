@@ -1,10 +1,13 @@
 #pragma once
 
 #include <Arduino.h>
-#include <game_state.h>
+#include "game_state_v2.h"
 
-extern GameStateManager gameState;
+// Handle serial commands for game control
+void handleSerialCommands(GameStateManager& gameState);
 
-void handleSerialCommands();
+// Legacy compatibility function
 bool isCountdownActive();
+
+// Print help text
 void printHelp();

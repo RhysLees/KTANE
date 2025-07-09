@@ -1,9 +1,16 @@
 #include <Arduino.h>
-#include <countdown.h>
-#include <game_state.h>
 #include <can_bus.h>
+#include "serial_command.h"
 
-extern GameStateManager gameState;
+// External declarations for CAN bus status variables
+extern bool canBusInitialized;
+extern uint16_t thisModuleId;
+extern volatile uint32_t canInterruptCount;
+extern bool audioModuleConnected;
+extern bool serialDisplayConnected;
+extern unsigned long lastAudioPing;
+extern unsigned long lastSerialDisplayPing;
+extern bool idConflictDetected;
 
 static unsigned long customCountdownMillis = 5 * 60 * 1000UL;
 
@@ -21,7 +28,13 @@ enum CommandType
 	CMD_STRIKE,
 	CMD_INFO,
 	CMD_HELP,
-	CMD_SERIAL
+	CMD_SERIAL,
+	CMD_MODULE,
+	CMD_SOLVE,
+	CMD_EDGEWORK,
+	CMD_STATUS,
+	CMD_CONFIG,
+	CMD_CAN
 };
 
 CommandType parseCommand(const String &input, String &args)
@@ -32,40 +45,42 @@ CommandType parseCommand(const String &input, String &args)
 	cmd.trim();
 	cmd.toUpperCase();
 
-	if (cmd == "START")
-		return CMD_START;
-	if (cmd == "STOP")
-		return CMD_STOP;
-	if (cmd == "RESET")
-		return CMD_RESET;
-	if (cmd == "TIME")
-		return CMD_TIME;
-	if (cmd == "STRIKE")
-		return CMD_STRIKE;
-	if (cmd == "INFO")
-		return CMD_INFO;
-	if (cmd == "HELP" || cmd == "?")
-		return CMD_HELP;
-	if (cmd == "SERIAL")
-		return CMD_SERIAL;
+	if (cmd == "START") return CMD_START;
+	if (cmd == "STOP") return CMD_STOP;
+	if (cmd == "RESET") return CMD_RESET;
+	if (cmd == "TIME") return CMD_TIME;
+	if (cmd == "STRIKE") return CMD_STRIKE;
+	if (cmd == "INFO") return CMD_INFO;
+	if (cmd == "HELP" || cmd == "?") return CMD_HELP;
+	if (cmd == "SERIAL") return CMD_SERIAL;
+	if (cmd == "MODULE") return CMD_MODULE;
+	if (cmd == "SOLVE") return CMD_SOLVE;
+	if (cmd == "EDGEWORK") return CMD_EDGEWORK;
+	if (cmd == "STATUS") return CMD_STATUS;
+	if (cmd == "CONFIG") return CMD_CONFIG;
+	if (cmd == "CAN") return CMD_CAN;
 
 	return CMD_UNKNOWN;
 }
 
 void printHelp()
 {
-	Serial.println("\nAvailable Commands:");
-	Serial.println("  START         - Resume or start the countdown");
-	Serial.println("  STOP          - Pause the countdown");
-	Serial.println("  RESET         - Reset countdown to set time");
-	Serial.println("  TIME mm:ss    - Set countdown duration");
-	Serial.println("  STRIKE x      - Set strikes (0–2)");
-	Serial.println("  INFO          - Show current state");
-	Serial.println("  SERIAL [CLEAR|REGENERATE|SHOW|CREDIT] - Control serial display");
-	Serial.println("  HELP          - Show this help message\n");
+	Serial.println("\nKTANE Game State v2.0 Commands:");
+	Serial.println("  START           - Start/resume the game");
+	Serial.println("  STOP            - Pause the game");
+	Serial.println("  RESET           - Reset game to initial state");
+	Serial.println("  TIME mm:ss      - Set countdown duration");
+	Serial.println("  STRIKE x        - Set strike count (0–3)");
+	Serial.println("  MODULE id type  - Register a module");
+	Serial.println("  SOLVE id        - Mark module as solved");
+	Serial.println("  CONFIG          - Show configuration");
+	Serial.println("  SERIAL [cmd]    - Control serial display");
+	Serial.println("  CAN             - Show CAN bus status");
+	Serial.println("  INFO            - Show basic game info");
+	Serial.println("  HELP            - Show this help message\n");
 }
 
-void handleSerialCommands()
+void handleSerialCommands(GameStateManager& gameState)
 {
 	if (!Serial.available())
 		return;
@@ -79,22 +94,25 @@ void handleSerialCommands()
 	switch (cmdType)
 	{
 	case CMD_START:
-		gameState.startTimer();
-		gameState.setState(GAME_RUNNING);
-		Serial.println("Countdown resumed.");
+		if (gameState.getState() == GameState::PAUSED) {
+			gameState.resumeTimer();
+			Serial.println("Game resumed.");
+		} else if (gameState.getState() == GameState::IDLE) {
+			gameState.startGame();
+			Serial.println("Game started.");
+		} else {
+			Serial.println("Game cannot be started from current state.");
+		}
 		break;
 
 	case CMD_STOP:
-		gameState.stopTimer();
-		gameState.setState(GAME_IDLE);
-		Serial.println("Countdown paused.");
+		gameState.pauseTimer();
+		Serial.println("Game paused.");
 		break;
 
 	case CMD_RESET:
-		gameState.setTimeLimit(customCountdownMillis);
-		gameState.resetTimer();
-		gameState.setState(GAME_IDLE);
-		Serial.println("Countdown reset.");
+		gameState.reset();
+		Serial.println("Game reset.");
 		break;
 
 	case CMD_TIME:
@@ -122,17 +140,17 @@ void handleSerialCommands()
 		args.trim();
 		if (args.isEmpty())
 		{
-			uint8_t next = (gameState.getStrikes() + 1) % (gameState.getMaxStrikes() + 1);
-			gameState.setStrikes(next);
-			Serial.print("Strikes incremented to ");
-			Serial.println(next);
+			gameState.addStrike();
+			Serial.print("Strike added. Total: ");
+			Serial.println(gameState.getStrikes());
 		}
 		else
 		{
 			int strikeVal = args.toInt();
 			if (strikeVal < 0 || strikeVal > gameState.getMaxStrikes())
 			{
-				Serial.println("Strike must be between 0 and 2");
+				Serial.print("Strike must be between 0 and ");
+				Serial.println(gameState.getMaxStrikes());
 			}
 			else
 			{
@@ -141,6 +159,63 @@ void handleSerialCommands()
 				Serial.println(strikeVal);
 			}
 		}
+		break;
+	}
+
+	case CMD_MODULE:
+	{
+		// Format: MODULE <id> <type>
+		// Example: MODULE 16 10 (register module with CAN ID 16 and type 0x10)
+		args.trim();
+		int spaceIndex = args.indexOf(' ');
+		if (spaceIndex != -1) {
+			uint16_t canId = args.substring(0, spaceIndex).toInt();
+			uint8_t moduleType = args.substring(spaceIndex + 1).toInt();
+			gameState.registerModule(canId, static_cast<ModuleType>(moduleType));
+			Serial.print("Module registered: ID=0x");
+			Serial.print(canId, HEX);
+			Serial.print(" Type=0x");
+			Serial.println(moduleType, HEX);
+		} else {
+			Serial.println("Usage: MODULE <id> <type>");
+		}
+		break;
+	}
+
+	case CMD_SOLVE:
+	{
+		args.trim();
+		if (!args.isEmpty()) {
+			uint16_t canId = args.toInt();
+			gameState.setModuleSolved(canId);
+			Serial.print("Module solved: ID=0x");
+			Serial.println(canId, HEX);
+		} else {
+			Serial.println("Usage: SOLVE <id>");
+		}
+		break;
+	}
+
+	case CMD_STATUS:
+		Serial.println("STATUS command removed - use INFO instead");
+		break;
+
+	case CMD_EDGEWORK:
+		Serial.println("EDGEWORK command removed - use INFO instead");
+		break;
+
+	case CMD_CONFIG:
+	{
+		GameConfig config = gameState.getConfig();
+		Serial.println("=== CONFIGURATION ===");
+		Serial.print("Time Limit: "); Serial.print(config.timeLimitMs / 1000); Serial.println("s");
+		Serial.print("Max Strikes: "); Serial.println(config.maxStrikes);
+		Serial.print("Strike Acceleration: "); Serial.println(config.enableStrikeAcceleration ? "ON" : "OFF");
+		Serial.print("Acceleration Factor: "); Serial.println(config.strikeAccelerationFactor);
+		Serial.print("Emergency Alarm: "); Serial.println(config.enableEmergencyAlarm ? "ON" : "OFF");
+		Serial.print("Emergency Threshold: "); Serial.print(config.emergencyAlarmThreshold / 1000); Serial.println("s");
+		Serial.print("Needy Modules: "); Serial.println(config.enableNeedyModules ? "ON" : "OFF");
+		Serial.print("Edgework: "); Serial.println(config.enableEdgework ? "ON" : "OFF");
 		break;
 	}
 
@@ -156,25 +231,15 @@ void handleSerialCommands()
 		}
 		else if (args == "REGENERATE")
 		{
-			gameState.generateSerial();
-			uint8_t buf[7];
-			buf[0] = SERIAL_DISPLAY_SET_SERIAL;
-			memcpy(&buf[1], gameState.getSerial().c_str(), 6);
-			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
-			Serial.print("Serial display showing serial number: ");
-			Serial.println(gameState.getSerial());
+			gameState.generateSerialNumber();
+			Serial.print("New serial number: ");
+			Serial.println(gameState.getSerialNumber());
 		}
 		else if (args == "SHOW")
 		{
-			char serial[7];
-			String serialStr = gameState.getSerial();
-			serialStr.toCharArray(serial, 7);
-			uint8_t buf[7];
-			buf[0] = SERIAL_DISPLAY_SET_SERIAL;
-			memcpy(&buf[1], serial, 6);
-			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
-			Serial.print("Serial display showing serial number: ");
-			Serial.println(serialStr);
+			gameState.setSerialNumber(gameState.getSerialNumber()); // This will send to display
+			Serial.print("Serial display showing: ");
+			Serial.println(gameState.getSerialNumber());
 		}
 		else if (args == "CREDIT")
 		{
@@ -184,7 +249,7 @@ void handleSerialCommands()
 		}
 		else
 		{
-			Serial.println("Invalid SERIAL command. Use CLEAR, SHOW, or CREDIT.");
+			Serial.println("Usage: SERIAL [CLEAR|REGENERATE|SHOW|CREDIT]");
 		}
 		break;
 	}
@@ -194,36 +259,123 @@ void handleSerialCommands()
 		Serial.print("State: ");
 		switch (gameState.getState())
 		{
-		case GAME_IDLE:
+		case GameState::IDLE:
 			Serial.println("IDLE");
 			break;
-		case GAME_RUNNING:
+		case GameState::RUNNING:
 			Serial.println("RUNNING");
 			break;
-		case GAME_EXPLODED:
+		case GameState::PAUSED:
+			Serial.println("PAUSED");
+			break;
+		case GameState::EXPLODED:
 			Serial.println("EXPLODED");
 			break;
-		case GAME_SOLVED:
-			Serial.println("SOLVED");
+		case GameState::DEFUSED:
+			Serial.println("DEFUSED");
+			break;
+		case GameState::VICTORY:
+			Serial.println("VICTORY");
 			break;
 		default:
 			Serial.println("UNKNOWN");
 			break;
 		}
-		Serial.print("Strikes: ");
-		Serial.println(gameState.getStrikes());
-		Serial.print("Modules: ");
-		Serial.print(gameState.getSolvedModules());
-		Serial.print(" solved of ");
-		Serial.println(gameState.getTotalModules());
-		Serial.print("Countdown: ");
-		Serial.println(gameState.isTimerRunning() ? "Running" : "Stopped");
-		Serial.print("Time Remaining: ");
-		Serial.println(gameState.getRemainingMillis() / 1000);
+		Serial.print("Strikes: "); Serial.print(gameState.getStrikes()); 
+		Serial.print("/"); Serial.println(gameState.getMaxStrikes());
+		Serial.print("Modules: "); Serial.print(gameState.getSolvedModules());
+		Serial.print("/"); Serial.println(gameState.getTotalModules());
+		Serial.print("Timer: "); Serial.println(gameState.isTimerRunning() ? "Running" : "Stopped");
+		Serial.print("Time Remaining: "); Serial.print(gameState.getRemainingTime() / 1000); Serial.println("s");
+		Serial.print("Serial Number: "); Serial.println(gameState.getSerialNumber());
 		break;
 
 	case CMD_HELP:
 		printHelp();
+		break;
+
+	case CMD_CAN:
+		{
+			Serial.println("=== CAN BUS STATUS ===");
+			
+			// Basic CAN bus status
+			Serial.print("CAN Bus Initialized: ");
+			Serial.println(canBusInitialized ? "YES" : "NO");
+			
+			// Current module information
+			Serial.print("Module CAN ID: 0x");
+			Serial.print(thisModuleId, HEX);
+			Serial.print(" (");
+			Serial.print(thisModuleId);
+			Serial.println(")");
+			
+			uint8_t moduleType = (thisModuleId >> 5) & 0x7F;
+			uint8_t instanceId = thisModuleId & 0x1F;
+			Serial.print("Module Type: 0x");
+			Serial.print(moduleType, HEX);
+			Serial.print(" (");
+			Serial.print(getModuleTypeName(moduleType));
+			Serial.println(")");
+			Serial.print("Instance ID: 0x");
+			Serial.print(instanceId, HEX);
+			Serial.print(" (");
+			Serial.print(instanceId);
+			Serial.println(")");
+			
+			// ID negotiation status
+			Serial.print("ID Conflict Detected: ");
+			Serial.println(idConflictDetected ? "YES" : "NO");
+			
+			// Connection status
+			Serial.println("\n--- MODULE CONNECTIONS ---");
+			Serial.print("Audio Module: ");
+			if (audioModuleConnected) {
+				Serial.print("CONNECTED (last ping: ");
+				Serial.print((millis() - lastAudioPing) / 1000);
+				Serial.println("s ago)");
+			} else {
+				Serial.println("DISCONNECTED");
+			}
+			
+			Serial.print("Serial Display: ");
+			if (serialDisplayConnected) {
+				Serial.print("CONNECTED (last ping: ");
+				Serial.print((millis() - lastSerialDisplayPing) / 1000);
+				Serial.println("s ago)");
+			} else {
+				Serial.println("DISCONNECTED");
+			}
+			
+			// Message statistics
+			Serial.println("\n--- MESSAGE STATISTICS ---");
+			Serial.print("CAN Interrupts: ");
+			Serial.println(canInterruptCount);
+			
+			// Fixed CAN IDs reference
+			Serial.println("\n--- CAN ID REFERENCE ---");
+			Serial.print("CAN_ID_TIMER: 0x");
+			Serial.print(CAN_ID_TIMER, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_TIMER);
+			Serial.println(")");
+			Serial.print("CAN_ID_AUDIO: 0x");
+			Serial.print(CAN_ID_AUDIO, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_AUDIO);
+			Serial.println(")");
+			Serial.print("CAN_ID_SERIAL_DISPLAY: 0x");
+			Serial.print(CAN_ID_SERIAL_DISPLAY, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_SERIAL_DISPLAY);
+			Serial.println(")");
+			Serial.print("CAN_ID_BROADCAST: 0x");
+			Serial.print(CAN_ID_BROADCAST, HEX);
+			Serial.print(" (");
+			Serial.print(CAN_ID_BROADCAST);
+			Serial.println(")");
+			
+			Serial.println("=======================");
+		}
 		break;
 
 	default:
@@ -234,5 +386,6 @@ void handleSerialCommands()
 
 bool isCountdownActive()
 {
-	return gameState.isTimerRunning();
+	// Legacy function - would need game state reference
+	return false;
 }
