@@ -9,10 +9,8 @@
 Adafruit_TPA2016 amp;
 
 void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
-  if (id == CAN_ID_AUDIO && len >= 3) {
-    uint8_t senderType = data[0];
-    uint8_t senderInstance = data[1];
-    uint8_t messageId = data[2];
+  if (id == CAN_ID_AUDIO && len >= 1) {
+    uint8_t messageId = data[0];
     
     // Set heartbeat to active when processing audio
     setHeartbeatStatus(MODULE_STATUS_ACTIVE);
@@ -67,6 +65,18 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
     // Return to idle status after processing
     setHeartbeatStatus(MODULE_STATUS_IDLE);
   }
+  
+  // Handle game state messages from timer
+  if (id == CAN_ID_BROADCAST && len >= 1) {
+    uint8_t messageType = data[0];
+    if (messageType == TIMER_GAME_START) {
+      setHeartbeatGameRunning(true);
+      Serial.println("Audio: Game started - switching to 5s heartbeats");
+    } else if (messageType == TIMER_GAME_STOP) {
+      setHeartbeatGameRunning(false);
+      Serial.println("Audio: Game stopped - switching to 1s heartbeats");
+    }
+  }
 }
 
 void setup() {
@@ -91,10 +101,10 @@ void setup() {
   initCanBus(CAN_ID_AUDIO);
   registerCanCallback(handleAudioMessage);
   
-  // Initialize heartbeat system for audio module
-  initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);
+  // Initialize heartbeat system (starts in discovery mode)
+  initHeartbeat();
   
-  Serial.println("Audio module ready with heartbeat system");
+  Serial.println("Audio module ready with dynamic heartbeat system");
 }
 
 void loop() {

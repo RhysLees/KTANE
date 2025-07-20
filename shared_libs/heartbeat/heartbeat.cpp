@@ -6,33 +6,49 @@
 static HeartbeatManager* globalHeartbeat = nullptr;
 
 // HeartbeatManager Implementation
-HeartbeatManager::HeartbeatManager(unsigned long interval) 
-    : lastHeartbeat(0), heartbeatInterval(interval), enabled(false), 
-      currentStatus(MODULE_STATUS_IDLE), progress(0) {
+HeartbeatManager::HeartbeatManager() 
+    : lastHeartbeat(0), enabled(false), 
+      currentStatus(MODULE_STATUS_IDLE), progress(0), gameState(GAME_NOT_RUNNING) {
 }
 
 void HeartbeatManager::begin() {
     enabled = true;
     lastHeartbeat = millis();
-    Serial.print("Heartbeat: Initialized with ");
-    Serial.print(heartbeatInterval);
-    Serial.println("ms interval");
+    Serial.print("Heartbeat: Initialized - Discovery mode (");
+    Serial.print(getCurrentInterval());
+    Serial.println("ms)");
 }
 
 void HeartbeatManager::update() {
     if (!enabled) return;
     
     unsigned long now = millis();
-    if (now - lastHeartbeat >= heartbeatInterval) {
+    if (now - lastHeartbeat >= getCurrentInterval()) {
         sendNow();
     }
 }
 
-void HeartbeatManager::setInterval(unsigned long intervalMs) {
-    heartbeatInterval = intervalMs;
-    Serial.print("Heartbeat: Interval set to ");
-    Serial.print(intervalMs);
-    Serial.println("ms");
+void HeartbeatManager::setGameRunning(bool running) {
+    GameRunningState newState = running ? GAME_RUNNING : GAME_NOT_RUNNING;
+    if (newState != gameState) {
+        gameState = newState;
+        Serial.print("Heartbeat: Game state changed to ");
+        Serial.print(running ? "RUNNING" : "DISCOVERY");
+        Serial.print(" (");
+        Serial.print(getCurrentInterval());
+        Serial.println("ms)");
+        
+        // Send immediate heartbeat on state change
+        sendNow();
+    }
+}
+
+bool HeartbeatManager::isGameRunning() const {
+    return gameState == GAME_RUNNING;
+}
+
+unsigned long HeartbeatManager::getCurrentInterval() const {
+    return (gameState == GAME_RUNNING) ? HEARTBEAT_INTERVAL_GAME : HEARTBEAT_INTERVAL_DISCOVERY;
 }
 
 void HeartbeatManager::enable(bool en) {
@@ -64,7 +80,7 @@ void HeartbeatManager::setSolved(bool solved) {
 void HeartbeatManager::sendNow() {
     if (!enabled) return;
     
-    // Enhanced heartbeat format: [MODULE_HEARTBEAT, status, solved_flag, progress]
+    // Simplified heartbeat format: [MODULE_HEARTBEAT, status, solved_flag, progress]
     uint8_t heartbeatData[4];
     heartbeatData[0] = MODULE_HEARTBEAT;
     heartbeatData[1] = currentStatus;
@@ -73,12 +89,6 @@ void HeartbeatManager::sendNow() {
     
     sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
     lastHeartbeat = millis();
-    
-    // Optional debug output (uncomment for troubleshooting)
-    // Serial.print("Heartbeat sent - Status: ");
-    // Serial.print(currentStatus);
-    // Serial.print(" Progress: ");
-    // Serial.println(progress);
 }
 
 bool HeartbeatManager::isEnabled() const {
@@ -89,13 +99,9 @@ ModuleStatus HeartbeatManager::getStatus() const {
     return currentStatus;
 }
 
-unsigned long HeartbeatManager::getInterval() const {
-    return heartbeatInterval;
-}
-
 // Global convenience functions
-void initHeartbeat(unsigned long intervalMs) {
-    static HeartbeatManager instance(intervalMs);
+void initHeartbeat() {
+    static HeartbeatManager instance;
     globalHeartbeat = &instance;
     globalHeartbeat->begin();
 }
@@ -103,6 +109,12 @@ void initHeartbeat(unsigned long intervalMs) {
 void updateHeartbeat() {
     if (globalHeartbeat) {
         globalHeartbeat->update();
+    }
+}
+
+void setHeartbeatGameRunning(bool running) {
+    if (globalHeartbeat) {
+        globalHeartbeat->setGameRunning(running);
     }
 }
 

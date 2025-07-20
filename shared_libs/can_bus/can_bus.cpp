@@ -102,43 +102,19 @@ void handleCanMessages() {
     // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
 
-    // Update connection status - check both direct messages and sender info
+    // Update connection status - check direct messages from known modules
     if (id == CAN_ID_AUDIO) {
       if (!audioModuleConnected) {
-        Serial.println("Audio module connected (direct message)");
+        Serial.println("Audio module connected");
       }
       audioModuleConnected = true;
       lastAudioPing = millis();
     } else if (id == CAN_ID_SERIAL_DISPLAY) {
       if (!serialDisplayConnected) {
-        Serial.println("Serial display connected (direct message)");
+        Serial.println("Serial display connected");
       }
       serialDisplayConnected = true;
       lastSerialDisplayPing = millis();
-    }
-    
-    // Also check for heartbeats and other messages with sender information
-    if (len >= 3) {
-      uint8_t senderType = buf[0];
-      uint8_t senderInstance = buf[1];
-      uint8_t msgType = buf[2];
-      
-      // Update connection status based on sender type for heartbeats
-      if (msgType == MODULE_HEARTBEAT) {
-        if (senderType == CAN_TYPE_AUDIO) {
-          if (!audioModuleConnected) {
-            Serial.println("Audio module connected (heartbeat)");
-          }
-          audioModuleConnected = true;
-          lastAudioPing = millis();
-        } else if (senderType == CAN_TYPE_SERIAL_DISPLAY) {
-          if (!serialDisplayConnected) {
-            Serial.println("Serial display connected (heartbeat)");
-          }
-          serialDisplayConnected = true;
-          lastSerialDisplayPing = millis();
-        }
-      }
     }
 
     // Filter to this module or broadcast messages only
@@ -168,26 +144,9 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     return;
   }
   
-  // Build standardized message: [senderType, senderInstance, messageType, ...messageData]
-  uint8_t fullMessage[8];
-  uint8_t senderType = (thisModuleId >> 5) & 0x7F;
-  uint8_t senderInstance = thisModuleId & 0x1F;
-  
-  fullMessage[0] = senderType;
-  fullMessage[1] = senderInstance;
-  
-  if (dataLen > 0) {
-    fullMessage[2] = data[0]; // First byte is message type
-    
-    uint8_t maxDataBytes = min(dataLen - 1, 5);
-    for (uint8_t i = 0; i < maxDataBytes; i++) {
-      fullMessage[3 + i] = data[1 + i];
-    }
-    uint8_t totalLen = 3 + maxDataBytes;
-    
-    CAN.sendMsgBuf(receiverID, 0, totalLen, (byte*)fullMessage);
-  } else {
-    CAN.sendMsgBuf(receiverID, 0, 2, (byte*)fullMessage);
+  // Simplified message format: Send data as-is, CAN ID identifies sender
+  if (dataLen > 0 && dataLen <= 8) {
+    CAN.sendMsgBuf(receiverID, 0, dataLen, (byte*)data);
   }
 }
 

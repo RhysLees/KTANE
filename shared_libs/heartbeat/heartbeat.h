@@ -2,11 +2,9 @@
 
 #include <stdint.h>
 
-// Default heartbeat intervals for different module types
-#define HEARTBEAT_INTERVAL_AUDIO 2000        // 2 seconds
-#define HEARTBEAT_INTERVAL_SERIAL_DISPLAY 3000  // 3 seconds  
-#define HEARTBEAT_INTERVAL_MODULE 5000       // 5 seconds for game modules
-#define HEARTBEAT_INTERVAL_NEEDY 1000        // 1 second for needy modules
+// Simplified heartbeat intervals - only two modes
+#define HEARTBEAT_INTERVAL_DISCOVERY 1000   // 1 second for fast module discovery
+#define HEARTBEAT_INTERVAL_GAME 5000        // 5 seconds during game play
 
 // Module status flags for enhanced heartbeats
 enum ModuleStatus : uint8_t {
@@ -17,18 +15,24 @@ enum ModuleStatus : uint8_t {
     MODULE_STATUS_ERROR = 0xFF
 };
 
+// Game state for timing control
+enum GameRunningState : uint8_t {
+    GAME_NOT_RUNNING = 0,
+    GAME_RUNNING = 1
+};
+
 // Heartbeat manager class
 class HeartbeatManager {
 private:
     unsigned long lastHeartbeat;
-    unsigned long heartbeatInterval;
     bool enabled;
     ModuleStatus currentStatus;
     uint8_t progress;
+    GameRunningState gameState;
     
 public:
-    // Constructor with default 5-second interval
-    HeartbeatManager(unsigned long interval = HEARTBEAT_INTERVAL_MODULE);
+    // Constructor
+    HeartbeatManager();
     
     // Initialize the heartbeat system
     void begin();
@@ -36,8 +40,14 @@ public:
     // Update function - call this in loop()
     void update();
     
+    // Game state management
+    void setGameRunning(bool running);
+    bool isGameRunning() const;
+    
+    // Get current interval based on game state
+    unsigned long getCurrentInterval() const;
+    
     // Configuration
-    void setInterval(unsigned long intervalMs);
     void enable(bool enabled = true);
     void disable();
     
@@ -52,12 +62,12 @@ public:
     // Status queries
     bool isEnabled() const;
     ModuleStatus getStatus() const;
-    unsigned long getInterval() const;
 };
 
 // Global convenience functions for simple usage
-void initHeartbeat(unsigned long intervalMs = HEARTBEAT_INTERVAL_MODULE);
+void initHeartbeat();
 void updateHeartbeat();
+void setHeartbeatGameRunning(bool running);
 void setHeartbeatStatus(ModuleStatus status);
 void setHeartbeatProgress(uint8_t progress);
 void setHeartbeatSolved(bool solved = true);

@@ -8,21 +8,19 @@
 #include <heartbeat.h>
 
 void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
-  if (id != CAN_ID_SERIAL_DISPLAY || len < 3)
+  if (id != CAN_ID_SERIAL_DISPLAY || len < 1)
     return;
 
-  uint8_t senderType = data[0];
-  uint8_t senderInstance = data[1];
-  uint8_t command = data[2];
+  uint8_t command = data[0];
   
   // Set heartbeat to active when processing display commands
   setHeartbeatStatus(MODULE_STATUS_ACTIVE);
 
   switch (command) {
     case SERIAL_DISPLAY_SET_SERIAL:
-      if (len >= 9) {
+      if (len >= 7) {
         char serial[7];
-        memcpy(serial, &data[3], 6);
+        memcpy(serial, &data[1], 6);
         serial[6] = '\0';
         epaperDrawTag(String(serial));
       }
@@ -42,6 +40,18 @@ void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   
   // Return to idle status after processing
   setHeartbeatStatus(MODULE_STATUS_IDLE);
+  
+  // Handle game state messages from timer
+  if (id == CAN_ID_BROADCAST && len >= 1) {
+    uint8_t messageType = data[0];
+    if (messageType == TIMER_GAME_START) {
+      setHeartbeatGameRunning(true);
+      Serial.println("Serial Display: Game started - switching to 5s heartbeats");
+    } else if (messageType == TIMER_GAME_STOP) {
+      setHeartbeatGameRunning(false);
+      Serial.println("Serial Display: Game stopped - switching to 1s heartbeats");
+    }
+  }
 }
 
 void setup() {
@@ -55,10 +65,10 @@ void setup() {
   initCanBus(CAN_ID_SERIAL_DISPLAY);
   registerCanCallback(handleSerialDisplayMessage);
 
-  // Initialize heartbeat system for serial display
-  initHeartbeat(HEARTBEAT_INTERVAL_SERIAL_DISPLAY);
+  // Initialize heartbeat system (starts in discovery mode)
+  initHeartbeat();
 
-  Serial.println("Serial display ready with heartbeat system");
+  Serial.println("Serial display ready with dynamic heartbeat system");
   delay(5000);
 }
 

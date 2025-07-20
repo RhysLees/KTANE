@@ -13,16 +13,16 @@ bool initialization_complete = false;
 uint8_t countdown_seconds = 0;
 
 void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 3) {
-        uint8_t senderType = data[0];
-        uint8_t senderInstance = data[1];
-        uint8_t msgType = data[2];
+    if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 1) {
+        uint8_t msgType = data[0];
         
         switch (msgType) {
             case TIMER_GAME_START:
                 if (initialization_complete) {
                     gameRunning = true;
                     simonSays.onGameStateChange(true);
+                    setHeartbeatGameRunning(true);
+                    Serial.println("Simon Says: Game started - switching to 5s heartbeats");
                 } else {
                     Serial.println("Waiting for initialization to complete...");
                 }
@@ -31,11 +31,13 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
             case TIMER_GAME_STOP:
                 gameRunning = false;
                 simonSays.onGameStateChange(false);
+                setHeartbeatGameRunning(false);
+                Serial.println("Simon Says: Game stopped - switching to 1s heartbeats");
                 break;
                 
             case TIMER_STRIKE_UPDATE:
-                if (len >= 4) {
-                    uint8_t strikes = data[3];
+                if (len >= 2) {
+                    uint8_t strikes = data[1];
                     if (strikes != currentStrikes) {
                         currentStrikes = strikes;
                         simonSays.setStrikeCount(strikes);
@@ -44,9 +46,9 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 break;
                 
             case TIMER_SERIAL_NUMBER:
-                if (len >= 9) {
+                if (len >= 7) {
                     char serial[7];
-                    memcpy(serial, &data[3], 6);
+                    memcpy(serial, &data[1], 6);
                     serial[6] = '\0';
                     serialNumber = String(serial);
                     simonSays.setSerialNumber(serialNumber);
@@ -57,18 +59,19 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 simonSays.reset();
                 gameRunning = false;
                 currentStrikes = 0;
+                setHeartbeatGameRunning(false);
                 break;
                 
             case TIMER_TIME_UPDATE:
-                if (len >= 7) {
+                if (len >= 5) {
                     uint32_t timeMs = 0;
-                    memcpy(&timeMs, &data[3], 4);
+                    memcpy(&timeMs, &data[1], 4);
                 }
                 break;
                 
             case TIMER_COUNTDOWN:
-                if (len >= 4) {
-                    countdown_seconds = data[3];
+                if (len >= 2) {
+                    countdown_seconds = data[1];
                     
                     if (countdown_seconds == 0) {
                         initialization_complete = true;
@@ -197,20 +200,20 @@ void setup() {
     Serial.print("CAN ID: 0x");
     Serial.println(finalCanId, HEX);
     
+    // Initialize heartbeat system (starts in discovery mode)
+    initHeartbeat();
+    
     // Register with timer module
     uint8_t registerData[1] = {MODULE_REGISTER};
     sendCanMessage(CAN_ID_TIMER, registerData, 1);
     Serial.println("Registered with timer module");
-    
-    // Initialize heartbeat system for Simon Says module
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
     
     // Initialize with empty values - will be received from timer
     serialNumber = "";
     simonSays.setStrikeCount(0);
     simonSays.begin();
     
-    Serial.println("Module initialized with heartbeat system");
+    Serial.println("Module initialized with dynamic heartbeat system");
     Serial.println("Type HELP for available commands");
     Serial.println("===============================");
 }

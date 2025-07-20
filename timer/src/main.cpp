@@ -10,6 +10,7 @@
 #include <module_tracker.h>
 
 GameStateManager gameState;
+extern ModuleTracker* trackerInstance; // Access to module tracker
 
 void onStateChange(GameState oldState, GameState newState) {
 	switch (newState) {
@@ -34,6 +35,18 @@ void onStateChange(GameState oldState, GameState newState) {
 			break;
 		}
 	}
+	
+	// Notify all modules of game state changes
+	bool gameRunning = (newState == GameState::RUNNING);
+	uint8_t stateMessage[2];
+	stateMessage[0] = gameRunning ? TIMER_GAME_START : TIMER_GAME_STOP;
+	stateMessage[1] = (uint8_t)newState;
+	sendCanMessage(CAN_ID_BROADCAST, stateMessage, 2);
+	
+	// Update module tracker
+	if (trackerInstance) {
+		trackerInstance->setGameRunning(gameRunning);
+	}
 }
 
 void onStrikeChange(uint8_t strikes) {
@@ -41,6 +54,10 @@ void onStrikeChange(uint8_t strikes) {
 		uint8_t strikeSound[1] = {AUDIO_STRIKE};
 		sendCanMessage(CAN_ID_AUDIO, strikeSound, 1);
 	}
+	
+	// Broadcast strike update to all modules
+	uint8_t strikeMessage[2] = {TIMER_STRIKE_UPDATE, strikes};
+	sendCanMessage(CAN_ID_BROADCAST, strikeMessage, 2);
 }
 
 void onModuleSolved(uint8_t solved, uint8_t total) {
@@ -56,6 +73,12 @@ void onTimeUpdate(unsigned long remainingMs) {
 			lastWarning = now;
 		}
 	}
+	
+	// Broadcast time update
+	uint8_t timeMessage[5];
+	timeMessage[0] = TIMER_TIME_UPDATE;
+	memcpy(&timeMessage[1], &remainingMs, 4);
+	sendCanMessage(CAN_ID_BROADCAST, timeMessage, 5);
 }
 
 void onTimerCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
@@ -109,6 +132,7 @@ void printGameInfo() {
 	Serial.println(" seconds");
 	Serial.print("Max Strikes: ");
 	Serial.println(gameState.getConfig().maxStrikes);
+	Serial.println("Module discovery active - 1s heartbeats");
 	Serial.println("Type HELP for commands");
 	Serial.println("===============================");
 }
