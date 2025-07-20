@@ -10,7 +10,6 @@
 #include <module_tracker.h>
 
 GameStateManager gameState;
-extern ModuleTracker* trackerInstance; // Access to module tracker
 
 void onStateChange(GameState oldState, GameState newState) {
 	switch (newState) {
@@ -44,8 +43,9 @@ void onStateChange(GameState oldState, GameState newState) {
 	sendCanMessage(CAN_ID_BROADCAST, stateMessage, 2);
 	
 	// Update module tracker
-	if (trackerInstance) {
-		trackerInstance->setGameRunning(gameRunning);
+	ModuleTracker* tracker = getModuleTracker();
+	if (tracker) {
+		tracker->setGameRunning(gameRunning);
 	}
 }
 

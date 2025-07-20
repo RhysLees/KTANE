@@ -58,3 +58,4 @@ public:
 };
 
 void initModuleTracker(GameStateManager* gsm);
+ModuleTracker* getModuleTracker(); // Function to access the tracker instance

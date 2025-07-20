@@ -58,7 +58,7 @@ void ModuleTracker::update() {
     if (gameRunning && checkForCriticalErrors()) {
         Serial.println("CRITICAL: Registered module lost during game - stopping game!");
         if (gameState) {
-            gameState->forceStop(); // You'll need to add this method to GameStateManager
+            gameState->setState(GameState::EXPLODED); // Set game to exploded state
         }
     }
 }
@@ -153,7 +153,7 @@ void ModuleTracker::registerModule(uint16_t moduleId) {
         // Notify game state manager
         if (gameState) {
             uint8_t moduleType = (moduleId >> 5) & 0x7F;
-            gameState->registerModule(moduleId, moduleType);
+            gameState->registerModule(moduleId, static_cast<ModuleType>(moduleType));
         }
     } else {
         Serial.print("Warning: Attempted to register unknown module: 0x");
@@ -223,4 +223,8 @@ void initModuleTracker(GameStateManager *gsm) {
     trackerInstance = &tracker;
     registerCanCallback(moduleTrackerCanCallback);
     Serial.println("Module tracker initialized");
+}
+
+ModuleTracker* getModuleTracker() {
+    return trackerInstance;
 }

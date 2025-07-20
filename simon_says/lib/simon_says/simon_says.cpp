@@ -70,8 +70,8 @@ void SimonSays::update() {
         case SimonState::IDLE:
             heartbeatStatus = MODULE_STATUS_IDLE;
             break;
-        case SimonState::DISPLAY_SEQUENCE:
-        case SimonState::WAIT_FOR_INPUT:
+        case SimonState::DISPLAYING:
+        case SimonState::WAITING_INPUT:
             heartbeatStatus = MODULE_STATUS_ACTIVE;
             break;
         case SimonState::SOLVED:
