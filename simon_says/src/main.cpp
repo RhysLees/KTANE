@@ -161,7 +161,7 @@ void handleSerialCommands() {
             Serial.print("Countdown: ");
             Serial.print(countdown_seconds);
             Serial.println(" seconds");
-        }
+                }
         Serial.println("==================");
     } else {
         Serial.println("Unknown command. Type HELP for available commands.");

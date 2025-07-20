@@ -89,8 +89,6 @@ void setup()
 	initDebugInterface();
 	initModuleTracker(&gameState);
 
-	delay(10000);
-
 	GameConfig config;
 	config.timeLimitMs = 300000;  // 5 minutes default
 	config.maxStrikes = 3;

@@ -425,3 +425,5 @@ void updateModuleConnections() {
     Serial.println("CAN: Serial Display module disconnected (timeout)");
   }
 }
+
+
