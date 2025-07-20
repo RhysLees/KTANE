@@ -102,13 +102,43 @@ void handleCanMessages() {
     // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
 
-    // Update connection status
+    // Update connection status - check both direct messages and sender info
     if (id == CAN_ID_AUDIO) {
+      if (!audioModuleConnected) {
+        Serial.println("Audio module connected (direct message)");
+      }
       audioModuleConnected = true;
       lastAudioPing = millis();
     } else if (id == CAN_ID_SERIAL_DISPLAY) {
+      if (!serialDisplayConnected) {
+        Serial.println("Serial display connected (direct message)");
+      }
       serialDisplayConnected = true;
       lastSerialDisplayPing = millis();
+    }
+    
+    // Also check for heartbeats and other messages with sender information
+    if (len >= 3) {
+      uint8_t senderType = buf[0];
+      uint8_t senderInstance = buf[1];
+      uint8_t msgType = buf[2];
+      
+      // Update connection status based on sender type for heartbeats
+      if (msgType == MODULE_HEARTBEAT) {
+        if (senderType == CAN_TYPE_AUDIO) {
+          if (!audioModuleConnected) {
+            Serial.println("Audio module connected (heartbeat)");
+          }
+          audioModuleConnected = true;
+          lastAudioPing = millis();
+        } else if (senderType == CAN_TYPE_SERIAL_DISPLAY) {
+          if (!serialDisplayConnected) {
+            Serial.println("Serial display connected (heartbeat)");
+          }
+          serialDisplayConnected = true;
+          lastSerialDisplayPing = millis();
+        }
+      }
     }
 
     // Filter to this module or broadcast messages only

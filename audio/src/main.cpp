@@ -7,6 +7,10 @@
 
 Adafruit_TPA2016 amp;
 
+// Heartbeat timing
+unsigned long lastHeartbeat = 0;
+const unsigned long HEARTBEAT_INTERVAL = 2000; // 2 seconds
+
 void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   if (id == CAN_ID_AUDIO && len >= 3) {
     uint8_t senderType = data[0];
@@ -62,6 +66,15 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   }
 }
 
+void sendHeartbeat() {
+  unsigned long now = millis();
+  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL) {
+    uint8_t heartbeatData[1] = {MODULE_HEARTBEAT};
+    sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
+    lastHeartbeat = now;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Wire.setSDA(0);
@@ -83,9 +96,12 @@ void setup() {
 
   initCanBus(CAN_ID_AUDIO);
   registerCanCallback(handleAudioMessage);
+  
+  Serial.println("Audio module ready - sending heartbeats every 2s");
 }
 
 void loop() {
   handleCanMessages();
   updateAudioMixer();
+  sendHeartbeat();
 }
