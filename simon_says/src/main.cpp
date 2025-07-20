@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <can_bus.h>
 #include <simon_says.h>
+#include <heartbeat.h>
 
 SimonSays simonSays;
 
@@ -201,12 +202,15 @@ void setup() {
     sendCanMessage(CAN_ID_TIMER, registerData, 1);
     Serial.println("Registered with timer module");
     
+    // Initialize heartbeat system for Simon Says module
+    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
+    
     // Initialize with empty values - will be received from timer
     serialNumber = "";
     simonSays.setStrikeCount(0);
     simonSays.begin();
     
-    Serial.println("Module initialized and ready!");
+    Serial.println("Module initialized with heartbeat system");
     Serial.println("Type HELP for available commands");
     Serial.println("===============================");
 }
@@ -215,4 +219,5 @@ void loop() {
     simonSays.update();
     handleCanMessages();
     handleSerialCommands();
+    updateHeartbeat();
 } 

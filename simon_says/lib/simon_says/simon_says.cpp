@@ -64,19 +64,24 @@ void SimonSays::update() {
     updateButtons();
     updateLEDs();
     
-    // Send periodic heartbeat (every 5 seconds)
-    static unsigned long lastHeartbeat = 0;
-    if (currentTime - lastHeartbeat > 5000) {
-        uint8_t heartbeatData[4];
-        heartbeatData[0] = MODULE_HEARTBEAT;
-        heartbeatData[1] = static_cast<uint8_t>(currentState);
-        heartbeatData[2] = isModuleSolved ? 1 : 0;
-        heartbeatData[3] = currentSequenceLength;
-        Serial.print("Simon Says: Sending heartbeat, MODULE_HEARTBEAT = 0x");
-        Serial.println(MODULE_HEARTBEAT, HEX);
-        sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
-        lastHeartbeat = currentTime;
+    // Update status in shared heartbeat system
+    ModuleStatus heartbeatStatus = MODULE_STATUS_IDLE;
+    switch (currentState) {
+        case SimonState::IDLE:
+            heartbeatStatus = MODULE_STATUS_IDLE;
+            break;
+        case SimonState::DISPLAY_SEQUENCE:
+        case SimonState::WAIT_FOR_INPUT:
+            heartbeatStatus = MODULE_STATUS_ACTIVE;
+            break;
+        case SimonState::SOLVED:
+            heartbeatStatus = MODULE_STATUS_SOLVED;
+            break;
     }
+    
+    setHeartbeatStatus(heartbeatStatus);
+    setHeartbeatProgress((currentSequenceLength * 100) / 5); // 5 is max sequence length
+    setHeartbeatSolved(isModuleSolved);
     
     // Send realtime status on state changes
     static SimonState lastState = SimonState::IDLE;

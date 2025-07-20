@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <can_bus.h>
+#include <heartbeat.h>
 #include <vector>
 
 // ============================================================================

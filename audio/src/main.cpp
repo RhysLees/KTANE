@@ -4,18 +4,18 @@
 #include <audio_mixer.h>
 #include <Adafruit_TPA2016.h>
 #include <sounds.h>
+#include <heartbeat.h>
 
 Adafruit_TPA2016 amp;
-
-// Heartbeat timing
-unsigned long lastHeartbeat = 0;
-const unsigned long HEARTBEAT_INTERVAL = 2000; // 2 seconds
 
 void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   if (id == CAN_ID_AUDIO && len >= 3) {
     uint8_t senderType = data[0];
     uint8_t senderInstance = data[1];
     uint8_t messageId = data[2];
+    
+    // Set heartbeat to active when processing audio
+    setHeartbeatStatus(MODULE_STATUS_ACTIVE);
     
     switch (messageId) {
       case AUDIO_BEEP_NORMAL:
@@ -63,15 +63,9 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
       default:
         break;
     }
-  }
-}
-
-void sendHeartbeat() {
-  unsigned long now = millis();
-  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL) {
-    uint8_t heartbeatData[1] = {MODULE_HEARTBEAT};
-    sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
-    lastHeartbeat = now;
+    
+    // Return to idle status after processing
+    setHeartbeatStatus(MODULE_STATUS_IDLE);
   }
 }
 
@@ -97,11 +91,14 @@ void setup() {
   initCanBus(CAN_ID_AUDIO);
   registerCanCallback(handleAudioMessage);
   
-  Serial.println("Audio module ready - sending heartbeats every 2s");
+  // Initialize heartbeat system for audio module
+  initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);
+  
+  Serial.println("Audio module ready with heartbeat system");
 }
 
 void loop() {
   handleCanMessages();
   updateAudioMixer();
-  sendHeartbeat();
+  updateHeartbeat();
 }

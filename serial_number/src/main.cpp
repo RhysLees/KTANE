@@ -5,10 +5,7 @@
 #include <GxEPD2_3C.h>
 #include <Adafruit_GFX.h>
 #include <epaper.h>
-
-// Heartbeat timing
-unsigned long lastHeartbeat = 0;
-const unsigned long HEARTBEAT_INTERVAL = 3000; // 3 seconds
+#include <heartbeat.h>
 
 void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   if (id != CAN_ID_SERIAL_DISPLAY || len < 3)
@@ -17,6 +14,9 @@ void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
   uint8_t senderType = data[0];
   uint8_t senderInstance = data[1];
   uint8_t command = data[2];
+  
+  // Set heartbeat to active when processing display commands
+  setHeartbeatStatus(MODULE_STATUS_ACTIVE);
 
   switch (command) {
     case SERIAL_DISPLAY_SET_SERIAL:
@@ -39,15 +39,9 @@ void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
     default:
       break;
   }
-}
-
-void sendHeartbeat() {
-  unsigned long now = millis();
-  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL) {
-    uint8_t heartbeatData[1] = {MODULE_HEARTBEAT};
-    sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
-    lastHeartbeat = now;
-  }
+  
+  // Return to idle status after processing
+  setHeartbeatStatus(MODULE_STATUS_IDLE);
 }
 
 void setup() {
@@ -61,11 +55,14 @@ void setup() {
   initCanBus(CAN_ID_SERIAL_DISPLAY);
   registerCanCallback(handleSerialDisplayMessage);
 
-  Serial.println("Serial display ready - sending heartbeats every 3s");
+  // Initialize heartbeat system for serial display
+  initHeartbeat(HEARTBEAT_INTERVAL_SERIAL_DISPLAY);
+
+  Serial.println("Serial display ready with heartbeat system");
   delay(5000);
 }
 
 void loop() {
   handleCanMessages();
-  sendHeartbeat();
+  updateHeartbeat();
 }
