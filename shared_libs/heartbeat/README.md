@@ -1,36 +1,44 @@
 # Heartbeat Library
 
-A shared library for KTANE modules to send periodic heartbeats to the timer module for connection detection and status reporting.
+A shared library for KTANE modules to send periodic heartbeats to the timer module for connection detection and status reporting with intelligent timing based on game state.
 
 ## Overview
 
 The heartbeat library provides a standardized way for all KTANE modules (except the timer) to:
 - Announce their presence to the timer module
 - Report their current status and progress
-- Enable reliable connection detection
-- Send enhanced status information
+- Enable reliable connection detection with adaptive timing
+- Automatically switch between discovery and game modes
 
 ## Features
 
-- **Automatic Timing**: Handles heartbeat intervals automatically
+- **Adaptive Timing**: Automatically switches between fast discovery (1s) and game operation (5s)
+- **Game State Awareness**: Responds to game start/stop messages from timer
 - **Status Reporting**: Reports module state, solved status, and progress
-- **Configurable Intervals**: Different intervals for different module types
-- **Easy Integration**: Simple API with global convenience functions
+- **Simple Integration**: Easy API with global convenience functions
 - **Enhanced Messages**: Includes status and progress information in heartbeats
+
+## Timing Modes
+
+### Discovery Mode (1 second)
+- **When**: Game is not running (default state)
+- **Purpose**: Fast module discovery and registration
+- **Benefit**: Quick detection of new modules connecting to system
+
+### Game Mode (5 seconds) 
+- **When**: Game is actively running
+- **Purpose**: Regular health monitoring during gameplay
+- **Benefit**: Reduces CAN bus traffic while maintaining reliable monitoring
 
 ## Quick Start
 
-### Simple Usage (Global Functions)
-
+### Simple Usage
 ```cpp
 #include <heartbeat.h>
 
 void setup() {
-    // Initialize with default 5-second interval
+    // Initialize heartbeat system (starts in discovery mode)
     initHeartbeat();
-    
-    // Or specify custom interval
-    initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);  // 2 seconds for audio
 }
 
 void loop() {
@@ -41,14 +49,24 @@ void loop() {
     setHeartbeatStatus(MODULE_STATUS_ACTIVE);
     setHeartbeatProgress(75);  // 75% complete
 }
+
+void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    // Handle game state changes from timer
+    if (id == CAN_ID_BROADCAST && len >= 1) {
+        if (data[0] == TIMER_GAME_START) {
+            setHeartbeatGameRunning(true);
+        } else if (data[0] == TIMER_GAME_STOP) {
+            setHeartbeatGameRunning(false);
+        }
+    }
+}
 ```
 
 ### Advanced Usage (Class-based)
-
 ```cpp
 #include <heartbeat.h>
 
-HeartbeatManager heartbeat(3000);  // 3-second interval
+HeartbeatManager heartbeat;
 
 void setup() {
     heartbeat.begin();
@@ -64,18 +82,34 @@ void loop() {
         heartbeat.setProgress(calculateProgress());
     }
 }
+
+void onGameStart() {
+    heartbeat.setGameRunning(true);  // Switches to 5s heartbeats
+}
 ```
 
 ## API Reference
 
 ### Global Functions
 
-- `initHeartbeat(intervalMs)` - Initialize with specified interval
+- `initHeartbeat()` - Initialize with discovery mode timing
 - `updateHeartbeat()` - Update heartbeat (call in loop)
+- `setHeartbeatGameRunning(bool)` - Switch between discovery/game modes
 - `setHeartbeatStatus(status)` - Set current module status
 - `setHeartbeatProgress(percent)` - Set progress (0-100)
 - `setHeartbeatSolved(solved)` - Mark module as solved/unsolved
 - `sendHeartbeatNow()` - Send immediate heartbeat
+
+### HeartbeatManager Class Methods
+
+- `begin()` - Initialize the heartbeat system
+- `update()` - Update heartbeat timing (call in loop)
+- `setGameRunning(bool)` - Switch timing modes
+- `getCurrentInterval()` - Get current heartbeat interval
+- `setStatus(ModuleStatus)` - Set module status
+- `setProgress(uint8_t)` - Set progress percentage
+- `setSolved(bool)` - Mark as solved/unsolved
+- `sendNow()` - Send immediate heartbeat
 
 ### Module Status Types
 
@@ -85,12 +119,10 @@ void loop() {
 - `MODULE_STATUS_ARMED` - Needy module is armed/active
 - `MODULE_STATUS_ERROR` - Module encountered an error
 
-### Default Intervals
+### Timing Constants
 
-- `HEARTBEAT_INTERVAL_AUDIO` - 2000ms (2 seconds)
-- `HEARTBEAT_INTERVAL_SERIAL_DISPLAY` - 3000ms (3 seconds)
-- `HEARTBEAT_INTERVAL_MODULE` - 5000ms (5 seconds) - Default for game modules
-- `HEARTBEAT_INTERVAL_NEEDY` - 1000ms (1 second) - For needy modules
+- `HEARTBEAT_INTERVAL_DISCOVERY` - 1000ms (1 second)
+- `HEARTBEAT_INTERVAL_GAME` - 5000ms (5 seconds)
 
 ## Integration Examples
 
@@ -100,13 +132,26 @@ void loop() {
 
 void setup() {
     initCanBus(CAN_ID_AUDIO);
-    initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);
+    initHeartbeat();  // Starts in discovery mode
 }
 
 void handleAudioMessage() {
     setHeartbeatStatus(MODULE_STATUS_ACTIVE);
     // Process audio...
     setHeartbeatStatus(MODULE_STATUS_IDLE);
+}
+
+void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    // Handle game state changes
+    if (id == CAN_ID_BROADCAST && len >= 1) {
+        if (data[0] == TIMER_GAME_START) {
+            setHeartbeatGameRunning(true);
+            Serial.println("Switching to 5s heartbeats");
+        } else if (data[0] == TIMER_GAME_STOP) {
+            setHeartbeatGameRunning(false);
+            Serial.println("Switching to 1s heartbeats");
+        }
+    }
 }
 
 void loop() {
@@ -122,7 +167,11 @@ void loop() {
 void setup() {
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
     assignUniqueId(CAN_TYPE_SIMON);
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
+    initHeartbeat();  // Starts in discovery mode
+    
+    // Register with timer
+    uint8_t registerData[1] = {MODULE_REGISTER};
+    sendCanMessage(CAN_ID_TIMER, registerData, 1);
 }
 
 void updateGameState() {
@@ -137,6 +186,18 @@ void updateGameState() {
         case SOLVED:
             setHeartbeatSolved(true);
             break;
+    }
+}
+
+void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    if (id == CAN_ID_BROADCAST && len >= 1) {
+        if (data[0] == TIMER_GAME_START) {
+            setHeartbeatGameRunning(true);
+            gameActive = true;
+        } else if (data[0] == TIMER_GAME_STOP) {
+            setHeartbeatGameRunning(false);
+            gameActive = false;
+        }
     }
 }
 
@@ -161,50 +222,122 @@ Heartbeats are sent as CAN messages with the following format:
 
 ## Timer Integration
 
-The timer module automatically receives and processes heartbeats for:
-- Connection detection and timeout handling
-- Module status tracking
-- Progress monitoring
-- Game state management
+The timer module automatically:
+- **Tracks Discovery**: Monitors 1s heartbeats to discover available modules
+- **Manages Registration**: Allows modules to register for games
+- **Monitors Health**: Watches 5s heartbeats during gameplay
+- **Error Detection**: Stops game if registered modules disconnect
+- **Broadcasts State**: Sends game start/stop messages to switch timing modes
 
-No special configuration needed on the timer side - it automatically handles heartbeat messages from all modules using this library.
+## Timing Behavior
 
-## Migration Guide
+### System Startup
+1. **Module Powers On**: Starts sending 1s discovery heartbeats
+2. **Timer Detects**: Module appears in discovery list
+3. **Module Registers**: Sends MODULE_REGISTER message
+4. **Timer Tracks**: Module moves to registered list
 
-### From Custom Heartbeat Code
+### Game Start
+1. **Timer Broadcasts**: TIMER_GAME_START message
+2. **Modules Switch**: Heartbeat interval changes to 5s
+3. **Monitoring Active**: Timer watches for timeouts
+4. **Error Detection**: Missing heartbeats stop game
 
-Replace custom heartbeat implementations:
+### Game Stop
+1. **Timer Broadcasts**: TIMER_GAME_STOP message  
+2. **Modules Switch**: Heartbeat interval changes to 1s
+3. **Discovery Active**: Fast discovery resumes
+4. **Registration Open**: New modules can join
 
-**Before:**
-```cpp
-unsigned long lastHeartbeat = 0;
-const unsigned long HEARTBEAT_INTERVAL = 2000;
+## Debugging
 
-void sendHeartbeat() {
-    if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL) {
-        uint8_t data[1] = {MODULE_HEARTBEAT};
-        sendCanMessage(CAN_ID_TIMER, data, 1);
-        lastHeartbeat = millis();
-    }
-}
+### Expected Output
+```
+// Module startup
+Heartbeat: Initialized - Discovery mode (1000ms)
+
+// Game state changes  
+Heartbeat: Game state changed to RUNNING (5000ms)
+Heartbeat: Game state changed to DISCOVERY (1000ms)
+
+// Timer module discovery reports
+Discovered modules (3): AUDIO, SIMON #1, SIMON #2
 ```
 
-**After:**
+### Troubleshooting
+
+#### Module Not Discovered
+- Check 1s heartbeats are being sent
+- Verify CAN bus connectivity
+- Ensure timer module is running
+- Check for CAN ID conflicts
+
+#### Game Stops Unexpectedly
+- Check 5s heartbeats during game
+- Verify module didn't crash or disconnect
+- Look for "CRITICAL ERROR" messages in timer output
+- Check CAN bus stability under load
+
+#### Heartbeat Timing Issues
+- Verify `updateHeartbeat()` called in loop
+- Check game state synchronization
+- Ensure timer broadcasts reach modules
+- Verify message parsing is correct
+
+## Performance
+
+### Discovery Mode (1s heartbeats)
+- **Purpose**: Fast module detection
+- **CAN Load**: ~3 messages/second per module
+- **Discovery Time**: <2 seconds for new modules
+
+### Game Mode (5s heartbeats)
+- **Purpose**: Health monitoring
+- **CAN Load**: <1 message/second per module  
+- **Timeout Detection**: 10 seconds maximum
+
+### Mode Switching
+- **Trigger**: Timer game start/stop broadcasts
+- **Response Time**: <100ms to switch modes
+- **Reliability**: Immediate heartbeat sent on state change
+
+## Migration from v1.x
+
+### Old API (Multiple Intervals)
 ```cpp
-#include <heartbeat.h>
+// OLD - Multiple predefined intervals
+initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);      // 2s
+initHeartbeat(HEARTBEAT_INTERVAL_MODULE);     // 5s
+initHeartbeat(HEARTBEAT_INTERVAL_NEEDY);      // 1s
+```
 
-void setup() {
-    initHeartbeat(2000);
-}
+### New API (Adaptive Timing)
+```cpp
+// NEW - Single adaptive system
+initHeartbeat();  // Starts at 1s, switches to 5s during game
 
-void loop() {
-    updateHeartbeat();
+// Add game state handling
+void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+    if (id == CAN_ID_BROADCAST && len >= 1) {
+        if (data[0] == TIMER_GAME_START) {
+            setHeartbeatGameRunning(true);
+        } else if (data[0] == TIMER_GAME_STOP) {
+            setHeartbeatGameRunning(false);
+        }
+    }
 }
 ```
 
 ## Notes
 
-- **Timer Module Exception**: The timer module should NOT use this library as it's the heartbeat receiver
-- **Automatic Status**: The library automatically manages timing and message formatting
-- **Enhanced Data**: Provides richer status information than basic heartbeats
-- **Connection Detection**: Enables reliable module connection detection in the timer 
+- **Timer Module Exception**: The timer module should NOT use this library
+- **Game State Required**: Modules must handle TIMER_GAME_START/STOP messages
+- **CAN Format**: Uses simplified message format (command-first)
+- **Automatic Timing**: No manual interval management needed
+- **Error Recovery**: System automatically recovers from timing issues
+
+## See Also
+
+- [CAN Bus Library](../can_bus/) - Underlying communication system
+- [Module Tracker](../../timer/lib/module_tracker/) - Timer-side module management
+- [Shared Libraries Overview](../) - Complete library documentation 
