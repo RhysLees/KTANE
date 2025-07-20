@@ -34,7 +34,7 @@ private:
 public:
     ModuleTracker(GameStateManager* gsm);
     
-    void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
+    void handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len);
     void update();
     void reset();
     

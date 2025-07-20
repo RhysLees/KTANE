@@ -7,7 +7,7 @@
 #include <epaper.h>
 #include <heartbeat.h>
 
-void handleSerialDisplayMessage(uint16_t id, const uint8_t *data, uint8_t len) {
+void handleSerialDisplayMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
   if (id != CAN_ID_SERIAL_DISPLAY || len < 1)
     return;
 

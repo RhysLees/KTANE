@@ -122,10 +122,27 @@ void handleCanMessages() {
       return;
     }
 
-    // Call registered callbacks
+    // Extract sender ID from first 2 bytes and shift data
+    uint16_t senderId = 0;
+    uint8_t shiftedData[8];
+    uint8_t shiftedLen = len;
+    
+    if (len >= 2) {
+      // Extract sender ID from first 2 bytes
+      senderId = (buf[0] << 8) | buf[1];
+      
+      // Shift data to remove sender ID (copy bytes 2+ to start)
+      shiftedLen = len - 2;
+      memcpy(shiftedData, &buf[2], shiftedLen);
+    } else {
+      // Not enough data for sender ID, pass original data
+      memcpy(shiftedData, buf, len);
+    }
+
+    // Call registered callbacks with extracted sender ID and shifted data
     for (uint8_t i = 0; i < callbackCount; i++) {
       if (canCallbacks[i]) {
-        canCallbacks[i](id, buf, len);
+        canCallbacks[i](id, senderId, shiftedData, shiftedLen);
       }
     }
   }
@@ -144,9 +161,19 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     return;
   }
   
-  // Simplified message format: Send data as-is, CAN ID identifies sender
-  if (dataLen > 0 && dataLen <= 8) {
-    CAN.sendMsgBuf(receiverID, 0, dataLen, (byte*)data);
+  // Automatically prepend sender module ID to message data
+  if (dataLen > 0 && dataLen <= 6) { // Leave room for 2-byte sender ID
+    uint8_t messageData[8];
+    
+    // Add sender module ID (2 bytes)
+    messageData[0] = (thisModuleId >> 8) & 0xFF;  // High byte
+    messageData[1] = thisModuleId & 0xFF;         // Low byte
+    
+    // Add original data
+    memcpy(&messageData[2], data, dataLen);
+    
+    // Send with prepended sender ID
+    CAN.sendMsgBuf(receiverID, 0, dataLen + 2, (byte*)messageData);
   }
 }
 
@@ -161,6 +188,7 @@ const char* getMessageTypeName(uint8_t msgType) {
     case TIMER_RESET: return "RESET";
     case TIMER_TIME_UPDATE: return "TIME_UPDATE";
     case TIMER_COUNTDOWN: return "COUNTDOWN";
+    case TIMER_MODULE_DISCOVERED: return "MODULE_DISCOVERED";
     case MODULE_REGISTER: return "REGISTER";
     case MODULE_STRIKE: return "STRIKE";
     case MODULE_SOLVED: return "SOLVED";
@@ -285,14 +313,6 @@ uint8_t getCurrentInstanceId() {
 
 uint16_t getCurrentModuleId() {
   return thisModuleId;
-}
-
-void sendHeartbeat(const uint8_t* data, uint8_t len) {
-  if (!canBusInitialized || thisModuleId == 0xFFFF) {
-    return;
-  }
-  
-  sendCanMessage(CAN_ID_TIMER, data, len);
 }
 
 void updateModuleConnections() {

@@ -24,6 +24,10 @@ SimonSays::SimonSays() {
     isFlashing = false;
     flashStartTime = 0;
     
+    isDiscoveredByTimer = false;
+    discoveryLedFlashing = false;
+    lastDiscoveryFlashTime = 0;
+    
     hasVowelInSerial = false;
     numStrikes = 0;
     
@@ -213,6 +217,11 @@ void SimonSays::reset() {
     
     audioPlayedForCurrentColor = false;
     
+    // Reset discovery state
+    isDiscoveredByTimer = false;
+    discoveryLedFlashing = false;
+    lastDiscoveryFlashTime = 0;
+    
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
@@ -237,7 +246,10 @@ void SimonSays::startGame() {
             currentState = SimonState::GENERATING;
             stateStartTime = millis();
             
-            // Status LED should only be on when solved, not when game starts
+            // Turn off status LED when game starts (unless already solved)
+            if (!isModuleSolved) {
+                digitalWrite(SIMON_STATUS_LED, LOW);
+            }
         } else {
             Serial.println("Simon Says: Cannot start game - initialization not complete");
         }
@@ -285,6 +297,14 @@ void SimonSays::setInitializationComplete(bool complete) {
     Serial.println(complete ? "YES" : "NO");
 }
 
+void SimonSays::setDiscoveredByTimer(bool discovered) {
+    isDiscoveredByTimer = discovered;
+    if (discovered) {
+        discoveryLedFlashing = false; // Stop flashing
+        Serial.println("Simon Says: Module discovered by timer");
+    }
+}
+
 // ============================================================================
 // HARDWARE METHODS
 // ============================================================================
@@ -322,6 +342,26 @@ void SimonSays::updateButtons() {
 }
 
 void SimonSays::updateLEDs() {
+    // Handle discovery LED flashing when not discovered by timer
+    if (!isDiscoveredByTimer && !isModuleSolved) {
+        unsigned long currentTime = millis();
+        if (currentTime - lastDiscoveryFlashTime >= 500) { // Flash every 0.5 seconds
+            discoveryLedFlashing = !discoveryLedFlashing;
+            lastDiscoveryFlashTime = currentTime;
+            digitalWrite(SIMON_STATUS_LED, discoveryLedFlashing ? HIGH : LOW);
+        }
+    } else if (isDiscoveredByTimer && !gameStarted && !isModuleSolved) {
+        // Solid on when discovered but game not started and not solved
+        digitalWrite(SIMON_STATUS_LED, HIGH);
+    } else if (isModuleSolved) {
+        // Solid on when solved
+        digitalWrite(SIMON_STATUS_LED, HIGH);
+    } else if (gameStarted && !isModuleSolved) {
+        // Off when game started but not solved
+        digitalWrite(SIMON_STATUS_LED, LOW);
+    }
+    
+    // Handle game LED flashing (strikes)
     if (isFlashing) {
         bool flashState = ((millis() - flashStartTime) % 200) < 100;
         digitalWrite(SIMON_LED_RED, flashState);
@@ -760,13 +800,11 @@ const char* SimonSays::getStateName(SimonState state) const {
 // CAN MESSAGE HANDLER
 // ============================================================================
 
-void SimonSays::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    if (len < 3) return;
+void SimonSays::handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    if (len < 1) return;
     
-    // New message format: [senderType, senderInstance, messageType, ...messageData]
-    uint8_t senderType = data[0];
-    uint8_t senderInstance = data[1];
-    uint8_t msgType = data[2];
+    // Data is clean (sender ID already removed), first byte is message type
+    uint8_t msgType = data[0];
     
     switch (msgType) {
         case SIMON_MSG_RESET:

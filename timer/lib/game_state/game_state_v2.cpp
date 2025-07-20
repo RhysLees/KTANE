@@ -649,139 +649,128 @@ void GameStateManager::resetStats() {
 // CAN COMMUNICATION INTERFACE
 // ============================================================================
 
-void GameStateManager::handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    // New standardized message format: [senderType, senderInstance, messageType, ...messageData]
-    if (len < 3) {
+void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    if (len < 1) {
         return;
     }
     
-    uint8_t senderType = data[0];
-    uint8_t senderInstance = data[1];
-    uint8_t msgType = data[2];
-    uint16_t senderCanId = CAN_INSTANCE_ID(senderType, senderInstance);
+    // Data is clean (sender ID already removed), first byte is message type
+    uint8_t msgType = data[0];
     
-    if (len >= 3) {
-        
-        switch (msgType) {
-            case MODULE_REGISTER:
-            {
-                // Registration info is now in sender fields
-                // Check if already registered
-                bool alreadyRegistered = (moduleMap.find(senderCanId) != moduleMap.end());
-                
-                if (!alreadyRegistered) {
-                    registerModule(senderCanId, static_cast<ModuleType>(senderType));
-                    Serial.print("Module: Explicit registration - ID: 0x");
-                    Serial.print(senderCanId, HEX);
-                    Serial.print(", Type: 0x");
-                    Serial.println(senderType, HEX);
-                } else {
-                    Serial.print("Module: Module 0x");
-                    Serial.print(senderCanId, HEX);
-                    Serial.println(" already registered");
-                }
-                
-                // Send current state to newly registered module
-                broadcastGameState(senderCanId);
-                break;
+    switch (msgType) {
+        case MODULE_REGISTER:
+        {
+            // Check if already registered
+            bool alreadyRegistered = (moduleMap.find(senderId) != moduleMap.end());
+            
+            if (!alreadyRegistered) {
+                uint8_t moduleType = (senderId >> 5) & 0x7F;
+                registerModule(senderId, static_cast<ModuleType>(moduleType));
+                Serial.print("Module: Explicit registration - ID: 0x");
+                Serial.print(senderId, HEX);
+                Serial.print(", Type: 0x");
+                Serial.println(moduleType, HEX);
+            } else {
+                Serial.print("Module: Module 0x");
+                Serial.print(senderId, HEX);
+                Serial.println(" already registered");
             }
+            
+            // Send current state to newly registered module
+            broadcastGameState(senderId);
+            break;
+        }
+            
+        case MODULE_STRIKE:
+            Serial.print("GameState: Strike received from module 0x");
+            Serial.println(senderId, HEX);
+            addStrike();
+            // Strike callback will handle broadcasting
+            break;
+            
+        case MODULE_SOLVED:
+            Serial.print("GameState: Module 0x");
+            Serial.print(senderId, HEX);
+            Serial.println(" solved!");
+            setModuleSolved(senderId);
+            // Module solved callback will handle broadcasting
+            break;
+            
+        case MODULE_STATUS:
+            updateModuleSeen(senderId);
+            
+            // Handle additional status data if available
+            if (len >= 5) {
+                uint8_t moduleState = data[1];
+                bool isSolved = (data[2] != 0);
+                uint8_t progress = data[3];
+                uint8_t strikes = data[4];
                 
-            case MODULE_STRIKE:
-                Serial.print("GameState: Strike received from module 0x");
-                Serial.println(senderCanId, HEX);
-                addStrike();
-                // Strike callback will handle broadcasting
-                break;
+                // Update module solved status if changed
+                Module* module = moduleMap[senderId];
+                if (module && module->isSolved != isSolved) {
+                    module->isSolved = isSolved;
+                    if (isSolved) {
+                        Serial.print("Status: Module 0x");
+                        Serial.print(senderId, HEX);
+                        Serial.println(" solved via status update");
+                    }
+                }
+            }
+            break;
+            
+        case MODULE_HEARTBEAT:
+            // Update last seen time for known modules
+            if (moduleMap.find(senderId) != moduleMap.end()) {
+                updateModuleSeen(senderId);
                 
-            case MODULE_SOLVED:
-                Serial.print("GameState: Module 0x");
-                Serial.print(senderCanId, HEX);
-                Serial.println(" solved!");
-                setModuleSolved(senderCanId);
-                // Module solved callback will handle broadcasting
-                break;
-                
-            case MODULE_STATUS:
-                updateModuleSeen(senderCanId);
-                
-                // Handle additional status data if available (starts at index 3)
-                if (len >= 7) {
-                    uint8_t moduleState = data[3];
-                    bool isSolved = (data[4] != 0);
-                    uint8_t progress = data[5];
-                    uint8_t strikes = data[6];
+                // Process enhanced heartbeat data if available
+                if (len >= 4) {
+                    uint8_t moduleState = data[1];
+                    bool isSolved = (data[2] != 0);
+                    uint8_t progress = data[3];
                     
                     // Update module solved status if changed
-                    Module* module = moduleMap[senderCanId];
+                    Module* module = moduleMap[senderId];
                     if (module && module->isSolved != isSolved) {
                         module->isSolved = isSolved;
                         if (isSolved) {
-                            Serial.print("Status: Module 0x");
-                            Serial.print(senderCanId, HEX);
-                            Serial.println(" solved via status update");
+                            Serial.print("Module: Module 0x");
+                            Serial.print(senderId, HEX);
+                            Serial.println(" solved via heartbeat");
                         }
                     }
-                }
-                break;
-                
-            case MODULE_HEARTBEAT:
-                // Update last seen time for known modules
-                if (moduleMap.find(senderCanId) != moduleMap.end()) {
-                    updateModuleSeen(senderCanId);
                     
-                    // Process enhanced heartbeat data if available (starts at index 3)
-                    if (len >= 6) {
-                        uint8_t moduleState = data[3];
-                        bool isSolved = (data[4] != 0);
-                        uint8_t progress = data[5];
-                        
-                        // Update module solved status if changed
-                        Module* module = moduleMap[senderCanId];
-                        if (module && module->isSolved != isSolved) {
-                            module->isSolved = isSolved;
-                            if (isSolved) {
-                                Serial.print("Module: Module 0x");
-                                Serial.print(senderCanId, HEX);
-                                Serial.println(" solved via heartbeat");
-                            }
-                        }
-                        
-                        // Optional: Log detailed status for debugging
-                        static unsigned long lastDetailedLog = 0;
-                        if (millis() - lastDetailedLog > 30000) { // Every 30 seconds
-                            Serial.print("Heartbeat: Module 0x");
-                            Serial.print(senderCanId, HEX);
-                            Serial.print(" - State:");
-                            Serial.print(moduleState);
-                            Serial.print(" Solved:");
-                            Serial.print(isSolved);
-                            Serial.print(" Progress:");
-                            Serial.println(progress);
-                            lastDetailedLog = millis();
-                        }
+                    // Optional: Log detailed status for debugging
+                    static unsigned long lastDetailedLog = 0;
+                    if (millis() - lastDetailedLog > 30000) { // Every 30 seconds
+                        Serial.print("Heartbeat: Module 0x");
+                        Serial.print(senderId, HEX);
+                        Serial.print(" - State:");
+                        Serial.print(moduleState);
+                        Serial.print(" Solved:");
+                        Serial.print(isSolved);
+                        Serial.print(" Progress:");
+                        Serial.println(progress);
+                        lastDetailedLog = millis();
                     }
-                } else {
-                    // Unknown module - heartbeat ignored (must register explicitly)
-                    Serial.print("Module: Unknown module 0x");
-                    Serial.print(senderCanId, HEX);
-                    Serial.println(" heartbeat ignored - must register explicitly");
                 }
-                break;
-                
-            // Handle epaper display messages
-            case SERIAL_DISPLAY_CLEAR:
-                Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
-                Serial.print(id, HEX);
-                Serial.println(" - epaper display ready");
-                break;
-                
-            default:
-                Serial.print("GameState: Unknown message type 0x");
-                Serial.print(msgType, HEX);
-                Serial.print(" from module 0x");
-                Serial.println(id, HEX);
-                break;
-        }
+            }
+            break;
+            
+        // Handle epaper display messages
+        case SERIAL_DISPLAY_CLEAR:
+            Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
+            Serial.print(senderId, HEX);
+            Serial.println(" - epaper display ready");
+            break;
+            
+        default:
+            Serial.print("GameState: Unknown message type 0x");
+            Serial.print(msgType, HEX);
+            Serial.print(" from module 0x");
+            Serial.println(senderId, HEX);
+            break;
     }
 }
 

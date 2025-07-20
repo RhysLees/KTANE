@@ -81,8 +81,8 @@ void onTimeUpdate(unsigned long remainingMs) {
 	sendCanMessage(CAN_ID_BROADCAST, timeMessage, 5);
 }
 
-void onTimerCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    gameState.handleCanMessage(id, data, len);
+void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    gameState.handleCanMessage(id, senderId, data, len);
 }
 
 void setupHardware() {

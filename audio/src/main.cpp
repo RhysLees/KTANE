@@ -8,7 +8,7 @@
 
 Adafruit_TPA2016 amp;
 
-void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
+void handleAudioMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
   if (id == CAN_ID_AUDIO && len >= 1) {
     uint8_t messageId = data[0];
     

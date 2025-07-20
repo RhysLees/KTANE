@@ -80,14 +80,12 @@ void HeartbeatManager::setSolved(bool solved) {
 void HeartbeatManager::sendNow() {
     if (!enabled) return;
     
-    // Simplified heartbeat format: [MODULE_HEARTBEAT, status, solved_flag, progress]
-    uint8_t heartbeatData[4];
+    // Simple heartbeat format: [MODULE_HEARTBEAT] 
+    // CAN library automatically prepends sender ID
+    uint8_t heartbeatData[1];
     heartbeatData[0] = MODULE_HEARTBEAT;
-    heartbeatData[1] = currentStatus;
-    heartbeatData[2] = (currentStatus == MODULE_STATUS_SOLVED) ? 1 : 0;
-    heartbeatData[3] = progress;
     
-    sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
+    sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
     lastHeartbeat = millis();
 }
 

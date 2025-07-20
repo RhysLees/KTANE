@@ -6,19 +6,24 @@ static ModuleTracker *trackerInstance = nullptr;
 ModuleTracker::ModuleTracker(GameStateManager *gsm)
     : gameState(gsm), gameRunning(false), lastDiscoveryReport(0) {}
 
-void ModuleTracker::handleCanMessage(uint16_t id, const uint8_t *data, uint8_t len) {
+void ModuleTracker::handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
+    if (len < 1) return;
+    
+    // Data is clean (sender ID already removed), first byte is message type
+    uint8_t msgType = data[0];
+    
     // Only process heartbeat messages
-    if (len >= 1 && data[0] == MODULE_HEARTBEAT) {
-        processHeartbeat(id, data, len);
+    if (msgType == MODULE_HEARTBEAT) {
+        processHeartbeat(senderId, data, len);
     }
     
     // Handle registration messages
-    if (len >= 1 && data[0] == MODULE_REGISTER) {
-        registerModule(id);
+    if (msgType == MODULE_REGISTER) {
+        registerModule(senderId);
         Serial.print("Module registered: ");
-        Serial.print(getModuleTypeName(id));
+        Serial.print(getModuleTypeName(senderId));
         Serial.print(" (ID: 0x");
-        Serial.print(id, HEX);
+        Serial.print(senderId, HEX);
         Serial.println(")");
     }
 }
@@ -34,6 +39,9 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
     bool solved = (len >= 3) ? (data[2] != 0) : false;
     uint8_t progress = (len >= 4) ? data[3] : 0;
     
+    // Check if this is a new module (first discovery)
+    bool isNewModule = (discoveredModules.find(moduleId) == discoveredModules.end());
+    
     // Update discovered modules (always track heartbeats)
     ModuleInfo& info = discoveredModules[moduleId];
     info.lastHeartbeat = now;
@@ -42,6 +50,17 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
     info.progress = progress;
     info.isSolved = solved;
     info.moduleTypeName = getModuleTypeName(moduleId);
+    
+    // Send discovery acknowledgment if this is a new module
+    if (isNewModule) {
+        uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
+        sendCanMessage(moduleId, discoveryAck, 1);
+        Serial.print("Module discovered: ");
+        Serial.print(info.moduleTypeName);
+        Serial.print(" (ID: 0x");
+        Serial.print(moduleId, HEX);
+        Serial.println(") - sent discovery acknowledgment");
+    }
     
     // If module is registered for game, update registered modules too
     if (registeredModules.find(moduleId) != registeredModules.end()) {
@@ -212,9 +231,9 @@ void ModuleTracker::reset() {
     Serial.println("Module tracker reset");
 }
 
-static void moduleTrackerCanCallback(uint16_t id, const uint8_t *data, uint8_t len) {
+static void moduleTrackerCanCallback(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
     if (trackerInstance) {
-        trackerInstance->handleCanMessage(id, data, len);
+        trackerInstance->handleCanMessage(id, senderId, data, len);
     }
 }
 

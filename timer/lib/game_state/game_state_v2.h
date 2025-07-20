@@ -331,7 +331,7 @@ public:
     // ========================================================================
     // CAN COMMUNICATION INTERFACE
     // ========================================================================
-    void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
+    void handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
     void broadcastGameState(uint16_t targetId = CAN_ID_BROADCAST); // Default to broadcast ID
     void broadcastCountdown(uint8_t seconds);
     

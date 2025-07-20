@@ -12,7 +12,7 @@ String serialNumber = "";
 bool initialization_complete = false;
 uint8_t countdown_seconds = 0;
 
-void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
+void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
     if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 1) {
         uint8_t msgType = data[0];
         
@@ -33,6 +33,11 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                 simonSays.onGameStateChange(false);
                 setHeartbeatGameRunning(false);
                 Serial.println("Simon Says: Game stopped - switching to 1s heartbeats");
+                break;
+                
+            case TIMER_MODULE_DISCOVERED:
+                Serial.println("Simon Says: Discovered by timer - stopping LED flashing");
+                simonSays.setDiscoveredByTimer(true);
                 break;
                 
             case TIMER_STRIKE_UPDATE:
@@ -85,7 +90,7 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
         }
     }
     
-    simonSays.handleCanMessage(id, data, len);
+    simonSays.handleCanMessage(id, senderId, data, len);
 }
 
 void printStatus() {

@@ -103,6 +103,11 @@ private:
     bool isFlashing;
     unsigned long flashStartTime;
     
+    // Discovery state tracking
+    bool isDiscoveredByTimer;
+    bool discoveryLedFlashing;
+    unsigned long lastDiscoveryFlashTime;
+    
     // KTANE rule variables
     bool hasVowelInSerial;
     uint8_t numStrikes;
@@ -152,6 +157,7 @@ public:
     void setStrikeCount(uint8_t strikes);
     void setSerialNumber(const String& serial);
     void setInitializationComplete(bool complete);
+    void setDiscoveredByTimer(bool discovered);
     
     // Status interface
     bool isSolved() const { return isModuleSolved; }
@@ -162,5 +168,5 @@ public:
     // Debug interface removed
     
     // CAN message handler
-    void handleCanMessage(uint16_t id, const uint8_t* data, uint8_t len);
+    void handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
 }; 
