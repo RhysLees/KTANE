@@ -13,25 +13,21 @@ uint8_t countdown_seconds = 0;
 
 void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
     if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 3) {
-        // New message format: [senderType, senderInstance, messageType, ...messageData]
         uint8_t senderType = data[0];
         uint8_t senderInstance = data[1];
         uint8_t msgType = data[2];
         
         switch (msgType) {
             case TIMER_GAME_START:
-                Serial.println("Simon Says: Game start signal received");
                 if (initialization_complete) {
                     gameRunning = true;
                     simonSays.onGameStateChange(true);
-                    Serial.println("Simon Says: Game started - module is now interactive!");
                 } else {
-                    Serial.println("Simon Says: Waiting for initialization to complete...");
+                    Serial.println("Waiting for initialization to complete...");
                 }
                 break;
                 
             case TIMER_GAME_STOP:
-                Serial.println("Simon Says: Game stop signal received");
                 gameRunning = false;
                 simonSays.onGameStateChange(false);
                 break;
@@ -42,8 +38,6 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
                     if (strikes != currentStrikes) {
                         currentStrikes = strikes;
                         simonSays.setStrikeCount(strikes);
-                        Serial.print("Simon Says: Strike count updated to ");
-                        Serial.println(strikes);
                     }
                 }
                 break;
@@ -90,6 +84,42 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
     simonSays.handleCanMessage(id, data, len);
 }
 
+void printStatus() {
+    uint8_t instanceId = getCurrentInstanceId();
+    uint16_t canId = CAN_INSTANCE_ID(CAN_TYPE_SIMON, instanceId);
+    
+    Serial.println("=== STATUS ===");
+    Serial.print("Instance ID: ");
+    Serial.println(instanceId);
+    Serial.print("CAN ID: 0x");
+    Serial.println(canId, HEX);
+    Serial.print("Serial Number: ");
+    Serial.println(serialNumber);
+    Serial.print("Strikes: ");
+    Serial.println(currentStrikes);
+    Serial.print("Game Running: ");
+    Serial.println(gameRunning ? "YES" : "NO");
+    Serial.print("Initialized: ");
+    Serial.println(initialization_complete ? "YES" : "NO");
+    if (countdown_seconds > 0) {
+        Serial.print("Countdown: ");
+        Serial.print(countdown_seconds);
+        Serial.println(" seconds");
+    }
+    Serial.println("==============");
+}
+
+void printHelp() {
+    Serial.println("Simon Says Commands:");
+    Serial.println("  RESET        - Reset module");
+    Serial.println("  SERIAL <xxx> - Set serial number");
+    Serial.println("  STRIKES <n>  - Set strike count (0-3)");
+    Serial.println("  START        - Start game");
+    Serial.println("  STOP         - Stop game");
+    Serial.println("  STATUS       - Show module status");
+    Serial.println("  HELP         - Show this help");
+}
+
 void handleSerialCommands() {
     if (!Serial.available()) return;
     
@@ -100,7 +130,8 @@ void handleSerialCommands() {
     if (input == "RESET") {
         simonSays.reset();
         Serial.println("Module reset");
-    } else if (input.startsWith("SERIAL ")) {
+    } 
+    else if (input.startsWith("SERIAL ")) {
         String newSerial = input.substring(7);
         if (newSerial.length() == 6) {
             serialNumber = newSerial;
@@ -110,7 +141,8 @@ void handleSerialCommands() {
         } else {
             Serial.println("Invalid serial number format (must be 6 characters)");
         }
-    } else if (input.startsWith("STRIKES ")) {
+    } 
+    else if (input.startsWith("STRIKES ")) {
         String strikeStr = input.substring(8);
         uint8_t strikes = strikeStr.toInt();
         if (strikes <= 3) {
@@ -121,108 +153,66 @@ void handleSerialCommands() {
         } else {
             Serial.println("Invalid strike count (must be 0-3)");
         }
-    } else if (input == "START") {
+    } 
+    else if (input == "START") {
         gameRunning = true;
         simonSays.onGameStateChange(true);
         Serial.println("Game started");
-    } else if (input == "STOP") {
+    } 
+    else if (input == "STOP") {
         gameRunning = false;
         simonSays.onGameStateChange(false);
         Serial.println("Game stopped");
-    } else if (input == "HELP") {
-        Serial.println("Simon Says Commands:");
-        Serial.println("  RESET        - Reset module");
-        Serial.println("  SERIAL <xxx> - Set serial number");
-        Serial.println("  STRIKES <n>  - Set strike count (0-3)");
-        Serial.println("  START        - Start game");
-        Serial.println("  STOP         - Stop game");
-        Serial.println("  CAN_STATUS   - Show CAN ID and communication status");
-        Serial.println("  HELP         - Show this help");
-    } else if (input == "CAN_STATUS") {
-        uint8_t instanceId = getCurrentInstanceId();
-        uint16_t canId = CAN_INSTANCE_ID(CAN_TYPE_SIMON, instanceId);
-        
-        Serial.println("=== CAN STATUS ===");
-        Serial.print("Module Type: 0x");
-        Serial.println(CAN_TYPE_SIMON, HEX);
-        Serial.print("Instance ID: ");
-        Serial.println(instanceId);
-        Serial.print("CAN ID: 0x");
-        Serial.println(canId, HEX);
-        Serial.print("Serial Number: ");
-        Serial.println(serialNumber);
-        Serial.print("Current Strikes: ");
-        Serial.println(currentStrikes);
-        Serial.print("Game Running: ");
-        Serial.println(gameRunning ? "YES" : "NO");
-        Serial.print("Initialization Complete: ");
-        Serial.println(initialization_complete ? "YES" : "NO");
-        if (countdown_seconds > 0) {
-            Serial.print("Countdown: ");
-            Serial.print(countdown_seconds);
-            Serial.println(" seconds");
-                }
-        Serial.println("==================");
-    } else {
+    } 
+    else if (input == "HELP") {
+        printHelp();
+    } 
+    else if (input == "STATUS") {
+        printStatus();
+    } 
+    else {
         Serial.println("Unknown command. Type HELP for available commands.");
     }
 }
 
-
-
 void setup() {
     Serial.begin(115200);
-    delay(50); // slight delay for entropy
-	randomSeed(millis());
+    delay(50);
+    randomSeed(millis());
     
     Serial.println("===============================");
     Serial.println("KTANE Simon Says Module v1.0");
     Serial.println("===============================");
     
-    // Initialize CAN bus with temporary ID for negotiation
+    // Initialize CAN bus and negotiate unique ID
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
     registerCanCallback(onCanMessage);
-    
-    // Negotiate unique ID
     assignUniqueId(CAN_TYPE_SIMON);
     
     uint8_t instanceId = getCurrentInstanceId();
     uint16_t finalCanId = getCurrentModuleId();
-    Serial.print("Simon Says: Final instance ID is ");
+    Serial.print("Instance ID: ");
     Serial.println(instanceId);
-    Serial.print("Simon Says: Final CAN ID is 0x");
+    Serial.print("CAN ID: 0x");
     Serial.println(finalCanId, HEX);
     
     // Register with timer module
-    uint8_t registerData[1];
-    registerData[0] = MODULE_REGISTER;
-    Serial.print("Simon Says: Sending MODULE_REGISTER = 0x");
-    Serial.println(MODULE_REGISTER, HEX);
+    uint8_t registerData[1] = {MODULE_REGISTER};
     sendCanMessage(CAN_ID_TIMER, registerData, 1);
-    Serial.println("Simon Says: Registered with timer module");
+    Serial.println("Registered with timer module");
     
     // Initialize with empty values - will be received from timer
     serialNumber = "";
     simonSays.setStrikeCount(0);
-    
-    // Don't set serial number yet - wait for it from timer
-    Serial.println("Simon Says: Waiting for serial number from timer module...");
-    
-    // Initialize Simon Says module
     simonSays.begin();
     
-    Serial.println("Simon Says: Module initialized and ready!");
+    Serial.println("Module initialized and ready!");
     Serial.println("Type HELP for available commands");
     Serial.println("===============================");
 }
 
 void loop() {
-    // Update Simon Says module (essential for game logic)
     simonSays.update();
-    
-    // Handle CAN messages
     handleCanMessages();
-    
-    // Handle serial commands
     handleSerialCommands();
 } 

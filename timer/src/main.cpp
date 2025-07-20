@@ -10,6 +10,7 @@
 #include <module_tracker.h>
 
 GameStateManager gameState;
+
 void onStateChange(GameState oldState, GameState newState) {
 	switch (newState) {
 		case GameState::EXPLODED:
@@ -61,10 +62,8 @@ void onTimerCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
     gameState.handleCanMessage(id, data, len);
 }
 
-void setup()
-{
-	Serial.begin(115200);
-	delay(50); // slight delay for entropy
+void setupHardware() {
+	delay(50);
 	randomSeed(millis());
 
 	Wire.setSDA(0);
@@ -76,19 +75,9 @@ void setup()
 	Wire1.begin();
 
 	initLcd1602(16, 2, Wire1);
+}
 
-	Serial.print("DEBUG: CAN_ID_TIMER = 0x");
-	Serial.println(CAN_ID_TIMER, HEX);
-	Serial.print("DEBUG: CAN_TYPE_TIMER = 0x");
-	Serial.println(CAN_TYPE_TIMER, HEX);
-	
-	initCanBus(CAN_ID_TIMER);
-	registerCanCallback(onTimerCanMessage);
-	initStrikeDisplay();
-	initCountdownDisplay();
-	initDebugInterface();
-	initModuleTracker(&gameState);
-
+void setupGameConfig() {
 	GameConfig config;
 	config.timeLimitMs = 300000;  // 5 minutes default
 	config.maxStrikes = 3;
@@ -100,38 +89,60 @@ void setup()
 	config.enableEdgework = true;
 
 	gameState.setConfig(config);
+}
 
+void setupCallbacks() {
 	gameState.setStateChangeCallback(onStateChange);
 	gameState.setStrikeChangeCallback(onStrikeChange);
 	gameState.setModuleSolvedCallback(onModuleSolved);
 	gameState.setTimeUpdateCallback(onTimeUpdate);
+}
 
-	gameState.initialize(); // includes initialization sequence
-
+void printGameInfo() {
 	Serial.println("===============================");
 	Serial.println("KTANE Game State v2.0 Ready");
 	Serial.println("===============================");
 	Serial.print("Serial Number: ");
 	Serial.println(gameState.getSerialNumber());
 	Serial.print("Time Limit: ");
-	Serial.print(config.timeLimitMs / 1000);
+	Serial.print(gameState.getConfig().timeLimitMs / 1000);
 	Serial.println(" seconds");
 	Serial.print("Max Strikes: ");
-	Serial.println(config.maxStrikes);
+	Serial.println(gameState.getConfig().maxStrikes);
 	Serial.println("Type HELP for commands");
 	Serial.println("===============================");
 }
 
-void loop()
-{
-	gameState.tick(); // handles timer, needy modules, game logic, and initialization
+void setup() {
+	Serial.begin(115200);
+	
+	setupHardware();
+	
+	initCanBus(CAN_ID_TIMER);
+	registerCanCallback(onTimerCanMessage);
+	
+	initStrikeDisplay();
+	initCountdownDisplay();
+	initDebugInterface();
+	initModuleTracker(&gameState);
+
+	setupGameConfig();
+	setupCallbacks();
+
+	gameState.initialize();
+
+	printGameInfo();
+}
+
+void loop() {
+	gameState.tick();
 
 	updateCountdownDisplay(gameState);
 	updateStrikeCount(gameState);
 
 	handleSerialCommands(gameState);
 	handleCanMessages();
-	updateModuleConnections(); // Check for module timeouts
+	updateModuleConnections();
 	
 	updateDebugInterface(gameState);
 }

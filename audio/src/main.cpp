@@ -3,22 +3,17 @@
 #include <can_bus.h>
 #include <audio_mixer.h>
 #include <Adafruit_TPA2016.h>
-
 #include <sounds.h>
 
 Adafruit_TPA2016 amp;
 
-void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
-{
-  if (id == CAN_ID_AUDIO && len >= 3)
-  {
-    // New message format: [senderType, senderInstance, audioCommand]
+void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len) {
+  if (id == CAN_ID_AUDIO && len >= 3) {
     uint8_t senderType = data[0];
     uint8_t senderInstance = data[1];
     uint8_t messageId = data[2];
     
-    switch (messageId)
-    {
+    switch (messageId) {
       case AUDIO_BEEP_NORMAL:
         playSound(double_beep, double_beep_len / 2);
         break;
@@ -50,16 +45,16 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
         playSound(alarm_emergency, alarm_emergency_len / 2);
         break;
       case AUDIO_SIMON_RED:
-        playSound(simon_red, simon_red_len / 2); // Red - 550Hz
+        playSound(simon_red, simon_red_len / 2);
         break;
       case AUDIO_SIMON_BLUE:
-        playSound(simon_blue, simon_blue_len / 2); // Blue - 660Hz
+        playSound(simon_blue, simon_blue_len / 2);
         break;
       case AUDIO_SIMON_GREEN:
-        playSound(simon_green, simon_green_len / 2); // Green - 775Hz
+        playSound(simon_green, simon_green_len / 2);
         break;
       case AUDIO_SIMON_YELLOW:
-        playSound(simon_yellow, simon_yellow_len / 2); // Yellow - 985Hz
+        playSound(simon_yellow, simon_yellow_len / 2);
         break;
       default:
         break;
@@ -67,8 +62,7 @@ void handleAudioMessage(uint16_t id, const uint8_t *data, uint8_t len)
   }
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
   Wire.setSDA(0);
   Wire.setSCL(1);
@@ -77,11 +71,9 @@ void setup()
   initAudioMixer(15);
   Serial.println("PWM audio ready.");
 
-  if (!amp.begin())
-  {
+  if (!amp.begin()) {
     Serial.println("Could not find TPA2016D2!");
-    while (1)
-      ;
+    while (1);
   }
 
   amp.enableChannel(true, false);
@@ -93,8 +85,7 @@ void setup()
   registerCanCallback(handleAudioMessage);
 }
 
-void loop()
-{
+void loop() {
   handleCanMessages();
   updateAudioMixer();
 }
