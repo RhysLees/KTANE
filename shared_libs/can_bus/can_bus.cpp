@@ -29,6 +29,10 @@ MCP_CAN CAN(CAN_SPI_PIN);
 static CanMessageCallback canCallbacks[MAX_CAN_CALLBACKS];
 static uint8_t callbackCount = 0;
 
+#define MAX_RAW_CAN_CALLBACKS 2
+static RawCanMessageCallback rawCanCallbacks[MAX_RAW_CAN_CALLBACKS];
+static uint8_t rawCallbackCount = 0;
+
 void onCanInterrupt() {
   canInterruptFlag = true;
   canInterruptCount++;
@@ -67,6 +71,12 @@ void initCanBus(uint16_t fullCanId) {
 void registerCanCallback(CanMessageCallback callback) {
   if (callbackCount < MAX_CAN_CALLBACKS) {
     canCallbacks[callbackCount++] = callback;
+  }
+}
+
+void registerRawCanCallback(RawCanMessageCallback callback) {
+  if (rawCallbackCount < MAX_RAW_CAN_CALLBACKS) {
+    rawCanCallbacks[rawCallbackCount++] = callback;
   }
 }
 
@@ -117,20 +127,27 @@ void handleCanMessages() {
       lastSerialDisplayPing = millis();
     }
 
+    // Call raw callbacks first (before filtering) - for logging/monitoring
+    uint16_t senderId = 0;
+    if (len >= 2) {
+      senderId = (buf[0] << 8) | buf[1];
+    }
+    for (uint8_t i = 0; i < rawCallbackCount; i++) {
+      if (rawCanCallbacks[i]) {
+        rawCanCallbacks[i](id, senderId, buf, len, millis());
+      }
+    }
+
     // Filter to this module or broadcast messages only
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
       return;
     }
 
     // Extract sender ID from first 2 bytes and shift data
-    uint16_t senderId = 0;
     uint8_t shiftedData[8];
     uint8_t shiftedLen = len;
     
     if (len >= 2) {
-      // Extract sender ID from first 2 bytes
-      senderId = (buf[0] << 8) | buf[1];
-      
       // Shift data to remove sender ID (copy bytes 2+ to start)
       shiftedLen = len - 2;
       memcpy(shiftedData, &buf[2], shiftedLen);

@@ -9,6 +9,7 @@
 #include <lcd1602.h>
 #include <module_tracker.h>
 #include <web_server.h>
+#include <web_api.h>
 
 GameStateManager gameState;
 
@@ -147,6 +148,7 @@ void setup() {
 	
 	initCanBus(CAN_ID_TIMER);
 	registerCanCallback(onTimerCanMessage);
+	registerRawCanCallback(onRawCanMessage);
 	
 	initStrikeDisplay();
 	initCountdownDisplay();

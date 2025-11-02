@@ -7,6 +7,20 @@
 // Global game state pointer (set by web_server.cpp)
 GameStateManager* gameStatePtr = nullptr;
 
+// CAN message log storage
+#define MAX_CAN_LOG_ENTRIES 200
+struct CanLogEntry {
+    uint16_t receiverId;
+    uint16_t senderId;
+    uint8_t data[8];
+    uint8_t len;
+    unsigned long timestamp;
+};
+
+static CanLogEntry canLog[MAX_CAN_LOG_ENTRIES];
+static uint16_t canLogIndex = 0;
+static uint16_t canLogCount = 0;
+
 // External CAN bus variables
 extern bool canBusInitialized;
 extern uint16_t thisModuleId;
@@ -178,54 +192,63 @@ void handleSetConfig(WiFiClient& client, String body) {
     sendResponse(client, 200, "application/json", responseStr);
 }
 
-// Generate CAN log output
-String getCanLogOutput() {
-    String output = "";
-    
-    // CAN Bus Status
-    output += "=== CAN BUS STATUS ===\n";
-    output += "Initialized: " + String(canBusInitialized ? "YES" : "NO") + "\n";
-    output += "Module ID: 0x" + String(thisModuleId, HEX) + " (" + String(thisModuleId) + ")\n";
-    
-    uint8_t moduleType = (thisModuleId >> 5) & 0x7F;
-    uint8_t instanceId = thisModuleId & 0x1F;
-    output += "Type: 0x" + String(moduleType, HEX) + " (" + String(getModuleTypeName(moduleType)) + ")\n";
-    output += "Instance: 0x" + String(instanceId, HEX) + " (" + String(instanceId) + ")\n";
-    output += "ID Conflict: " + String(idConflictDetected ? "YES" : "NO") + "\n\n";
-    
-    output += "--- MODULE CONNECTIONS ---\n";
-    output += "Audio: ";
-    if (audioModuleConnected) {
-        output += "CONNECTED (last ping: " + String((millis() - lastAudioPing) / 1000) + "s ago)\n";
-    } else {
-        output += "DISCONNECTED\n";
-    }
-    
-    output += "Serial Display: ";
-    if (serialDisplayConnected) {
-        output += "CONNECTED (last ping: " + String((millis() - lastSerialDisplayPing) / 1000) + "s ago)\n";
-    } else {
-        output += "DISCONNECTED\n";
-    }
-    
-    output += "\n--- STATISTICS ---\n";
-    output += "CAN Interrupts: " + String(canInterruptCount) + "\n\n";
-    
-    output += "--- CAN ID REFERENCE ---\n";
-    output += "TIMER: 0x" + String(CAN_ID_TIMER, HEX) + " (" + String(CAN_ID_TIMER) + ")\n";
-    output += "AUDIO: 0x" + String(CAN_ID_AUDIO, HEX) + " (" + String(CAN_ID_AUDIO) + ")\n";
-    output += "SERIAL_DISPLAY: 0x" + String(CAN_ID_SERIAL_DISPLAY, HEX) + " (" + String(CAN_ID_SERIAL_DISPLAY) + ")\n";
-    output += "BROADCAST: 0x" + String(CAN_ID_BROADCAST, HEX) + " (" + String(CAN_ID_BROADCAST) + ")\n\n";
-    
-    output += "No message logging yet - coming soon!\n";
-    
-    return output;
-}
-
 // Handle CAN log API
 void handleCanLog(WiFiClient& client) {
-    String canLogOutput = getCanLogOutput();
-    sendResponse(client, 200, "text/plain", canLogOutput);
+    DynamicJsonDocument doc(16384); // Large enough for 200 entries
+    doc["success"] = true;
+    doc["count"] = canLogCount;
+    
+    JsonArray messages = doc.createNestedArray("messages");
+    
+    // Start from the oldest entry (circular buffer)
+    uint16_t startIndex = (canLogCount < MAX_CAN_LOG_ENTRIES) ? 0 : canLogIndex;
+    
+    for (uint16_t i = 0; i < canLogCount && i < MAX_CAN_LOG_ENTRIES; i++) {
+        uint16_t idx = (startIndex + i) % MAX_CAN_LOG_ENTRIES;
+        const CanLogEntry& entry = canLog[idx];
+        
+        JsonObject msg = messages.createNestedObject();
+        
+        // Sender info
+        uint8_t senderType = (entry.senderId >> 5) & 0x7F;
+        msg["senderId"] = entry.senderId;
+        msg["senderName"] = String(getModuleTypeName(senderType));
+        msg["senderDisplay"] = String(getModuleTypeName(senderType)) + " (0x" + String(entry.senderId, HEX) + ")";
+        
+        // Receiver info
+        uint8_t receiverType = (entry.receiverId >> 5) & 0x7F;
+        msg["receiverId"] = entry.receiverId;
+        msg["receiverName"] = String(getModuleTypeName(receiverType));
+        msg["receiverDisplay"] = String(getModuleTypeName(receiverType)) + " (0x" + String(entry.receiverId, HEX) + ")";
+        
+        // Data
+        JsonArray dataArray = msg.createNestedArray("data");
+        for (uint8_t j = 0; j < entry.len; j++) {
+            dataArray.add(entry.data[j]);
+        }
+        
+        msg["len"] = entry.len;
+        msg["timestamp"] = entry.timestamp;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    sendResponse(client, 200, "application/json", response);
+}
+
+// CAN log callback function
+void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
+    CanLogEntry& entry = canLog[canLogIndex];
+    entry.receiverId = receiverId;
+    entry.senderId = senderId;
+    entry.len = len > 8 ? 8 : len; // Cap at 8 bytes
+    entry.timestamp = timestamp;
+    memcpy(entry.data, data, entry.len);
+    
+    canLogIndex = (canLogIndex + 1) % MAX_CAN_LOG_ENTRIES;
+    if (canLogCount < MAX_CAN_LOG_ENTRIES) {
+        canLogCount++;
+    }
 }
 
 // Handle modules API

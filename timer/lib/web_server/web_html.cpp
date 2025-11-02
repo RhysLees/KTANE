@@ -200,12 +200,26 @@ const char* html_page = R"rawliteral(
         <!-- CAN Log Section -->
         <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
             <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
-                <h2 class="text-xl font-bold">CAN Bus Log</h2>
+                <h2 class="text-xl font-bold">CAN Bus Log (<span id="canLogCount">0</span> messages)</h2>
                 <button onclick="updateCanLog()" class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded text-sm">
                     🔄 Refresh
                 </button>
             </div>
-            <pre id="canLogOutput" class="bg-gray-900 rounded p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-gray-300"></pre>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-600">
+                            <th class="text-left py-2 px-4">Time</th>
+                            <th class="text-left py-2 px-4">Sender</th>
+                            <th class="text-left py-2 px-4">Receiver</th>
+                            <th class="text-left py-2 px-4">Data</th>
+                        </tr>
+                    </thead>
+                    <tbody id="canLogTableBody">
+                        <!-- Messages will be populated here -->
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Connection Status -->
@@ -364,12 +378,32 @@ const char* html_page = R"rawliteral(
 
         function updateCanLog() {
             fetch('/api/debug')
-                .then(r => r.text())
+                .then(r => r.json())
                 .then(data => {
-                    document.getElementById('canLogOutput').textContent = data;
+                    if (data.success) {
+                        document.getElementById('canLogCount').textContent = data.count;
+                        const tbody = document.getElementById('canLogTableBody');
+                        tbody.innerHTML = '';
+                        
+                        data.messages.forEach((msg, idx) => {
+                            const row = document.createElement('tr');
+                            row.className = idx % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800';
+                            
+                            // Format data array as hex
+                            const dataStr = msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                            
+                            row.innerHTML = `
+                                <td class="py-2 px-4 font-mono text-xs">${msg.timestamp}ms</td>
+                                <td class="py-2 px-4">${msg.senderDisplay}</td>
+                                <td class="py-2 px-4">${msg.receiverDisplay}</td>
+                                <td class="py-2 px-4 font-mono text-xs">${dataStr}</td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    }
                 })
                 .catch(err => {
-                    document.getElementById('canLogOutput').textContent = 'Error fetching CAN log: ' + err;
+                    console.error('Error fetching CAN log:', err);
                 });
         }
 

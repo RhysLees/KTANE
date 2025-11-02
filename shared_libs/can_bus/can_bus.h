@@ -116,11 +116,13 @@ enum IdMessage : uint8_t {
 
 // Function declarations
 typedef void (*CanMessageCallback)(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
+typedef void (*RawCanMessageCallback)(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp);
 
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
 void registerCanCallback(CanMessageCallback callback);
+void registerRawCanCallback(RawCanMessageCallback callback);
 
 // ID negotiation functions
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
