@@ -8,6 +8,7 @@
 #include <debug.h>
 #include <lcd1602.h>
 #include <module_tracker.h>
+#include <web_server.h>
 
 GameStateManager gameState;
 
@@ -134,6 +135,8 @@ void printGameInfo() {
 	Serial.println(gameState.getConfig().maxStrikes);
 	Serial.println("Module discovery active - 1s heartbeats");
 	Serial.println("Type HELP for commands");
+	Serial.print("Web UI available at: http://");
+	Serial.println(getWiFiIP());
 	Serial.println("===============================");
 }
 
@@ -154,6 +157,8 @@ void setup() {
 	setupCallbacks();
 
 	gameState.initialize();
+	
+	initWebServer(&gameState);
 
 	printGameInfo();
 }
@@ -169,4 +174,5 @@ void loop() {
 	updateModuleConnections();
 	
 	updateDebugInterface(gameState);
+	updateWebServer();
 }
