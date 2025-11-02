@@ -16,9 +16,9 @@ A web-based control interface for the KTANE Timer module using WiFi AP mode on t
 
 - **SSID**: `KTANE_TIMER`
 - **Password**: `ktane12345`
-- **IP**: `192.168.4.1` (default AP IP)
+- **IP**: `192.168.42.1` (default AP IP)
 
-After connecting to the WiFi network, open a browser and navigate to `http://192.168.4.1`
+After connecting to the WiFi network, open a browser and navigate to `http://192.168.42.1`
 
 ## Web Interface Controls
 
