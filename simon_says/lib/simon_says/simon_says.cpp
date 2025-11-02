@@ -68,6 +68,8 @@ void SimonSays::update() {
     updateButtons();
     updateLEDs();
     
+    // Heartbeat handles discovery - no need for separate ping messages
+    
     // Update status in shared heartbeat system
     ModuleStatus heartbeatStatus = MODULE_STATUS_IDLE;
     switch (currentState) {
@@ -301,7 +303,8 @@ void SimonSays::setDiscoveredByTimer(bool discovered) {
     isDiscoveredByTimer = discovered;
     if (discovered) {
         discoveryLedFlashing = false; // Stop flashing
-        Serial.println("Simon Says: Module discovered by timer");
+        digitalWrite(SIMON_STATUS_LED, HIGH); // Turn LED on solid
+        Serial.println("Simon Says: Module discovered by timer - heartbeat continues");
     }
 }
 
@@ -342,10 +345,11 @@ void SimonSays::updateButtons() {
 }
 
 void SimonSays::updateLEDs() {
-    // Handle discovery LED flashing when not discovered by timer
-    if (!isDiscoveredByTimer && !isModuleSolved) {
+    // Handle discovery LED flashing when not discovered by timer and game is not running
+    // Blink at 2x per second (every 250ms) during discovery
+    if (!isDiscoveredByTimer && !isModuleSolved && !gameStarted && initializationComplete) {
         unsigned long currentTime = millis();
-        if (currentTime - lastDiscoveryFlashTime >= 500) { // Flash every 0.5 seconds
+        if (currentTime - lastDiscoveryFlashTime >= 250) { // Flash every 0.25 seconds (2x per second)
             discoveryLedFlashing = !discoveryLedFlashing;
             lastDiscoveryFlashTime = currentTime;
             digitalWrite(SIMON_STATUS_LED, discoveryLedFlashing ? HIGH : LOW);
@@ -358,6 +362,9 @@ void SimonSays::updateLEDs() {
         digitalWrite(SIMON_STATUS_LED, HIGH);
     } else if (gameStarted && !isModuleSolved) {
         // Off when game started but not solved
+        digitalWrite(SIMON_STATUS_LED, LOW);
+    } else {
+        // Off when not initialized
         digitalWrite(SIMON_STATUS_LED, LOW);
     }
     

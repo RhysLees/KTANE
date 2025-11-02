@@ -78,12 +78,19 @@ void HeartbeatManager::setSolved(bool solved) {
 }
 
 void HeartbeatManager::sendNow() {
-    if (!enabled) return;
+    if (!enabled) {
+        Serial.println("Heartbeat: Not enabled, skipping send");
+        return;
+    }
     
     // Simple heartbeat format: [MODULE_HEARTBEAT] 
     // CAN library automatically prepends sender ID
     uint8_t heartbeatData[1];
     heartbeatData[0] = MODULE_HEARTBEAT;
+    
+    Serial.print("Heartbeat: Sending heartbeat to timer (mode: ");
+    Serial.print(gameState == GAME_RUNNING ? "GAME" : "DISCOVERY");
+    Serial.println(")");
     
     sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
     lastHeartbeat = millis();

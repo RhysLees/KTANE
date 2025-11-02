@@ -12,8 +12,12 @@ void ModuleTracker::handleCanMessage(uint16_t id, uint16_t senderId, const uint8
     // Data is clean (sender ID already removed), first byte is message type
     uint8_t msgType = data[0];
     
-    // Only process heartbeat messages
+    // Process heartbeat messages (used for discovery when game is not running)
     if (msgType == MODULE_HEARTBEAT) {
+        Serial.print("ModuleTracker: Received heartbeat from 0x");
+        Serial.print(senderId, HEX);
+        Serial.print(", gameRunning=");
+        Serial.println(gameRunning ? "true" : "false");
         processHeartbeat(senderId, data, len);
     }
     
@@ -30,7 +34,10 @@ void ModuleTracker::handleCanMessage(uint16_t id, uint16_t senderId, const uint8
 
 void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uint8_t len) {
     // Skip timer module's own messages
-    if (moduleId == CAN_ID_TIMER) return;
+    if (moduleId == CAN_ID_TIMER) {
+        Serial.println("ModuleTracker: Ignoring heartbeat from timer itself");
+        return;
+    }
     
     unsigned long now = millis();
     
@@ -39,7 +46,7 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
     bool solved = (len >= 3) ? (data[2] != 0) : false;
     uint8_t progress = (len >= 4) ? data[3] : 0;
     
-    // Check if this is a new module (first discovery)
+    // Check if this is a new module (first discovery via heartbeat)
     bool isNewModule = (discoveredModules.find(moduleId) == discoveredModules.end());
     
     // Update discovered modules (always track heartbeats)
@@ -51,15 +58,33 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
     info.isSolved = solved;
     info.moduleTypeName = getModuleTypeName(moduleId);
     
-    // Send discovery acknowledgment if this is a new module
+    // Only discover new modules when game is not running
     if (isNewModule) {
+        Serial.print("ModuleTracker: New module detected: 0x");
+        Serial.print(moduleId, HEX);
+        Serial.print(", gameRunning=");
+        Serial.print(gameRunning ? "true" : "false");
+        Serial.print(", gameState=");
+        Serial.println(gameState ? "valid" : "null");
+    }
+    
+    if (isNewModule && !gameRunning && gameState) {
+        // Register new module in game state
+        uint8_t moduleType = (moduleId >> 5) & 0x7F;
+        gameState->registerModule(moduleId, static_cast<ModuleType>(moduleType));
+        
+        // Also add to registered modules map
+        registeredModules[moduleId] = info;
+        registeredModules[moduleId].isRegistered = true;
+        
+        // Send discovery acknowledgment
         uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
         sendCanMessage(moduleId, discoveryAck, 1);
-        Serial.print("Module discovered: ");
+        Serial.print("Module discovered via heartbeat: ");
         Serial.print(info.moduleTypeName);
         Serial.print(" (ID: 0x");
         Serial.print(moduleId, HEX);
-        Serial.println(") - sent discovery acknowledgment");
+        Serial.println(") - registered and sent discovery acknowledgment");
     }
     
     // If module is registered for game, update registered modules too
@@ -89,11 +114,18 @@ void ModuleTracker::checkForTimeouts() {
     // Check discovered modules
     for (auto it = discoveredModules.begin(); it != discoveredModules.end();) {
         if (now - it->second.lastHeartbeat > timeoutMs) {
+            uint16_t moduleId = it->first;
             Serial.print("Module timeout: ");
             Serial.print(it->second.moduleTypeName);
             Serial.print(" (ID: 0x");
-            Serial.print(it->first, HEX);
+            Serial.print(moduleId, HEX);
             Serial.println(")");
+            
+            // If game is not running, remove from gamestate
+            if (!gameRunning && gameState) {
+                gameState->unregisterModule(moduleId);
+            }
+            
             it = discoveredModules.erase(it);
         } else {
             ++it;
@@ -103,11 +135,32 @@ void ModuleTracker::checkForTimeouts() {
     // Check registered modules (more critical during game)
     for (auto it = registeredModules.begin(); it != registeredModules.end();) {
         if (now - it->second.lastHeartbeat > timeoutMs) {
-            Serial.print("CRITICAL: Registered module timeout: ");
-            Serial.print(it->second.moduleTypeName);
-            Serial.print(" (ID: 0x");
-            Serial.print(it->first, HEX);
-            Serial.println(")");
+            uint16_t moduleId = it->first;
+            
+            if (gameRunning) {
+                // If game is running, pause the game
+                Serial.print("CRITICAL: Registered module timeout during game: ");
+                Serial.print(it->second.moduleTypeName);
+                Serial.print(" (ID: 0x");
+                Serial.print(moduleId, HEX);
+                Serial.println(") - pausing game");
+                
+                if (gameState && gameState->getState() == GameState::RUNNING) {
+                    gameState->pauseTimer();
+                }
+            } else {
+                // If game is not running, remove from gamestate
+                Serial.print("Registered module timeout: ");
+                Serial.print(it->second.moduleTypeName);
+                Serial.print(" (ID: 0x");
+                Serial.print(moduleId, HEX);
+                Serial.println(") - removing from gamestate");
+                
+                if (gameState) {
+                    gameState->unregisterModule(moduleId);
+                }
+            }
+            
             it = registeredModules.erase(it);
         } else {
             ++it;

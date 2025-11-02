@@ -87,6 +87,15 @@ void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint
     gameState.handleCanMessage(id, senderId, data, len);
 }
 
+void onRawCanMessageSerial(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
+    Serial.printf("Raw CAN message: Receiver ID: 0x%04X, Sender ID: 0x%04X, Length: %d, Timestamp: %lu\n", receiverId, senderId, len, timestamp);
+    Serial.print("Data: ");
+    for (uint8_t i = 0; i < len; i++) {
+        Serial.printf("0x%02X ", data[i]);
+    }
+    Serial.println();
+}
+
 void setupHardware() {
 	delay(50);
 	randomSeed(millis());
@@ -149,10 +158,13 @@ void setup() {
 	initCanBus(CAN_ID_TIMER);
 	registerCanCallback(onTimerCanMessage);
 	registerRawCanCallback(onRawCanMessage);
+	registerRawCanCallback(onRawCanMessageSerial);
 	
 	initStrikeDisplay();
 	initCountdownDisplay();
 	initDebugInterface();
+	
+	// Initialize module tracker BEFORE game state so it can discover modules
 	initModuleTracker(&gameState);
 
 	setupGameConfig();
@@ -174,6 +186,12 @@ void loop() {
 	handleSerialCommands(gameState);
 	handleCanMessages();
 	updateModuleConnections();
+	
+	// Update module tracker to check for timeouts and report discovered modules
+	ModuleTracker* tracker = getModuleTracker();
+	if (tracker) {
+		tracker->update();
+	}
 	
 	updateDebugInterface(gameState);
 	updateWebServer();

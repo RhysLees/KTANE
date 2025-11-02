@@ -29,8 +29,26 @@ String formatGameState(GameState state) {
 
 // Parse HTTP request
 bool parseRequest(WiFiClient& client, String& method, String& path) {
-    String request = client.readStringUntil('\r');
-    client.read(); // skip \n
+    String request = "";
+    unsigned long startTime = millis();
+    
+    // Read with timeout to avoid blocking
+    while (client.available() == 0) {
+        if (millis() - startTime > 100) {
+            return false; // 100ms timeout
+        }
+        yield();
+    }
+    
+    // Read request line
+    while (client.available()) {
+        char c = client.read();
+        if (c == '\r') {
+            client.read(); // skip \n
+            break;
+        }
+        request += c;
+    }
     
     int firstSpace = request.indexOf(' ');
     int secondSpace = request.indexOf(' ', firstSpace + 1);
@@ -42,10 +60,21 @@ bool parseRequest(WiFiClient& client, String& method, String& path) {
     method = request.substring(0, firstSpace);
     path = request.substring(firstSpace + 1, secondSpace);
     
-    // Read rest of headers
+    // Read rest of headers with timeout
+    startTime = millis();
     while (client.available()) {
-        String line = client.readStringUntil('\r');
-        client.read(); // skip \n
+        if (millis() - startTime > 200) {
+            break; // 200ms timeout for headers
+        }
+        String line = "";
+        while (client.available()) {
+            char c = client.read();
+            if (c == '\r') {
+                client.read(); // skip \n
+                break;
+            }
+            line += c;
+        }
         if (line.length() == 0) break;
     }
     

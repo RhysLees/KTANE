@@ -38,6 +38,7 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
             case TIMER_MODULE_DISCOVERED:
                 Serial.println("Simon Says: Discovered by timer - stopping LED flashing");
                 simonSays.setDiscoveredByTimer(true);
+                // Heartbeat already running, just continue
                 break;
                 
             case TIMER_STRIKE_UPDATE:
@@ -205,8 +206,10 @@ void setup() {
     Serial.print("CAN ID: 0x");
     Serial.println(finalCanId, HEX);
     
-    // Initialize heartbeat system (starts in discovery mode)
+    // Initialize heartbeat system - start immediately when CAN ID is received
+    // Heartbeat will be used for discovery when game is not running
     initHeartbeat();
+    setHeartbeatGameRunning(false); // Discovery mode (1 second interval)
     
     // Register with timer module
     uint8_t registerData[1] = {MODULE_REGISTER};

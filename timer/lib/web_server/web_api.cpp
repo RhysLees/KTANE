@@ -221,7 +221,26 @@ void handleCanLog(WiFiClient& client) {
         msg["receiverName"] = String(getModuleTypeName(receiverType));
         msg["receiverDisplay"] = String(getModuleTypeName(receiverType)) + " (0x" + String(entry.receiverId, HEX) + ")";
         
-        // Data
+        // Decode message data
+        String dataDecoded = "";
+        if (entry.len >= 3) {
+            // Message type is at byte 2
+            uint8_t msgType = entry.data[2];
+            dataDecoded += String(getMessageTypeName(msgType));
+            
+            // Additional payload
+            if (entry.len > 3) {
+                dataDecoded += " [";
+                for (uint8_t j = 3; j < entry.len; j++) {
+                    if (j > 3) dataDecoded += ", ";
+                    dataDecoded += String(entry.data[j]);
+                }
+                dataDecoded += "]";
+            }
+        }
+        msg["dataDecoded"] = dataDecoded;
+        
+        // Data (hex)
         JsonArray dataArray = msg.createNestedArray("data");
         for (uint8_t j = 0; j < entry.len; j++) {
             dataArray.add(entry.data[j]);
@@ -286,5 +305,25 @@ void handleModules(WiFiClient& client) {
     String response;
     serializeJson(doc, response);
     sendResponse(client, 200, "application/json", response);
+}
+
+// Handle ping API - informational endpoint
+void handlePing(WiFiClient& client) {
+    // Note: Discovery now uses heartbeat messages automatically
+    // - Modules start sending heartbeats immediately when they get a CAN ID
+    // - When game is not running, timer uses heartbeats for discovery
+    // - Timer responds to new modules with TIMER_MODULE_DISCOVERED
+    // - This endpoint is informational - modules discover automatically via heartbeat
+    
+    DynamicJsonDocument doc(200);
+    doc["success"] = true;
+    doc["message"] = "Modules discover automatically via heartbeat when game is not running";
+    doc["info"] = "Heartbeat-based discovery is active - modules will be discovered automatically";
+    
+    String response;
+    serializeJson(doc, response);
+    sendResponse(client, 200, "application/json", response);
+    
+    Serial.println("Web server: Ping info requested - heartbeat-based discovery is active");
 }
 

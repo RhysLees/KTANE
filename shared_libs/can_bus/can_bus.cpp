@@ -59,6 +59,12 @@ void initCanBus(uint16_t fullCanId) {
   }
 
   pinMode(CAN_INT_PIN, INPUT);
+  
+  // Check interrupt pin state
+  bool intPinState = digitalRead(CAN_INT_PIN);
+  Serial.print("CAN INT pin initial state: ");
+  Serial.println(intPinState ? "HIGH" : "LOW");
+  
   attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
   
   canBusInitialized = true;
@@ -66,6 +72,8 @@ void initCanBus(uint16_t fullCanId) {
   
   Serial.print("CAN ID: 0x");
   Serial.println(thisModuleId, HEX);
+  Serial.print("CAN INT pin: ");
+  Serial.println(CAN_INT_PIN);
 }
 
 void registerCanCallback(CanMessageCallback callback) {
@@ -99,15 +107,85 @@ void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len) {
 }
 
 void handleCanMessages() {
-  if (!canInterruptFlag) return;
-  canInterruptFlag = false;
-
-  if (CAN.checkReceive() == CAN_MSGAVAIL) {
+  // Process ALL available messages in the queue
+  // Some CAN controllers queue multiple messages, so we need to process them all
+  uint8_t messagesProcessed = 0;
+  const uint8_t MAX_MESSAGES_PER_CALL = 10; // Limit to prevent blocking
+  
+  // ALWAYS poll for messages - interrupts are unreliable on some MCP2515 boards
+  // checkReceive() is the source of truth for message availability
+  byte status = CAN.checkReceive();
+  
+  // If interrupt flag is set, also acknowledge it
+  if (canInterruptFlag) {
+    canInterruptFlag = false;
+  }
+  
+  // Check interrupt pin state for debugging
+  static unsigned long lastPollDebug = 0;
+  unsigned long now = millis();
+  if (now - lastPollDebug >= 2000) {  // Every 2 seconds
+    lastPollDebug = now;
+    bool intPinLow = (digitalRead(CAN_INT_PIN) == LOW);
+    Serial.print("CAN Poll Debug: checkReceive()=");
+    Serial.print(status == CAN_MSGAVAIL ? "MSGAVAIL" : status == CAN_NOMSG ? "NOMSG" : "UNKNOWN");
+    Serial.print(", INT pin=");
+    Serial.print(intPinLow ? "LOW" : "HIGH");
+    Serial.print(", interruptFlag=");
+    Serial.print(canInterruptFlag ? "true" : "false");
+    Serial.print(", interruptCount=");
+    Serial.print(canInterruptCount);
+    Serial.print(", timeSinceLastMsg=");
+    Serial.print(now - lastMessageTime);
+    Serial.println("ms");
+    
+    // If no messages received for a while, log warning
+    if (now - lastMessageTime > 10000 && thisModuleId == CAN_ID_TIMER) {
+      Serial.println("CAN: WARNING - No messages received for 10s on timer!");
+      Serial.println("CAN: Messages are on bus (logic analyzer confirms) but timer not receiving");
+      Serial.println("CAN: Check CAN controller initialization and filters");
+    }
+  }
+  
+  while (messagesProcessed < MAX_MESSAGES_PER_CALL) {
+    bool messageAvailable = false;
+    
+    // ALWAYS check checkReceive() first - it's the most reliable
+    status = CAN.checkReceive();
+    if (status == CAN_MSGAVAIL) {
+      messageAvailable = true;
+    }
+    
+    // Interrupt flag is secondary - sometimes doesn't fire
+    if (canInterruptFlag) {
+      canInterruptFlag = false;
+      if (!messageAvailable) {
+        // If interrupt fired but checkReceive says no message, that's odd
+        Serial.println("CAN: Interrupt fired but checkReceive() says no message - investigating");
+        messageAvailable = (CAN.checkReceive() == CAN_MSGAVAIL); // Double-check
+      }
+    }
+    
+    // If no message available, exit the loop
+    if (!messageAvailable) {
+      break;
+    }
+    
+    messagesProcessed++;
+    
+    if (messagesProcessed == 1) {
+      Serial.println("CAN: Processing messages (queue not empty)");
+    }
+    
+    // Read the message
     long unsigned int id;
     unsigned char len = 0;
     unsigned char buf[8];
 
     CAN.readMsgBuf(&id, &len, buf);
+    
+    // Update last message time for diagnostics
+    lastMessageTime = millis();
 
     // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
@@ -132,6 +210,23 @@ void handleCanMessages() {
     if (len >= 2) {
       senderId = (buf[0] << 8) | buf[1];
     }
+    
+    // Debug: Log all received messages
+    Serial.print("CAN RX: ID=0x");
+    Serial.print(id, HEX);
+    Serial.print(", Sender=0x");
+    Serial.print(senderId, HEX);
+    Serial.print(", Len=");
+    Serial.print(len);
+    Serial.print(", Data=");
+    for (uint8_t i = 0; i < len && i < 8; i++) {
+      Serial.print("0x");
+      Serial.print(buf[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.print(", thisModuleId=0x");
+    Serial.println(thisModuleId, HEX);
+    
     for (uint8_t i = 0; i < rawCallbackCount; i++) {
       if (rawCanCallbacks[i]) {
         rawCanCallbacks[i](id, senderId, buf, len, millis());
@@ -140,8 +235,15 @@ void handleCanMessages() {
 
     // Filter to this module or broadcast messages only
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      return;
+      Serial.print("CAN: Message filtered out - ID 0x");
+      Serial.print(id, HEX);
+      Serial.print(" not for this module (0x");
+      Serial.print(thisModuleId, HEX);
+      Serial.println(") or broadcast");
+      continue; // Continue to next message in queue
     }
+    
+    Serial.println("CAN: Message passed filter - calling callbacks");
 
     // Extract sender ID from first 2 bytes and shift data
     uint8_t shiftedData[8];
@@ -162,6 +264,15 @@ void handleCanMessages() {
         canCallbacks[i](id, senderId, shiftedData, shiftedLen);
       }
     }
+    
+    // Continue loop to check for more messages
+  }
+  
+  // Log if we processed multiple messages
+  if (messagesProcessed > 1) {
+    Serial.print("CAN: Processed ");
+    Serial.print(messagesProcessed);
+    Serial.println(" messages in this call");
   }
 }
 
@@ -211,6 +322,7 @@ const char* getMessageTypeName(uint8_t msgType) {
     case MODULE_SOLVED: return "SOLVED";
     case MODULE_STATUS: return "STATUS";
     case MODULE_HEARTBEAT: return "HEARTBEAT";
+    case MODULE_PING: return "PING";
     case 0x30: return "AUDIO_*";
     default: return "UNKNOWN";
   }

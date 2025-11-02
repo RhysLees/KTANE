@@ -18,4 +18,5 @@ void handleGetConfig(WiFiClient& client);
 void handleSetConfig(WiFiClient& client, String body);
 void handleCanLog(WiFiClient& client);
 void handleModules(WiFiClient& client);
+void handlePing(WiFiClient& client);
 

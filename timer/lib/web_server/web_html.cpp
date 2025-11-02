@@ -82,6 +82,9 @@ const char* html_page = R"rawliteral(
                 <button onclick="openConfigModal()" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded transition duration-200">
                     ⚙️ Config
                 </button>
+                <button onclick="pingAllModules()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded transition duration-200" title="Modules discover automatically via heartbeat">
+                    📡 Discovery Info
+                </button>
             </div>
         </div>
 
@@ -252,6 +255,27 @@ const char* html_page = R"rawliteral(
             .catch(err => console.error('Error:', err));
         }
 
+        function pingAllModules() {
+            fetch('/api/ping', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Discovery info retrieved');
+                    alert(data.message || 'Modules discover automatically via heartbeat when game is not running');
+                    setTimeout(updateModules, 500);
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                alert('Error getting discovery info');
+            });
+        }
+
         function setTime() {
             const timeStr = document.getElementById('timeInput').value;
             sendCommand('setTime:' + timeStr);
@@ -389,8 +413,8 @@ const char* html_page = R"rawliteral(
                             const row = document.createElement('tr');
                             row.className = idx % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800';
                             
-                            // Format data array as hex
-                            const dataStr = msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                            // Show decoded data if available, otherwise hex
+                            const dataStr = msg.dataDecoded || msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
                             
                             row.innerHTML = `
                                 <td class="py-2 px-4 font-mono text-xs">${msg.timestamp}ms</td>

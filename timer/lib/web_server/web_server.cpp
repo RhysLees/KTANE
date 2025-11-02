@@ -51,6 +51,8 @@ void updateWebServer() {
                 handleCanLog(client);
             } else if (method == "GET" && path == "/api/modules") {
                 handleModules(client);
+            } else if (method == "POST" && path == "/api/ping") {
+                handlePing(client);
             } else if (method == "POST" && path == "/api/command") {
                 // Read POST body
                 String body = "";
@@ -71,7 +73,7 @@ void updateWebServer() {
         }
         
         // Close connection after response
-        delay(1);
+        client.flush();
         client.stop();
     }
 }

@@ -101,7 +101,8 @@ enum ModuleToTimerMessage : uint8_t {
   MODULE_SOLVED = 0x21,           // Module was solved
   MODULE_STRIKE = 0x22,           // Module caused a strike  
   MODULE_STATUS = 0x23,           // Status update
-  MODULE_HEARTBEAT = 0x24         // Periodic heartbeat
+  MODULE_HEARTBEAT = 0x24,        // Periodic heartbeat
+  MODULE_PING = 0x25              // Discovery ping (when game not running)
 };
 
 // ID negotiation system
