@@ -252,9 +252,12 @@ CONFIG        - Show configuration
 
 ## Integration with Existing Code
 
-### Migration from v1
-1. Replace `#include <game_state.h>` with `#include "game_state_v2.h"`
-2. Update enum usage: `GAME_RUNNING` → `GameState::RUNNING`
+### Migration from v1 (Complete)
+~~v1 (game_state.h) has been removed. All code now uses v2 (game_state_v2.h).~~
+
+If migrating from old code:
+1. Use `#include "game_state_v2.h"` (note: this is now the standard)
+2. Use enum class syntax: `GameState::RUNNING` instead of `GAME_RUNNING`
 3. Update method calls to use new API
 4. Add callback setup for state changes
 

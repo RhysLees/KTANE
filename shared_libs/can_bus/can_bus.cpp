@@ -328,5 +328,3 @@ void updateModuleConnections() {
     Serial.println("Serial display disconnected");
   }
 }
-
-
