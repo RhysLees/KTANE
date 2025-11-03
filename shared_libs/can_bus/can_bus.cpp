@@ -10,6 +10,7 @@ volatile bool canInterruptFlag = false;
 volatile uint32_t canInterruptCount = 0;
 uint16_t thisModuleId = 0xFFFF;
 bool canBusInitialized = false;
+unsigned long lastMessageTime = 0;
 
 // Connection detection system
 bool audioModuleConnected = false;
@@ -39,41 +40,61 @@ void onCanInterrupt() {
 }
 
 void initCanBus(uint16_t fullCanId) {
-  if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
-    // Disable all CAN filters to receive all messages
-    CAN.init_Mask(0, 0, 0x00000000);
-    CAN.init_Mask(1, 0, 0x00000000);
-    
-    for (int i = 0; i < 6; i++) {
-      CAN.init_Filt(i, 0, 0x00000000);
+  uint8_t retries = 0;
+  const uint8_t MAX_RETRIES = 5;
+  
+  while (retries < MAX_RETRIES) {
+    if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
+      // Disable all CAN filters to receive all messages
+      CAN.init_Mask(0, 0, 0x00000000);
+      CAN.init_Mask(1, 0, 0x00000000);
+      
+      for (int i = 0; i < 6; i++) {
+        CAN.init_Filt(i, 0, 0x00000000);
+      }
+
+      CAN.enOneShotTX();
+      CAN.setMode(MCP_NORMAL);
+      
+      pinMode(CAN_INT_PIN, INPUT);
+      
+      // Check interrupt pin state
+      bool intPinState = digitalRead(CAN_INT_PIN);
+      if (Serial) {
+        Serial.print("CAN INT pin initial state: ");
+        Serial.println(intPinState ? "HIGH" : "LOW");
+      }
+      
+      attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
+      
+      canBusInitialized = true;
+      thisModuleId = fullCanId;
+      
+      if (Serial) {
+        Serial.print("CAN ID: 0x");
+        Serial.println(thisModuleId, HEX);
+      }
+      
+      return;  // Success
+    } else {
+      retries++;
+      if (Serial) {
+        Serial.print("CAN init failed (attempt ");
+        Serial.print(retries);
+        Serial.print("/");
+        Serial.print(MAX_RETRIES);
+        Serial.println(")");
+      }
+      delay(1000);
     }
-
-    CAN.enOneShotTX();
-    CAN.setMode(MCP_NORMAL);
-    
-    Serial.println("CAN bus initialized");
-  } else {
-    Serial.println("CAN init failed - retrying");
-    delay(1000);
-    initCanBus(fullCanId);
   }
-
-  pinMode(CAN_INT_PIN, INPUT);
   
-  // Check interrupt pin state
-  bool intPinState = digitalRead(CAN_INT_PIN);
-  Serial.print("CAN INT pin initial state: ");
-  Serial.println(intPinState ? "HIGH" : "LOW");
-  
-  attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
-  
-  canBusInitialized = true;
+  // If we get here, all retries failed
+  if (Serial) {
+    Serial.println("CAN init FAILED after all retries - continuing anyway");
+  }
+  canBusInitialized = false;
   thisModuleId = fullCanId;
-  
-  Serial.print("CAN ID: 0x");
-  Serial.println(thisModuleId, HEX);
-  Serial.print("CAN INT pin: ");
-  Serial.println(CAN_INT_PIN);
 }
 
 void registerCanCallback(CanMessageCallback callback) {
@@ -121,29 +142,23 @@ void handleCanMessages() {
     canInterruptFlag = false;
   }
   
-  // Check interrupt pin state for debugging
+  // Minimal debug output (reduced to prevent serial buffer issues)
   static unsigned long lastPollDebug = 0;
   unsigned long now = millis();
-  if (now - lastPollDebug >= 2000) {  // Every 2 seconds
+  if (now - lastPollDebug >= 10000) {  // Every 10 seconds (very infrequent)
     lastPollDebug = now;
-    bool intPinLow = (digitalRead(CAN_INT_PIN) == LOW);
-    Serial.print("CAN Poll Debug: checkReceive()=");
-    Serial.print(status == CAN_MSGAVAIL ? "MSGAVAIL" : status == CAN_NOMSG ? "NOMSG" : "UNKNOWN");
-    Serial.print(", INT pin=");
-    Serial.print(intPinLow ? "LOW" : "HIGH");
-    Serial.print(", interruptFlag=");
-    Serial.print(canInterruptFlag ? "true" : "false");
-    Serial.print(", interruptCount=");
-    Serial.print(canInterruptCount);
-    Serial.print(", timeSinceLastMsg=");
-    Serial.print(now - lastMessageTime);
-    Serial.println("ms");
-    
-    // If no messages received for a while, log warning
-    if (now - lastMessageTime > 10000 && thisModuleId == CAN_ID_TIMER) {
-      Serial.println("CAN: WARNING - No messages received for 10s on timer!");
-      Serial.println("CAN: Messages are on bus (logic analyzer confirms) but timer not receiving");
-      Serial.println("CAN: Check CAN controller initialization and filters");
+    if (Serial) {  // Only print if serial is available
+      byte currentStatus = CAN.checkReceive();
+      Serial.print("CAN: ");
+      Serial.print(currentStatus == CAN_MSGAVAIL ? "RX" : "---");
+      Serial.print(", INT=");
+      Serial.print(digitalRead(CAN_INT_PIN) == LOW ? "L" : "H");
+      if (lastMessageTime > 0) {
+        Serial.print(", last=");
+        Serial.print((now - lastMessageTime) / 1000);
+        Serial.print("s");
+      }
+      Serial.println();
     }
   }
   
@@ -172,10 +187,6 @@ void handleCanMessages() {
     }
     
     messagesProcessed++;
-    
-    if (messagesProcessed == 1) {
-      Serial.println("CAN: Processing messages (queue not empty)");
-    }
     
     // Read the message
     long unsigned int id;

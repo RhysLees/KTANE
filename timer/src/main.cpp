@@ -88,10 +88,18 @@ void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint
 }
 
 void onRawCanMessageSerial(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
-    Serial.printf("Raw CAN message: Receiver ID: 0x%04X, Sender ID: 0x%04X, Length: %d, Timestamp: %lu\n", receiverId, senderId, len, timestamp);
-    Serial.print("Data: ");
+    Serial.print("Raw CAN: RX=0x");
+    Serial.print(receiverId, HEX);
+    Serial.print(", Sender=0x");
+    Serial.print(senderId, HEX);
+    Serial.print(", Len=");
+    Serial.print(len);
+    Serial.print(", Data=");
     for (uint8_t i = 0; i < len; i++) {
-        Serial.printf("0x%02X ", data[i]);
+        Serial.print("0x");
+        if (data[i] < 0x10) Serial.print("0");
+        Serial.print(data[i], HEX);
+        Serial.print(" ");
     }
     Serial.println();
 }
@@ -152,32 +160,62 @@ void printGameInfo() {
 
 void setup() {
 	Serial.begin(115200);
+	delay(500);  // Give Serial time to stabilize
+	
+	Serial.println("=== TIMER MODULE STARTING ===");
 	
 	setupHardware();
+	Serial.println("Hardware setup complete");
 	
+	Serial.println("Initializing CAN bus...");
 	initCanBus(CAN_ID_TIMER);
+	Serial.println("CAN bus initialized");
+	
 	registerCanCallback(onTimerCanMessage);
 	registerRawCanCallback(onRawCanMessage);
 	registerRawCanCallback(onRawCanMessageSerial);
+	Serial.println("CAN callbacks registered");
 	
+	Serial.println("Initializing displays...");
 	initStrikeDisplay();
 	initCountdownDisplay();
 	initDebugInterface();
+	Serial.println("Displays initialized");
 	
 	// Initialize module tracker BEFORE game state so it can discover modules
+	Serial.println("Initializing module tracker...");
 	initModuleTracker(&gameState);
+	Serial.println("Module tracker initialized");
 
+	Serial.println("Setting up game config...");
 	setupGameConfig();
 	setupCallbacks();
+	Serial.println("Callbacks set up");
 
+	Serial.println("Initializing game state...");
 	gameState.initialize();
+	Serial.println("Game state initialized");
 	
+	Serial.println("Initializing web server...");
 	initWebServer(&gameState);
+	Serial.println("Web server initialized");
 
 	printGameInfo();
+	Serial.println("=== SETUP COMPLETE ===");
 }
 
 void loop() {
+	static unsigned long lastLoopDebug = 0;
+	unsigned long now = millis();
+	
+	// Minimal debug every 30 seconds to confirm loop is running
+	if (now - lastLoopDebug >= 30000) {
+		lastLoopDebug = now;
+		Serial.print("Loop running (");
+		Serial.print(now / 1000);
+		Serial.println("s uptime)");
+	}
+	
 	gameState.tick();
 
 	updateCountdownDisplay(gameState);
