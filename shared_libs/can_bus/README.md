@@ -34,6 +34,34 @@ The CAN bus library provides a standardized communication protocol for KTANE mod
 #define CAN_INT_PIN 20    // Interrupt pin
 ```
 
+### J1 Termination Resistor Jumper
+
+The MCP2515 module has a **J1 jumper** that enables/disables the onboard 120Ω termination resistor.
+
+**Important Rules:**
+- **Only the TWO modules at the PHYSICAL ENDS of your CAN bus** should have J1 enabled (jumper placed)
+- **All modules in the middle** should have J1 disabled (jumper removed)
+- **For single module testing**, enable J1 to simulate a properly terminated bus
+
+**How to Configure:**
+- **Enable Termination**: Place a jumper on J1 (connects 120Ω resistor across CANH and CANL)
+- **Disable Termination**: Remove the jumper from J1 (disconnects the resistor)
+
+**Example Setup:**
+```
+[Timer Module] ← J1 ENABLED (jumper on)
+     |
+     | CAN Bus Wire
+     |
+[Simon Module] ← J1 DISABLED (jumper off)
+     |
+     | CAN Bus Wire  
+     |
+[Audio Module] ← J1 ENABLED (jumper on)
+```
+
+⚠️ **Warning**: Having termination enabled on more than 2 modules will cause signal reflections and communication failures!
+
 ## Quick Start
 
 ### Basic Setup

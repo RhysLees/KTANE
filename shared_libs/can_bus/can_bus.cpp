@@ -43,6 +43,8 @@ void initCanBus(uint16_t fullCanId) {
   // Initialize SPI before initializing CAN controller
   SPI.begin();
   
+  // Initialize MCP2515: MCP_ANY mode, 500kb/s baudrate, 8MHz clock
+  // NOTE: Examples use MCP_16MHZ - verify your hardware crystal frequency!
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
     // Disable all CAN filters to receive all messages
     CAN.init_Mask(0, 0, 0x00000000);
@@ -103,15 +105,17 @@ void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len) {
 }
 
 void handleCanMessages() {
-  if (!canInterruptFlag) return;
-  canInterruptFlag = false;
+  // Check interrupt pin directly like the examples (more reliable than flag-only approach)
+  if (!digitalRead(CAN_INT_PIN) || canInterruptFlag) {
+    canInterruptFlag = false;
+    
+    // Read all available messages while interrupt pin is low (like the examples)
+    while (CAN.checkReceive() == CAN_MSGAVAIL) {
+      long unsigned int id;
+      unsigned char len = 0;
+      unsigned char buf[8];
 
-  if (CAN.checkReceive() == CAN_MSGAVAIL) {
-    long unsigned int id;
-    unsigned char len = 0;
-    unsigned char buf[8];
-
-    CAN.readMsgBuf(&id, &len, buf);
+      CAN.readMsgBuf(&id, &len, buf);
 
     // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
@@ -143,7 +147,7 @@ void handleCanMessages() {
 
     // Filter to this module or broadcast messages only
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      return;
+      continue;  // Skip this message but continue reading others
     }
 
     // Call registered callbacks with extracted sender ID and shifted data
@@ -152,7 +156,8 @@ void handleCanMessages() {
         canCallbacks[i](id, senderId, shiftedData, shiftedLen);
       }
     }
-  }
+    }  // End of while loop - continue reading messages
+  }  // End of if interrupt pin check
 }
 
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
