@@ -1,8 +1,17 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <SPI.h>
 #include <can_bus.h>
 
+// Global message counter for heartbeat
+static unsigned long totalMessageCount = 0;
+
 void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
+    totalMessageCount++;
+    
+    Serial.print("[MSG #");
+    Serial.print(totalMessageCount);
+    Serial.print("] ");
     // Print timestamp
     Serial.print("[");
     Serial.print(timestamp);
@@ -103,9 +112,6 @@ void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data
                 case MODULE_HEARTBEAT:
                     Serial.print("MODULE_HEARTBEAT");
                     break;
-                case MODULE_PING:
-                    Serial.print("MODULE_PING");
-                    break;
                 default:
                     // Check if it's an audio command
                     if (senderId == CAN_ID_AUDIO || receiverId == CAN_ID_AUDIO) {
@@ -130,33 +136,73 @@ void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data
 }
 
 void setup() {
+    Serial.println("[LOG] Starting CAN Bus Debug Module setup...");
+    
     Serial.begin(115200);
-    delay(500);  // Give Serial time to stabilize
+    delay(5000);  // Give time to connect to serial monitor
+    Serial.println("[LOG] Serial initialized at 115200 baud");
     
     Serial.println("==========================================");
     Serial.println("CAN Bus Debug Module");
     Serial.println("==========================================");
     Serial.println("Listening to ALL CAN messages on bus");
     Serial.println("Messages will be printed as received");
-    Serial.print("Module ID: 0x");
-    Serial.println(CAN_INSTANCE_ID(CAN_TYPE_DEBUGGER, 0x00), HEX);
+    
+    Serial.print("[LOG] Module ID: 0x");
+    Serial.println(CAN_ID_DEBUGGER, HEX);
     Serial.println("==========================================");
     
-    Serial.println("Initializing CAN bus...");
-    // Initialize with DEBUGGER ID
-    initCanBus(CAN_INSTANCE_ID(CAN_TYPE_DEBUGGER, 0x00));
+    // Initialize SPI before CAN bus
+    Serial.println("[LOG] Initializing SPI...");
+    SPI.begin();
+    Serial.println("[LOG] SPI initialized");
     
+    Serial.println("[LOG] Calling initCanBus()...");
+    // Initialize with DEBUGGER ID
+    initCanBus(CAN_ID_DEBUGGER);
+    Serial.println("[LOG] initCanBus() returned");
+    
+    Serial.println("[LOG] Registering raw CAN callback...");
     // Register raw callback to receive ALL messages (before filtering)
     registerRawCanCallback(onRawCanMessage);
+    Serial.println("[LOG] Raw CAN callback registered");
     
+    Serial.println("[LOG] CAN bus initialization complete");
     Serial.println("CAN bus initialized and ready");
     Serial.println("Waiting for messages...");
     Serial.println();
 }
 
 void loop() {
+    static unsigned long lastHeartbeat = 0;
+    static unsigned long lastMessageCount = 0;
+    unsigned long now = millis();
+    
+    // Print heartbeat every second
+    if (now - lastHeartbeat >= 1000) {
+        lastHeartbeat = now;
+        unsigned long messagesThisSecond = totalMessageCount - lastMessageCount;
+        lastMessageCount = totalMessageCount;
+        Serial.print("[HEARTBEAT] Debug module running - Uptime: ");
+        Serial.print(now / 1000);
+        Serial.print("s, Messages: ");
+        Serial.print(messagesThisSecond);
+        Serial.print("/s (Total: ");
+        Serial.print(totalMessageCount);
+        Serial.println(")");
+    }
+    
     // Process all incoming CAN messages
+    unsigned long handleStart = micros();
     handleCanMessages();
+    unsigned long handleDuration = micros() - handleStart;
+    
+    // Log if handleCanMessages took significant time
+    if (handleDuration > 1000) {  // More than 1ms
+        Serial.print("[LOG] handleCanMessages() took ");
+        Serial.print(handleDuration);
+        Serial.println(" microseconds");
+    }
     
     // Small delay to prevent overwhelming the serial output
     delay(1);

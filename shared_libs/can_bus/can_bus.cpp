@@ -40,6 +40,9 @@ void onCanInterrupt() {
 }
 
 void initCanBus(uint16_t fullCanId) {
+  // Initialize SPI before initializing CAN controller
+  SPI.begin();
+  
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
     // Disable all CAN filters to receive all messages
     CAN.init_Mask(0, 0, 0x00000000);
@@ -49,7 +52,7 @@ void initCanBus(uint16_t fullCanId) {
       CAN.init_Filt(i, 0, 0x00000000);
     }
 
-    // CAN.enOneShotTX();
+    CAN.enOneShotTX();
     CAN.setMode(MCP_NORMAL);
     
     Serial.println("CAN bus initialized");
