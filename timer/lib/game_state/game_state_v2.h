@@ -128,6 +128,37 @@ struct Edgework
     uint8_t getPortCount() const;
 };
 
+struct AudioModule
+{
+    bool connected = false;
+    unsigned long lastSeen = 0;
+    
+    // Helper methods
+    void sendSound(uint8_t soundType);
+    void markSeen();
+    void markDisconnected();
+    bool isConnected() const { return connected; }
+    unsigned long getTimeSinceLastSeen() const;
+};
+
+struct SerialModule
+{
+    bool connected = false;
+    unsigned long lastSeen = 0;
+    String serialNumber = "";
+    
+    // Helper methods
+    void setSerialNumber(const String& serial);
+    void sendSerialNumber();
+    void clear();
+    void showCredit();
+    void markSeen();
+    void markDisconnected();
+    bool isConnected() const { return connected; }
+    unsigned long getTimeSinceLastSeen() const;
+    String getSerialNumber() const { return serialNumber; }
+};
+
 struct Module
 {
     uint16_t canId;
@@ -184,8 +215,9 @@ private:
     // Game Configuration
     GameConfig config;
     
-    // Serial Number
-    String serialNumber = "";
+    // Module States
+    AudioModule audioModule;
+    SerialModule serialModule;
     
     // Edgework
     Edgework edgework;
@@ -289,7 +321,29 @@ public:
     // ========================================================================
     void setSerialNumber(const String& serial);
     void generateSerialNumber();
-    String getSerialNumber() const { return serialNumber; }
+    String getSerialNumber() const { return serialModule.getSerialNumber(); }
+    
+    // ========================================================================
+    // AUDIO MODULE
+    // ========================================================================
+    void updateAudioModuleSeen();
+    void sendAudioSound(uint8_t soundType);
+    const AudioModule& getAudioModule() const { return audioModule; }
+    
+    // ========================================================================
+    // SERIAL MODULE
+    // ========================================================================
+    void updateSerialModuleSeen();
+    void clearSerialDisplay();
+    void showSerialCredit();
+    const SerialModule& getSerialModule() const { return serialModule; }
+    
+    // ========================================================================
+    // MODULE CONNECTION TRACKING
+    // ========================================================================
+    void updateModuleConnections();  // Check for timeouts and disconnect modules
+    bool isModuleConnected(uint16_t canId) const;
+    unsigned long getModuleLastSeen(uint16_t canId) const;
     
     // ========================================================================
     // EDGEWORK MANAGEMENT

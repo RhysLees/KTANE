@@ -223,7 +223,6 @@ void loop() {
 
 	handleSerialCommands(gameState);
 	handleCanMessages();
-	updateModuleConnections();
 	
 	// Update module tracker to check for timeouts and report discovered modules
 	ModuleTracker* tracker = getModuleTracker();

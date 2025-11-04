@@ -6,10 +6,6 @@
 extern bool canBusInitialized;
 extern uint16_t thisModuleId;
 extern volatile uint32_t canInterruptCount;
-extern bool audioModuleConnected;
-extern bool serialDisplayConnected;
-extern unsigned long lastAudioPing;
-extern unsigned long lastSerialDisplayPing;
 extern bool idConflictDetected;
 
 static unsigned long customCountdownMillis = 5 * 60 * 1000UL;
@@ -225,8 +221,7 @@ void handleSerialCommands(GameStateManager& gameState)
 		args.toUpperCase();
 		if (args == "CLEAR")
 		{
-			uint8_t buf[1] = {SERIAL_DISPLAY_CLEAR};
-			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
+			gameState.clearSerialDisplay();
 			Serial.println("Serial display cleared.");
 		}
 		else if (args == "REGENERATE")
@@ -243,8 +238,7 @@ void handleSerialCommands(GameStateManager& gameState)
 		}
 		else if (args == "CREDIT")
 		{
-			uint8_t buf[1] = {SERIAL_DISPLAY_SHOW_CREDIT};
-			sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
+			gameState.showSerialCredit();
 			Serial.println("Serial display showing credit.");
 		}
 		else
@@ -328,19 +322,23 @@ void handleSerialCommands(GameStateManager& gameState)
 			
 			// Connection status
 			Serial.println("\n--- MODULE CONNECTIONS ---");
-			Serial.print("Audio Module: ");
-			if (audioModuleConnected) {
+			Serial.print("Audio Module (0x");
+			Serial.print(CAN_ID_AUDIO, HEX);
+			Serial.print("): ");
+			if (gameState.isModuleConnected(CAN_ID_AUDIO)) {
 				Serial.print("CONNECTED (last ping: ");
-				Serial.print((millis() - lastAudioPing) / 1000);
+				Serial.print(gameState.getModuleLastSeen(CAN_ID_AUDIO) / 1000);
 				Serial.println("s ago)");
 			} else {
 				Serial.println("DISCONNECTED");
 			}
 			
-			Serial.print("Serial Display: ");
-			if (serialDisplayConnected) {
+			Serial.print("Serial Display (0x");
+			Serial.print(CAN_ID_SERIAL_DISPLAY, HEX);
+			Serial.print("): ");
+			if (gameState.isModuleConnected(CAN_ID_SERIAL_DISPLAY)) {
 				Serial.print("CONNECTED (last ping: ");
-				Serial.print((millis() - lastSerialDisplayPing) / 1000);
+				Serial.print(gameState.getModuleLastSeen(CAN_ID_SERIAL_DISPLAY) / 1000);
 				Serial.println("s ago)");
 			} else {
 				Serial.println("DISCONNECTED");

@@ -28,6 +28,11 @@ MCP_CAN CAN(CAN_SPI_PIN);
 #define MAX_CAN_CALLBACKS 8
 static CanMessageCallback canCallbacks[MAX_CAN_CALLBACKS];
 static uint8_t callbackCount = 0;
+// Raw CAN callbacks are called for all messages, regardless of module ID
+
+#define MAX_RAW_CAN_CALLBACKS 2
+static RawCanMessageCallback rawCanCallbacks[MAX_RAW_CAN_CALLBACKS];
+static uint8_t rawCallbackCount = 0;
 
 void onCanInterrupt() {
   canInterruptFlag = true;
@@ -44,7 +49,7 @@ void initCanBus(uint16_t fullCanId) {
       CAN.init_Filt(i, 0, 0x00000000);
     }
 
-    CAN.enOneShotTX();
+    // CAN.enOneShotTX();
     CAN.setMode(MCP_NORMAL);
     
     Serial.println("CAN bus initialized");
@@ -67,6 +72,12 @@ void initCanBus(uint16_t fullCanId) {
 void registerCanCallback(CanMessageCallback callback) {
   if (callbackCount < MAX_CAN_CALLBACKS) {
     canCallbacks[callbackCount++] = callback;
+  }
+}
+
+void registerRawCanCallback(RawCanMessageCallback callback) {
+  if (rawCallbackCount < MAX_RAW_CAN_CALLBACKS) {
+    rawCanCallbacks[rawCallbackCount++] = callback;
   }
 }
 
@@ -102,26 +113,6 @@ void handleCanMessages() {
     // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
 
-    // Update connection status - check direct messages from known modules
-    if (id == CAN_ID_AUDIO) {
-      if (!audioModuleConnected) {
-        Serial.println("Audio module connected");
-      }
-      audioModuleConnected = true;
-      lastAudioPing = millis();
-    } else if (id == CAN_ID_SERIAL_DISPLAY) {
-      if (!serialDisplayConnected) {
-        Serial.println("Serial display connected");
-      }
-      serialDisplayConnected = true;
-      lastSerialDisplayPing = millis();
-    }
-
-    // Filter to this module or broadcast messages only
-    if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      return;
-    }
-
     // Extract sender ID from first 2 bytes and shift data
     uint16_t senderId = 0;
     uint8_t shiftedData[8];
@@ -139,6 +130,19 @@ void handleCanMessages() {
       memcpy(shiftedData, buf, len);
     }
 
+    // Call registered raw CAN callbacks
+    unsigned long timestamp = millis();
+    for (uint8_t i = 0; i < rawCallbackCount; i++) {
+      if (rawCanCallbacks[i]) {
+        rawCanCallbacks[i](id, senderId, shiftedData, shiftedLen, timestamp);
+      }
+    }
+
+    // Filter to this module or broadcast messages only
+    if (id != thisModuleId && id != CAN_ID_BROADCAST) {
+      return;
+    }
+
     // Call registered callbacks with extracted sender ID and shifted data
     for (uint8_t i = 0; i < callbackCount; i++) {
       if (canCallbacks[i]) {
@@ -150,14 +154,6 @@ void handleCanMessages() {
 
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
   if (!canBusInitialized) {
-    return;
-  }
-  
-  // Check module connectivity for fixed modules
-  if (receiverID == CAN_ID_AUDIO && !audioModuleConnected) {
-    return;
-  }
-  if (receiverID == CAN_ID_SERIAL_DISPLAY && !serialDisplayConnected) {
     return;
   }
   

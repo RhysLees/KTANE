@@ -25,10 +25,6 @@ static uint16_t canLogCount = 0;
 extern bool canBusInitialized;
 extern uint16_t thisModuleId;
 extern volatile uint32_t canInterruptCount;
-extern bool audioModuleConnected;
-extern bool serialDisplayConnected;
-extern unsigned long lastAudioPing;
-extern unsigned long lastSerialDisplayPing;
 extern bool idConflictDetected;
 
 // Handle status API
