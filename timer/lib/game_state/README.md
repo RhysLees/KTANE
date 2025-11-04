@@ -1,4 +1,4 @@
-# KTANE Game State System v2.0
+# KTANE Game State System
 
 ## Overview
 
@@ -149,7 +149,7 @@ PORT_PANEL = 0x43
 
 ### Basic Setup
 ```cpp
-#include "game_state_v2.h"
+#include "game_state.h"
 
 // Create game state manager
 GameStateManager gameState;
@@ -253,10 +253,10 @@ CONFIG        - Show configuration
 ## Integration with Existing Code
 
 ### Migration from v1 (Complete)
-~~v1 (game_state.h) has been removed. All code now uses v2 (game_state_v2.h).~~
+v1 has been removed. All code now uses `game_state.h`.
 
 If migrating from old code:
-1. Use `#include "game_state_v2.h"` (note: this is now the standard)
+1. Use `#include "game_state.h"` (this is the standard header)
 2. Use enum class syntax: `GameState::RUNNING` instead of `GAME_RUNNING`
 3. Update method calls to use new API
 4. Add callback setup for state changes

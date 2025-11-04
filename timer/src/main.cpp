@@ -4,7 +4,7 @@
 #include <countdown.h>
 #include <strikes.h>
 #include <serial_command.h>
-#include <game_state_v2.h>
+#include <game_state.h>
 #include <debug.h>
 #include <lcd1602.h>
 #include <module_tracker.h>

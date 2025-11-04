@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game_state_v2.h"
+#include "game_state.h"
 
 // Initialize debug interface (LCD and rotary encoder)
 void initDebugInterface();

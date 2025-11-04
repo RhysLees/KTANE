@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game_state_v2.h"
+#include "game_state.h"
 
 // Initialize countdown display hardware
 void initCountdownDisplay();

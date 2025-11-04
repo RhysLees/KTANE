@@ -7,20 +7,6 @@
 // Global game state pointer (set by web_server.cpp)
 GameStateManager* gameStatePtr = nullptr;
 
-// CAN message log storage
-#define MAX_CAN_LOG_ENTRIES 200
-struct CanLogEntry {
-    uint16_t receiverId;
-    uint16_t senderId;
-    uint8_t data[8];
-    uint8_t len;
-    unsigned long timestamp;
-};
-
-static CanLogEntry canLog[MAX_CAN_LOG_ENTRIES];
-static uint16_t canLogIndex = 0;
-static uint16_t canLogCount = 0;
-
 // External CAN bus variables
 extern bool canBusInitialized;
 extern uint16_t thisModuleId;
@@ -188,84 +174,6 @@ void handleSetConfig(WiFiClient& client, String body) {
     sendResponse(client, 200, "application/json", responseStr);
 }
 
-// Handle CAN log API
-void handleCanLog(WiFiClient& client) {
-    DynamicJsonDocument doc(16384); // Large enough for 200 entries
-    doc["success"] = true;
-    doc["count"] = canLogCount;
-    
-    JsonArray messages = doc.createNestedArray("messages");
-    
-    // Start from the oldest entry (circular buffer)
-    uint16_t startIndex = (canLogCount < MAX_CAN_LOG_ENTRIES) ? 0 : canLogIndex;
-    
-    for (uint16_t i = 0; i < canLogCount && i < MAX_CAN_LOG_ENTRIES; i++) {
-        uint16_t idx = (startIndex + i) % MAX_CAN_LOG_ENTRIES;
-        const CanLogEntry& entry = canLog[idx];
-        
-        JsonObject msg = messages.createNestedObject();
-        
-        // Sender info
-        uint8_t senderType = (entry.senderId >> 5) & 0x7F;
-        msg["senderId"] = entry.senderId;
-        msg["senderName"] = String(getModuleTypeName(senderType));
-        msg["senderDisplay"] = String(getModuleTypeName(senderType)) + " (0x" + String(entry.senderId, HEX) + ")";
-        
-        // Receiver info
-        uint8_t receiverType = (entry.receiverId >> 5) & 0x7F;
-        msg["receiverId"] = entry.receiverId;
-        msg["receiverName"] = String(getModuleTypeName(receiverType));
-        msg["receiverDisplay"] = String(getModuleTypeName(receiverType)) + " (0x" + String(entry.receiverId, HEX) + ")";
-        
-        // Decode message data
-        String dataDecoded = "";
-        if (entry.len >= 3) {
-            // Message type is at byte 2
-            uint8_t msgType = entry.data[2];
-            dataDecoded += String(getMessageTypeName(msgType));
-            
-            // Additional payload
-            if (entry.len > 3) {
-                dataDecoded += " [";
-                for (uint8_t j = 3; j < entry.len; j++) {
-                    if (j > 3) dataDecoded += ", ";
-                    dataDecoded += String(entry.data[j]);
-                }
-                dataDecoded += "]";
-            }
-        }
-        msg["dataDecoded"] = dataDecoded;
-        
-        // Data (hex)
-        JsonArray dataArray = msg.createNestedArray("data");
-        for (uint8_t j = 0; j < entry.len; j++) {
-            dataArray.add(entry.data[j]);
-        }
-        
-        msg["len"] = entry.len;
-        msg["timestamp"] = entry.timestamp;
-    }
-    
-    String response;
-    serializeJson(doc, response);
-    sendResponse(client, 200, "application/json", response);
-}
-
-// CAN log callback function
-void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
-    CanLogEntry& entry = canLog[canLogIndex];
-    entry.receiverId = receiverId;
-    entry.senderId = senderId;
-    entry.len = len > 8 ? 8 : len; // Cap at 8 bytes
-    entry.timestamp = timestamp;
-    memcpy(entry.data, data, entry.len);
-    
-    canLogIndex = (canLogIndex + 1) % MAX_CAN_LOG_ENTRIES;
-    if (canLogCount < MAX_CAN_LOG_ENTRIES) {
-        canLogCount++;
-    }
-}
-
 // Handle modules API
 void handleModules(WiFiClient& client) {
     ModuleTracker* tracker = getModuleTracker();
@@ -303,7 +211,7 @@ void handleModules(WiFiClient& client) {
     sendResponse(client, 200, "application/json", response);
 }
 
-// Handle combined "all" API - returns status, modules, config, and CAN log summary
+// Handle combined "all" API - returns status, modules, and config
 void handleAll(WiFiClient& client) {
     if (!gameStatePtr) {
         sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Game state not initialized\"}");
@@ -367,30 +275,6 @@ void handleAll(WiFiClient& client) {
         doc["modulesMeta"]["registeredModules"] = 0;
     }
     
-    // Include CAN log summary (just count and recent messages)
-    doc["canLog"]["count"] = canLogCount;
-    JsonArray recentMessages = doc["canLog"].createNestedArray("recentMessages");
-    
-    // Include only the last 20 messages to keep response size manageable
-    uint16_t messagesToInclude = (canLogCount < 20) ? canLogCount : 20;
-    uint16_t startIndex = (canLogCount < MAX_CAN_LOG_ENTRIES) ? 0 : canLogIndex;
-    
-    for (uint16_t i = 0; i < messagesToInclude; i++) {
-        uint16_t idx = (startIndex + canLogCount - messagesToInclude + i) % MAX_CAN_LOG_ENTRIES;
-        const CanLogEntry& entry = canLog[idx];
-        
-        JsonObject msg = recentMessages.createNestedObject();
-        msg["senderId"] = entry.senderId;
-        msg["receiverId"] = entry.receiverId;
-        msg["len"] = entry.len;
-        msg["timestamp"] = entry.timestamp;
-        
-        JsonArray dataArray = msg.createNestedArray("data");
-        for (uint8_t j = 0; j < entry.len; j++) {
-            dataArray.add(entry.data[j]);
-        }
-    }
-    
     String response;
     serializeJson(doc, response);
     sendResponse(client, 200, "application/json", response);
@@ -415,4 +299,106 @@ void handlePing(WiFiClient& client) {
     
     Serial.println("Web server: Ping info requested - heartbeat-based discovery is active");
 }
+
+// Forward declarations for WiFi functions
+extern bool loadWiFiCredentials(String& ssid, String& password);
+extern bool saveWiFiCredentials(const String& ssid, const String& password);
+extern bool clearWiFiCredentials();
+extern bool connectToWiFi(const String& ssid, const String& password);
+extern String getWiFiIP();
+extern bool isWiFiConnected();
+extern String getWiFiMode();
+
+// Handle get WiFi status
+void handleGetWiFi(WiFiClient& client) {
+    DynamicJsonDocument doc(512);
+    doc["success"] = true;
+    doc["mode"] = getWiFiMode();
+    doc["ip"] = getWiFiIP();
+    doc["connected"] = isWiFiConnected();
+    
+    // Try to get stored SSID (but don't show password)
+    String ssid, password;
+    if (loadWiFiCredentials(ssid, password)) {
+        doc["ssid"] = ssid;
+        doc["hasCredentials"] = true;
+    } else {
+        doc["hasCredentials"] = false;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    sendResponse(client, 200, "application/json", response);
+}
+
+// Handle set WiFi credentials
+void handleSetWiFi(WiFiClient& client, String body) {
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, body);
+    
+    if (error) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    // Check if this is a clear request
+    if (doc.containsKey("clear") && doc["clear"].as<bool>()) {
+        if (clearWiFiCredentials()) {
+            DynamicJsonDocument response(200);
+            response["success"] = true;
+            response["message"] = "WiFi credentials cleared";
+            String responseStr;
+            serializeJson(response, responseStr);
+            sendResponse(client, 200, "application/json", responseStr);
+            
+            Serial.println("WiFi credentials cleared - device will need to restart");
+            // Note: In a production system, you might want to restart here
+            // For now, the device will reconnect on next boot
+        } else {
+            sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Failed to clear credentials\"}");
+        }
+        return;
+    }
+    
+    // Validate SSID and password
+    if (!doc.containsKey("ssid")) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
+        return;
+    }
+    
+    String ssid = doc["ssid"].as<String>();
+    String password = doc.containsKey("password") ? doc["password"].as<String>() : "";
+    
+    if (ssid.length() == 0) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"SSID cannot be empty\"}");
+        return;
+    }
+    
+    // Save credentials
+    if (!saveWiFiCredentials(ssid, password)) {
+        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Failed to save credentials\"}");
+        return;
+    }
+    
+    Serial.print("WiFi credentials saved: ");
+    Serial.println(ssid);
+    
+    // Try to connect to WiFi
+    bool connected = connectToWiFi(ssid, password);
+    
+    DynamicJsonDocument response(300);
+    response["success"] = true;
+    if (connected) {
+        response["message"] = "WiFi credentials saved and connected successfully";
+        response["ip"] = getWiFiIP();
+    } else {
+        response["message"] = "WiFi credentials saved but connection failed. Device will try again on restart.";
+        response["warning"] = "Connection failed - device will return to AP mode";
+    }
+    
+    String responseStr;
+    serializeJson(response, responseStr);
+    sendResponse(client, connected ? 200 : 201, "application/json", responseStr);
+}
+
 

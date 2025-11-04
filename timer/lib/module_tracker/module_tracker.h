@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <map>
-#include "game_state_v2.h"
+#include "game_state.h"
 
 struct ModuleInfo {
     unsigned long lastHeartbeat;

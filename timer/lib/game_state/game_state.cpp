@@ -1,4 +1,4 @@
-#include "game_state_v2.h"
+#include "game_state.h"
 #include <can_bus.h>
 
 bool Edgework::hasIndicator(IndicatorType type) const {
@@ -126,6 +126,9 @@ void GameStateManager::initialize() {
     
     modules.clear();
     moduleMap.clear();
+    
+    // Reserve capacity upfront to prevent pointer invalidation on reallocation
+    modules.reserve(32);  // Reserve for up to 32 modules
     
     generateSerialNumber();
     setupEdgework();
@@ -280,13 +283,20 @@ void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
     }
     
     ModuleCategory category = getModuleCategory(type);
+    
+    // Reserve capacity to prevent reallocation (which would invalidate pointers in moduleMap)
+    // Reserve for up to 32 modules to avoid frequent reallocations
+    if (modules.capacity() < 32) {
+        modules.reserve(32);
+    }
+    
     modules.emplace_back(canId, type, category);
-    moduleMap[canId] = &modules.back();
+    Module* newModule = &modules.back();
+    moduleMap[canId] = newModule;
     
     if (category == ModuleCategory::NEEDY) {
-        Module* module = moduleMap[canId];
-        module->intervalMs = getNeedyModuleInterval(type);
-        module->activationTime = millis() + module->intervalMs;
+        newModule->intervalMs = getNeedyModuleInterval(type);
+        newModule->activationTime = millis() + newModule->intervalMs;
     }
 }
 
@@ -728,18 +738,19 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 registerModule(senderId, static_cast<ModuleType>(moduleType));
                 Serial.print("Module registered: 0x");
                 Serial.println(senderId, HEX);
+                
+                // Mark audio or serial module as seen if they're registering
+                if (senderId == CAN_ID_AUDIO) {
+                    audioModule.markSeen();
+                } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
+                    serialModule.markSeen();
+                }
+                
+                // Send current state to newly registered module (only for new registrations)
+                broadcastGameState(senderId);
             }
-            // else - already registered, skip verbose logging
+            // else - already registered, skip verbose logging and broadcast
             
-            // Mark audio or serial module as seen if they're registering
-            if (senderId == CAN_ID_AUDIO) {
-                audioModule.markSeen();
-            } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
-                serialModule.markSeen();
-            }
-            
-            // Send current state to newly registered module
-            broadcastGameState(senderId);
             break;
         }
             

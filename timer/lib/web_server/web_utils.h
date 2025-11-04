@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include "game_state_v2.h"
+#include "game_state.h"
 
 // Helper function to send HTTP response
 void sendResponse(WiFiClient& client, int code, const String& contentType, const String& body);

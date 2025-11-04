@@ -85,6 +85,9 @@ const char* html_page = R"rawliteral(
                 <button onclick="pingAllModules()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded transition duration-200" title="Modules discover automatically via heartbeat">
                     📡 Discovery Info
                 </button>
+                <a href="/wifi" class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded transition duration-200 text-center">
+                    📶 WiFi Config
+                </a>
             </div>
         </div>
 
@@ -197,31 +200,6 @@ const char* html_page = R"rawliteral(
             <h2 class="text-xl font-bold mb-4 pb-2 border-b border-gray-700">Connected Modules</h2>
             <div id="moduleGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 <!-- Modules will be populated here -->
-            </div>
-        </div>
-
-        <!-- CAN Log Section -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-            <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
-                <h2 class="text-xl font-bold">CAN Bus Log (<span id="canLogCount">0</span> messages)</h2>
-                <button onclick="updateCanLog()" class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded text-sm">
-                    🔄 Refresh
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-gray-600">
-                            <th class="text-left py-2 px-4">Time</th>
-                            <th class="text-left py-2 px-4">Sender</th>
-                            <th class="text-left py-2 px-4">Receiver</th>
-                            <th class="text-left py-2 px-4">Data</th>
-                        </tr>
-                    </thead>
-                    <tbody id="canLogTableBody">
-                        <!-- Messages will be populated here -->
-                    </tbody>
-                </table>
             </div>
         </div>
 
@@ -434,31 +412,6 @@ const char* html_page = R"rawliteral(
                             });
                         }
 
-                        // Update CAN log summary (only recent messages)
-                        if (data.canLog) {
-                            document.getElementById('canLogCount').textContent = data.canLog.count;
-                            const tbody = document.getElementById('canLogTableBody');
-                            tbody.innerHTML = '';
-                            
-                            if (data.canLog.recentMessages && data.canLog.recentMessages.length > 0) {
-                                data.canLog.recentMessages.forEach((msg, idx) => {
-                                    const row = document.createElement('tr');
-                                    row.className = idx % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800';
-                                    
-                                    // Format data as hex
-                                    const dataStr = msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-                                    
-                                    row.innerHTML = `
-                                        <td class="py-2 px-4 font-mono text-xs">${msg.timestamp}ms</td>
-                                        <td class="py-2 px-4 font-mono text-xs">0x${msg.senderId.toString(16).toUpperCase()}</td>
-                                        <td class="py-2 px-4 font-mono text-xs">0x${msg.receiverId.toString(16).toUpperCase()}</td>
-                                        <td class="py-2 px-4 font-mono text-xs">${dataStr}</td>
-                                    `;
-                                    tbody.appendChild(row);
-                                });
-                            }
-                        }
-
                         // Update button states
                         updateButtons(status.state);
                     }
@@ -469,38 +422,6 @@ const char* html_page = R"rawliteral(
         // Legacy functions for manual refresh buttons (can still use individual endpoints if needed)
         function updateStatus() {
             updateAll(); // Just call the combined update
-        }
-
-        // Legacy functions for manual refresh buttons - use full CAN log endpoint
-        function updateCanLog() {
-            fetch('/api/debug')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('canLogCount').textContent = data.count;
-                        const tbody = document.getElementById('canLogTableBody');
-                        tbody.innerHTML = '';
-                        
-                        data.messages.forEach((msg, idx) => {
-                            const row = document.createElement('tr');
-                            row.className = idx % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800';
-                            
-                            // Show decoded data if available, otherwise hex
-                            const dataStr = msg.dataDecoded || msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-                            
-                            row.innerHTML = `
-                                <td class="py-2 px-4 font-mono text-xs">${msg.timestamp}ms</td>
-                                <td class="py-2 px-4">${msg.senderDisplay}</td>
-                                <td class="py-2 px-4">${msg.receiverDisplay}</td>
-                                <td class="py-2 px-4 font-mono text-xs">${dataStr}</td>
-                            `;
-                            tbody.appendChild(row);
-                        });
-                    }
-                })
-                .catch(err => {
-                    console.error('Error fetching CAN log:', err);
-                });
         }
 
         function updateModules() {
@@ -539,6 +460,220 @@ const char* html_page = R"rawliteral(
         document.getElementById('configModal').addEventListener('click', function(e) {
             if (e.target === this) closeConfigModal();
         });
+    </script>
+</body>
+</html>
+)rawliteral";
+
+// WiFi Configuration Page
+const char* wifi_config_page = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Configuration - KTANE Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ktane-red': '#8B0000',
+                        'ktane-green': '#00FF00',
+                        'ktane-yellow': '#FFD700'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
+                📶 WiFi Configuration
+            </h1>
+            <p class="text-gray-400">Configure WiFi connection for KTANE Timer</p>
+        </div>
+
+        <!-- Current Status -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+            <h2 class="text-xl font-bold mb-4">Current Status</h2>
+            <div id="wifiStatus" class="space-y-2">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Mode:</span>
+                    <span class="font-bold" id="currentMode">Loading...</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">IP Address:</span>
+                    <span class="font-mono font-bold" id="currentIP">Loading...</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Connection:</span>
+                    <span class="font-bold" id="connectionStatus">Loading...</span>
+                </div>
+                <div class="flex justify-between" id="currentSSIDRow" style="display: none;">
+                    <span class="text-gray-400">SSID:</span>
+                    <span class="font-bold" id="currentSSID">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- WiFi Configuration Form -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+            <h2 class="text-xl font-bold mb-4">Configure WiFi</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">WiFi Network Name (SSID)</label>
+                    <input type="text" id="wifiSSID" class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white" 
+                           placeholder="Enter WiFi network name" maxlength="32">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">WiFi Password</label>
+                    <input type="password" id="wifiPassword" class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white" 
+                           placeholder="Enter WiFi password" maxlength="64">
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button onclick="saveWiFiConfig()" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition duration-200">
+                        💾 Save & Connect
+                    </button>
+                    <button onclick="clearWiFiConfig()" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition duration-200">
+                        🗑️ Clear & Reset to AP
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Box -->
+        <div class="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4 mb-6">
+            <h3 class="font-bold mb-2">📝 Instructions</h3>
+            <ul class="text-sm space-y-1 text-gray-300">
+                <li>• Enter your WiFi network name (SSID) and password</li>
+                <li>• Click "Save & Connect" to store credentials and connect</li>
+                <li>• The device will restart and connect to your WiFi network</li>
+                <li>• If connection fails, device will return to AP mode</li>
+                <li>• Use "Clear & Reset to AP" to remove saved credentials</li>
+                <li>• After connecting, access the timer at: <span id="newIP" class="font-mono">http://[your-router-ip]</span></li>
+            </ul>
+        </div>
+
+        <!-- Navigation -->
+        <div class="text-center">
+            <a href="/" class="inline-block bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded transition duration-200">
+                ← Back to Timer Control
+            </a>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="hidden mt-4 p-4 rounded-lg"></div>
+    </div>
+
+    <script>
+        function updateStatus() {
+            fetch('/api/wifi')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('currentMode').textContent = data.mode;
+                        document.getElementById('currentIP').textContent = data.ip || 'N/A';
+                        document.getElementById('connectionStatus').textContent = data.connected ? '✅ Connected' : '❌ Disconnected';
+                        
+                        if (data.ssid) {
+                            document.getElementById('currentSSIDRow').style.display = 'flex';
+                            document.getElementById('currentSSID').textContent = data.ssid;
+                        } else {
+                            document.getElementById('currentSSIDRow').style.display = 'none';
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Error fetching status:', err);
+                });
+        }
+
+        function saveWiFiConfig() {
+            const ssid = document.getElementById('wifiSSID').value.trim();
+            const password = document.getElementById('wifiPassword').value;
+
+            if (!ssid) {
+                showStatus('Please enter a WiFi network name', 'error');
+                return;
+            }
+
+            showStatus('Saving WiFi credentials...', 'info');
+
+            fetch('/api/wifi', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ssid: ssid, password: password})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('WiFi credentials saved! Device will restart and connect. Please wait...', 'success');
+                    setTimeout(() => {
+                        showStatus('Reconnecting... Please check your router for the new IP address.', 'info');
+                        // Try to refresh status after a delay
+                        setTimeout(updateStatus, 5000);
+                    }, 2000);
+                } else {
+                    showStatus('Error: ' + (data.error || 'Failed to save credentials'), 'error');
+                }
+            })
+            .catch(err => {
+                showStatus('Error: ' + err.message, 'error');
+            });
+        }
+
+        function clearWiFiConfig() {
+            if (!confirm('Are you sure you want to clear WiFi credentials? The device will return to AP mode.')) {
+                return;
+            }
+
+            showStatus('Clearing WiFi credentials...', 'info');
+
+            fetch('/api/wifi', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({clear: true})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('WiFi credentials cleared! Device will restart in AP mode.', 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3000);
+                } else {
+                    showStatus('Error: ' + (data.error || 'Failed to clear credentials'), 'error');
+                }
+            })
+            .catch(err => {
+                showStatus('Error: ' + err.message, 'error');
+            });
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.className = 'mt-4 p-4 rounded-lg';
+            statusDiv.classList.remove('hidden');
+            
+            if (type === 'success') {
+                statusDiv.classList.add('bg-green-900', 'border', 'border-green-700', 'text-green-200');
+            } else if (type === 'error') {
+                statusDiv.classList.add('bg-red-900', 'border', 'border-red-700', 'text-red-200');
+            } else {
+                statusDiv.classList.add('bg-blue-900', 'border', 'border-blue-700', 'text-blue-200');
+            }
+            
+            statusDiv.textContent = message;
+        }
+
+        // Update status on page load and periodically
+        updateStatus();
+        setInterval(updateStatus, 5000);
     </script>
 </body>
 </html>
