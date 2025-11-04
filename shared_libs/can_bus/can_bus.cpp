@@ -177,7 +177,13 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     memcpy(&messageData[2], data, dataLen);
     
     // Send with prepended sender ID
-    CAN.sendMsgBuf(receiverID, 0, dataLen + 2, (byte*)messageData);
+    // Check return value - if buffer is full, don't block (fail silently to avoid hang)
+    byte sendStatus = CAN.sendMsgBuf(receiverID, 0, dataLen + 2, (byte*)messageData);
+    if (sendStatus != CAN_OK) {
+      // Buffer full or error - don't block, just return
+      // This prevents deadlock when called from within handleCanMessages()
+      return;
+    }
   }
 }
 

@@ -13,6 +13,7 @@ void onRawCanMessage(uint16_t receiverId, uint16_t senderId, const uint8_t* data
 
 // API handlers
 void handleStatus(WiFiClient& client);
+void handleAll(WiFiClient& client);  // Combined endpoint returning all data
 void handleCommand(WiFiClient& client, String body);
 void handleGetConfig(WiFiClient& client);
 void handleSetConfig(WiFiClient& client, String body);

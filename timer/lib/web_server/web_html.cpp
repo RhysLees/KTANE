@@ -229,7 +229,7 @@ const char* html_page = R"rawliteral(
         <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center">
             <div class="flex items-center justify-center space-x-2">
                 <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse" id="connectionIndicator"></div>
-                <span class="text-sm text-gray-400">Connected - Auto-refresh enabled</span>
+                <span class="text-sm text-gray-400">Connected - Auto-refresh every 5 seconds</span>
             </div>
         </div>
     </div>
@@ -247,7 +247,7 @@ const char* html_page = R"rawliteral(
             .then(data => {
                 if (data.success) {
                     console.log('Command executed');
-                    setTimeout(updateStatus, 100);
+                    setTimeout(updateAll, 100);
                 } else {
                     alert('Error: ' + data.error);
                 }
@@ -265,7 +265,7 @@ const char* html_page = R"rawliteral(
                 if (data.success) {
                     console.log('Discovery info retrieved');
                     alert(data.message || 'Modules discover automatically via heartbeat when game is not running');
-                    setTimeout(updateModules, 500);
+                    setTimeout(updateAll, 500);
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
@@ -343,12 +343,14 @@ const char* html_page = R"rawliteral(
             });
         }
 
-        function updateStatus() {
-            fetch('/api/status')
+        // Combined update function that fetches all data in one request
+        function updateAll() {
+            fetch('/api/all')
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        // Update game state
+                        // Update status data
+                        const status = data.status;
                         const stateNames = {
                             'IDLE': '🔵 Ready',
                             'RUNNING': '🟢 Running',
@@ -357,49 +359,119 @@ const char* html_page = R"rawliteral(
                             'DEFUSED': '🟢 Defused!',
                             'VICTORY': '🎉 Victory!'
                         };
-                        const stateName = stateNames[data.state] || data.state;
+                        const stateName = stateNames[status.state] || status.state;
                         document.getElementById('gameState').textContent = stateName;
                         
                         // Update state card color
                         const stateCard = document.getElementById('stateCard');
                         stateCard.classList.remove('border-red-500', 'border-green-500', 'border-yellow-500', 'border-blue-500');
-                        if (data.state === 'RUNNING') stateCard.classList.add('border-green-500');
-                        else if (data.state === 'PAUSED') stateCard.classList.add('border-yellow-500');
-                        else if (data.state === 'EXPLODED') stateCard.classList.add('border-red-500');
+                        if (status.state === 'RUNNING') stateCard.classList.add('border-green-500');
+                        else if (status.state === 'PAUSED') stateCard.classList.add('border-yellow-500');
+                        else if (status.state === 'EXPLODED') stateCard.classList.add('border-red-500');
                         else stateCard.classList.add('border-blue-500');
 
                         // Update time
-                        const timeMs = data.timeRemaining;
+                        const timeMs = status.timeRemaining;
                         const minutes = Math.floor(timeMs / 60000);
                         const seconds = Math.floor((timeMs % 60000) / 1000);
                         document.getElementById('timeRemaining').textContent = 
                             `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
                         // Update strikes
-                        document.getElementById('strikes').textContent = `${data.strikes}/${data.maxStrikes}`;
+                        document.getElementById('strikes').textContent = `${status.strikes}/${status.maxStrikes}`;
                         
                         // Update strike card color
                         const strikeCard = document.getElementById('strikeCard');
                         strikeCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
-                        if (data.strikes >= data.maxStrikes) strikeCard.classList.add('border-red-500');
-                        else if (data.strikes > 0) strikeCard.classList.add('border-yellow-500');
+                        if (status.strikes >= status.maxStrikes) strikeCard.classList.add('border-red-500');
+                        else if (status.strikes > 0) strikeCard.classList.add('border-yellow-500');
                         else strikeCard.classList.add('border-green-500');
 
-                        // Update modules
-                        document.getElementById('totalModules').textContent = data.totalModules;
-                        document.getElementById('solvedModules').textContent = data.solvedModules;
-                        document.getElementById('remainingModules').textContent = data.remainingModules;
+                        // Update modules summary
+                        document.getElementById('totalModules').textContent = status.totalModules;
+                        document.getElementById('solvedModules').textContent = status.solvedModules;
+                        document.getElementById('remainingModules').textContent = status.remainingModules;
 
                         // Update edgework
-                        document.getElementById('serialNumber').textContent = data.serialNumber;
-                        document.getElementById('batteries').textContent = data.batteries;
-                        document.getElementById('indicators').textContent = data.indicators;
-                        document.getElementById('ports').textContent = data.ports;
+                        document.getElementById('serialNumber').textContent = status.serialNumber;
+                        document.getElementById('batteries').textContent = status.batteries;
+                        document.getElementById('indicators').textContent = status.indicators;
+                        document.getElementById('ports').textContent = status.ports;
+
+                        // Update modules grid
+                        const grid = document.getElementById('moduleGrid');
+                        grid.innerHTML = '';
+                        
+                        if (data.modules && data.modules.length === 0) {
+                            grid.innerHTML = '<div class="col-span-full text-center text-gray-400">No modules connected</div>';
+                        } else if (data.modules) {
+                            data.modules.forEach(module => {
+                                const card = document.createElement('div');
+                                card.className = 'bg-gray-700 rounded-lg p-4 border-2';
+                                
+                                // Determine border color based on status
+                                if (module.isSolved) {
+                                    card.classList.add('border-green-500');
+                                } else if (!module.isActive) {
+                                    card.classList.add('border-red-500');
+                                } else if (module.isRegistered) {
+                                    card.classList.add('border-blue-500');
+                                } else {
+                                    card.classList.add('border-yellow-500');
+                                }
+                                
+                                const statusIcon = module.isSolved ? '✅' : (!module.isActive ? '❌' : (module.isRegistered ? '🔵' : '🟡'));
+                                const statusText = module.isSolved ? 'Solved' : (!module.isActive ? 'Offline' : (module.isRegistered ? 'Registered' : 'Discovered'));
+                                
+                                card.innerHTML = `
+                                    <div class="font-bold text-lg mb-2">${statusIcon} ${module.type}</div>
+                                    <div class="text-sm text-gray-400 mb-1">ID: ${module.id}</div>
+                                    <div class="text-xs text-gray-500">Status: ${statusText}</div>
+                                    ${module.progress > 0 ? `<div class="mt-2 bg-gray-600 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width: ${module.progress}%"></div></div>` : ''}
+                                `;
+                                
+                                grid.appendChild(card);
+                            });
+                        }
+
+                        // Update CAN log summary (only recent messages)
+                        if (data.canLog) {
+                            document.getElementById('canLogCount').textContent = data.canLog.count;
+                            const tbody = document.getElementById('canLogTableBody');
+                            tbody.innerHTML = '';
+                            
+                            if (data.canLog.recentMessages && data.canLog.recentMessages.length > 0) {
+                                data.canLog.recentMessages.forEach((msg, idx) => {
+                                    const row = document.createElement('tr');
+                                    row.className = idx % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800';
+                                    
+                                    // Format data as hex
+                                    const dataStr = msg.data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                                    
+                                    row.innerHTML = `
+                                        <td class="py-2 px-4 font-mono text-xs">${msg.timestamp}ms</td>
+                                        <td class="py-2 px-4 font-mono text-xs">0x${msg.senderId.toString(16).toUpperCase()}</td>
+                                        <td class="py-2 px-4 font-mono text-xs">0x${msg.receiverId.toString(16).toUpperCase()}</td>
+                                        <td class="py-2 px-4 font-mono text-xs">${dataStr}</td>
+                                    `;
+                                    tbody.appendChild(row);
+                                });
+                            }
+                        }
+
+                        // Update button states
+                        updateButtons(status.state);
                     }
                 })
-                .catch(err => console.error('Error updating status:', err));
+                .catch(err => console.error('Error updating all data:', err));
         }
 
+        // Legacy functions for manual refresh buttons (can still use individual endpoints if needed)
+        function updateStatus() {
+            updateAll(); // Just call the combined update
+        }
+
+        // Legacy functions for manual refresh buttons - use full CAN log endpoint
         function updateCanLog() {
             fetch('/api/debug')
                 .then(r => r.json())
@@ -432,48 +504,7 @@ const char* html_page = R"rawliteral(
         }
 
         function updateModules() {
-            fetch('/api/modules')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        const grid = document.getElementById('moduleGrid');
-                        grid.innerHTML = '';
-                        
-                        if (data.modules.length === 0) {
-                            grid.innerHTML = '<div class="col-span-full text-center text-gray-400">No modules connected</div>';
-                            return;
-                        }
-                        
-                        data.modules.forEach(module => {
-                            const card = document.createElement('div');
-                            card.className = 'bg-gray-700 rounded-lg p-4 border-2';
-                            
-                            // Determine border color based on status
-                            if (module.isSolved) {
-                                card.classList.add('border-green-500');
-                            } else if (!module.isActive) {
-                                card.classList.add('border-red-500');
-                            } else if (module.isRegistered) {
-                                card.classList.add('border-blue-500');
-                            } else {
-                                card.classList.add('border-yellow-500');
-                            }
-                            
-                            const statusIcon = module.isSolved ? '✅' : (!module.isActive ? '❌' : (module.isRegistered ? '🔵' : '🟡'));
-                            const statusText = module.isSolved ? 'Solved' : (!module.isActive ? 'Offline' : (module.isRegistered ? 'Registered' : 'Discovered'));
-                            
-                            card.innerHTML = `
-                                <div class="font-bold text-lg mb-2">${statusIcon} ${module.type}</div>
-                                <div class="text-sm text-gray-400 mb-1">ID: ${module.id}</div>
-                                <div class="text-xs text-gray-500">Status: ${statusText}</div>
-                                ${module.progress > 0 ? `<div class="mt-2 bg-gray-600 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width: ${module.progress}%"></div></div>` : ''}
-                            `;
-                            
-                            grid.appendChild(card);
-                        });
-                    }
-                })
-                .catch(err => console.error('Error updating modules:', err));
+            updateAll(); // Just call the combined update
         }
 
         // Update button states
@@ -495,15 +526,11 @@ const char* html_page = R"rawliteral(
             }
         }
 
-        // Auto-refresh every 1s
-        setInterval(updateStatus, 1000);
-        setInterval(updateModules, 1000);
-        setInterval(updateCanLog, 1000);
+        // Auto-refresh every 5 seconds using combined endpoint
+        setInterval(updateAll, 5000);
         
-        // Initial updates
-        updateStatus();
-        updateModules();
-        updateCanLog();
+        // Initial update
+        updateAll();
 
         // Modal close on background click
         document.getElementById('timeModal').addEventListener('click', function(e) {

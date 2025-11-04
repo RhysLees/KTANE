@@ -88,20 +88,21 @@ void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint
 }
 
 void onRawCanMessageSerial(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
-    Serial.print("Raw CAN: RX=0x");
-    Serial.print(receiverId, HEX);
-    Serial.print(", Sender=0x");
-    Serial.print(senderId, HEX);
-    Serial.print(", Len=");
-    Serial.print(len);
-    Serial.print(", Data=");
-    for (uint8_t i = 0; i < len; i++) {
-        Serial.print("0x");
-        if (data[i] < 0x10) Serial.print("0");
-        Serial.print(data[i], HEX);
-        Serial.print(" ");
+    // Rate-limited logging to avoid blocking - only log summary periodically
+    static unsigned long lastRawCanLog = 0;
+    static uint16_t rawCanMsgCount = 0;
+    rawCanMsgCount++;
+    
+    // Only log actual messages (not empty/unknown) and only periodically
+    if (len > 0 && (millis() - lastRawCanLog > 1000)) {  // Log summary every 1 second
+        if (rawCanMsgCount > 0) {
+            Serial.print("CAN: ");
+            Serial.print(rawCanMsgCount);
+            Serial.println(" message(s) received (suppressed detailed logs)");
+            rawCanMsgCount = 0;
+        }
+        lastRawCanLog = millis();
     }
-    Serial.println();
 }
 
 void setupHardware() {
@@ -160,7 +161,7 @@ void printGameInfo() {
 
 void setup() {
 	Serial.begin(115200);
-	delay(500);  // Give Serial time to stabilize
+  	delay(2000);  // Give time for serial monitor to connect
 	
 	Serial.println("=== TIMER MODULE STARTING ===");
 	
@@ -204,8 +205,67 @@ void setup() {
 	Serial.println("=== SETUP COMPLETE ===");
 }
 
+void printGameStateModules() {
+	Serial.println("==========================================");
+	Serial.println("GAME STATE - Registered Modules");
+	Serial.println("==========================================");
+	
+	// Get module tracker info
+	ModuleTracker* tracker = getModuleTracker();
+	if (tracker) {
+		Serial.print("Discovered modules (tracker): ");
+		Serial.println(tracker->getDiscoveredModuleCount());
+		Serial.print("Registered modules (tracker): ");
+		Serial.println(tracker->getRegisteredModuleCount());
+		Serial.println();
+		
+		// Show discovered modules from tracker
+		auto discoveredModules = tracker->getDiscoveredModules();
+		if (!discoveredModules.empty()) {
+			Serial.println("Discovered modules list:");
+			for (const auto& pair : discoveredModules) {
+				Serial.print("  - ");
+				Serial.print(pair.second.moduleTypeName);
+				Serial.print(" (ID: 0x");
+				Serial.print(pair.first, HEX);
+				Serial.print(")");
+				Serial.print(" | Registered: ");
+				Serial.print(pair.second.isRegistered ? "YES" : "NO");
+				Serial.print(" | Last heartbeat: ");
+				Serial.print((millis() - pair.second.lastHeartbeat) / 1000);
+				Serial.println("s ago");
+			}
+			Serial.println();
+		}
+	}
+	
+	// Show game_state module counts
+	Serial.print("Total modules in game_state: ");
+	Serial.println(gameState.getTotalModules());
+	Serial.print("Solved modules: ");
+	Serial.println(gameState.getSolvedModules());
+	Serial.print("Active modules: ");
+	Serial.println(gameState.getActiveModules());
+	Serial.print("Needy modules: ");
+	Serial.println(gameState.getNeedyModules());
+	Serial.println();
+	
+	if (gameState.getTotalModules() == 0) {
+		Serial.println("No modules registered in game_state yet.");
+		Serial.println("Waiting for modules to send heartbeats...");
+		Serial.println();
+	} else {
+		Serial.println("Modules successfully stored in game_state!");
+		Serial.println("Use web UI or serial commands to view detailed module information.");
+	}
+	
+	Serial.println("==========================================");
+	Serial.println();
+}
+
 void loop() {
 	static unsigned long lastLoopDebug = 0;
+	static unsigned long lastGameStatePrint = 0;
 	unsigned long now = millis();
 	
 	// Minimal debug every 30 seconds to confirm loop is running
@@ -214,6 +274,12 @@ void loop() {
 		Serial.print("Loop running (");
 		Serial.print(now / 1000);
 		Serial.println("s uptime)");
+	}
+	
+	// Print game state module info every 10 seconds
+	if (now - lastGameStatePrint >= 10000) {
+		lastGameStatePrint = now;
+		printGameStateModules();
 	}
 	
 	gameState.tick();

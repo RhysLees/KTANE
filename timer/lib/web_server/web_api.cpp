@@ -303,6 +303,99 @@ void handleModules(WiFiClient& client) {
     sendResponse(client, 200, "application/json", response);
 }
 
+// Handle combined "all" API - returns status, modules, config, and CAN log summary
+void handleAll(WiFiClient& client) {
+    if (!gameStatePtr) {
+        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Game state not initialized\"}");
+        return;
+    }
+
+    // Create a document - reduced size to avoid heap exhaustion on RP2040
+    // Start with 8KB, allocate more if needed (but this should be sufficient)
+    DynamicJsonDocument doc(8192);  // Reduced from 16KB to avoid memory issues
+    doc["success"] = true;
+    
+    // Include status data
+    doc["status"]["state"] = formatGameState(gameStatePtr->getState());
+    doc["status"]["timeRemaining"] = gameStatePtr->getRemainingTime();
+    doc["status"]["strikes"] = gameStatePtr->getStrikes();
+    doc["status"]["maxStrikes"] = gameStatePtr->getMaxStrikes();
+    doc["status"]["totalModules"] = gameStatePtr->getTotalModules();
+    doc["status"]["solvedModules"] = gameStatePtr->getSolvedModules();
+    doc["status"]["remainingModules"] = gameStatePtr->getTotalModules() - gameStatePtr->getSolvedModules();
+    doc["status"]["serialNumber"] = gameStatePtr->getSerialNumber();
+    doc["status"]["batteries"] = gameStatePtr->getBatteryCount();
+    
+    const Edgework& edge = gameStatePtr->getEdgework();
+    doc["status"]["indicators"] = edge.indicators.size();
+    doc["status"]["ports"] = edge.ports.size();
+    
+    // Include config data
+    GameConfig config = gameStatePtr->getConfig();
+    doc["config"]["maxStrikes"] = config.maxStrikes;
+    doc["config"]["enableStrikeAcceleration"] = config.enableStrikeAcceleration;
+    doc["config"]["strikeAccelerationFactor"] = config.strikeAccelerationFactor;
+    doc["config"]["enableEmergencyAlarm"] = config.enableEmergencyAlarm;
+    doc["config"]["emergencyAlarmThreshold"] = config.emergencyAlarmThreshold;
+    doc["config"]["enableNeedyModules"] = config.enableNeedyModules;
+    doc["config"]["enableEdgework"] = config.enableEdgework;
+    
+    // Include modules data
+    ModuleTracker* tracker = getModuleTracker();
+    if (tracker) {
+        std::map<uint16_t, ModuleInfo> discoveredModules = tracker->getDiscoveredModules();
+        JsonArray modulesArray = doc.createNestedArray("modules");
+        
+        for (const auto& pair : discoveredModules) {
+            JsonObject moduleObj = modulesArray.createNestedObject();
+            moduleObj["id"] = "0x" + String(pair.first, HEX);
+            moduleObj["canId"] = pair.first;
+            moduleObj["type"] = pair.second.moduleTypeName;
+            moduleObj["isRegistered"] = pair.second.isRegistered;
+            moduleObj["isActive"] = pair.second.isActive;
+            moduleObj["isSolved"] = pair.second.isSolved;
+            moduleObj["progress"] = pair.second.progress;
+            moduleObj["lastStatus"] = pair.second.lastStatus;
+            moduleObj["lastHeartbeat"] = (millis() - pair.second.lastHeartbeat) / 1000;
+        }
+        
+        doc["modulesMeta"]["totalModules"] = discoveredModules.size();
+        doc["modulesMeta"]["registeredModules"] = tracker->getRegisteredModuleCount();
+    } else {
+        doc["modules"] = JsonArray();
+        doc["modulesMeta"]["totalModules"] = 0;
+        doc["modulesMeta"]["registeredModules"] = 0;
+    }
+    
+    // Include CAN log summary (just count and recent messages)
+    doc["canLog"]["count"] = canLogCount;
+    JsonArray recentMessages = doc["canLog"].createNestedArray("recentMessages");
+    
+    // Include only the last 20 messages to keep response size manageable
+    uint16_t messagesToInclude = (canLogCount < 20) ? canLogCount : 20;
+    uint16_t startIndex = (canLogCount < MAX_CAN_LOG_ENTRIES) ? 0 : canLogIndex;
+    
+    for (uint16_t i = 0; i < messagesToInclude; i++) {
+        uint16_t idx = (startIndex + canLogCount - messagesToInclude + i) % MAX_CAN_LOG_ENTRIES;
+        const CanLogEntry& entry = canLog[idx];
+        
+        JsonObject msg = recentMessages.createNestedObject();
+        msg["senderId"] = entry.senderId;
+        msg["receiverId"] = entry.receiverId;
+        msg["len"] = entry.len;
+        msg["timestamp"] = entry.timestamp;
+        
+        JsonArray dataArray = msg.createNestedArray("data");
+        for (uint8_t j = 0; j < entry.len; j++) {
+            dataArray.add(entry.data[j]);
+        }
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    sendResponse(client, 200, "application/json", response);
+}
+
 // Handle ping API - informational endpoint
 void handlePing(WiFiClient& client) {
     // Note: Discovery now uses heartbeat messages automatically

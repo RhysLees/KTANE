@@ -726,15 +726,10 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             if (!alreadyRegistered) {
                 uint8_t moduleType = (senderId >> 5) & 0x7F;
                 registerModule(senderId, static_cast<ModuleType>(moduleType));
-                Serial.print("Module: Explicit registration - ID: 0x");
-                Serial.print(senderId, HEX);
-                Serial.print(", Type: 0x");
-                Serial.println(moduleType, HEX);
-            } else {
-                Serial.print("Module: Module 0x");
-                Serial.print(senderId, HEX);
-                Serial.println(" already registered");
+                Serial.print("Module registered: 0x");
+                Serial.println(senderId, HEX);
             }
+            // else - already registered, skip verbose logging
             
             // Mark audio or serial module as seen if they're registering
             if (senderId == CAN_ID_AUDIO) {
@@ -847,17 +842,27 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             break;
             
         default:
-            Serial.print("GameState: Unknown message type 0x");
-            Serial.print(msgType, HEX);
-            Serial.print(" from module 0x");
-            Serial.println(senderId, HEX);
+            // Reduced logging frequency for unknown messages to avoid blocking
+            static unsigned long lastUnknownMsgLog = 0;
+            static uint16_t unknownMsgCount = 0;
+            unknownMsgCount++;
+            if (millis() - lastUnknownMsgLog > 5000) { // Log summary every 5 seconds
+                if (unknownMsgCount > 0) {
+                    Serial.print("GameState: ");
+                    Serial.print(unknownMsgCount);
+                    Serial.println(" unknown message(s) received (suppressed detailed logs)");
+                    unknownMsgCount = 0;
+                }
+                lastUnknownMsgLog = millis();
+            }
             break;
     }
 }
 
 void GameStateManager::broadcastGameState(uint16_t targetId) {
-    Serial.print("GameState: Broadcasting game state to ID 0x");
-    Serial.println(targetId, HEX);
+    // Reduced logging to avoid blocking on Serial output
+    // Removed delays - CAN.sendMsgBuf() now handles buffer full gracefully
+    // Delays in callbacks can cause system hangs
     
     // Send serial number
     if (serialModule.getSerialNumber().length() == 6) {
@@ -865,8 +870,6 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
         serialData[0] = TIMER_SERIAL_NUMBER;
         memcpy(&serialData[1], serialModule.getSerialNumber().c_str(), 6);
         sendCanMessage(targetId, serialData, 7);
-        Serial.print("GameState: Sent serial number: ");
-        Serial.println(serialModule.getSerialNumber());
     }
     
     // Send strike count
@@ -874,8 +877,6 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     strikeData[0] = TIMER_STRIKE_UPDATE;
     strikeData[1] = strikeCount;
     sendCanMessage(targetId, strikeData, 2);
-    Serial.print("GameState: Sent strike count: ");
-    Serial.println(strikeCount);
     
     // Send time remaining
     uint8_t timeData[5];
@@ -883,21 +884,15 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     uint32_t timeMs = remainingMs;
     memcpy(&timeData[1], &timeMs, 4);
     sendCanMessage(targetId, timeData, 5);
-    Serial.print("GameState: Sent time remaining: ");
-    Serial.println(timeMs / 1000);
     
     // Send game state
     uint8_t gameStateData[1];
     if (currentState == GameState::RUNNING) {
         gameStateData[0] = TIMER_GAME_START;
-        Serial.println("GameState: Sent TIMER_GAME_START");
     } else {
         gameStateData[0] = TIMER_GAME_STOP;
-        Serial.println("GameState: Sent TIMER_GAME_STOP");
     }
     sendCanMessage(targetId, gameStateData, 1);
-    
-    Serial.println("GameState: Game state broadcast complete");
 }
 
 void GameStateManager::broadcastCountdown(uint8_t seconds) {

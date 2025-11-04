@@ -1,14 +1,166 @@
 // CAN Debug Receive Module
 // Uses the can_bus library to receive and display all messages
+// Implements game state to track connected modules (sender)
 
 #include <Arduino.h>
 #include <can_bus.h>
 
+// Module connection tracking structure
+struct ConnectedModule {
+  uint16_t moduleId;
+  uint8_t moduleType;
+  String moduleTypeName;
+  unsigned long firstSeen;
+  unsigned long lastMessageTime;
+  unsigned long messageCount;
+  bool isConnected;
+  unsigned long lastHeartbeat;
+};
+
+// Game state: track connected modules
+#define MAX_CONNECTED_MODULES 8
+static ConnectedModule connectedModules[MAX_CONNECTED_MODULES];
+static uint8_t connectedModuleCount = 0;
 static unsigned long totalMessageCount = 0;
+
+// Module timeout (5 seconds)
+#define MODULE_TIMEOUT_MS 5000
+
+// Find or create module entry
+ConnectedModule* findOrCreateModule(uint16_t moduleId) {
+  // Check if module already exists
+  for(uint8_t i = 0; i < connectedModuleCount; i++) {
+    if(connectedModules[i].moduleId == moduleId) {
+      return &connectedModules[i];
+    }
+  }
+  
+  // Create new module entry if space available
+  if(connectedModuleCount < MAX_CONNECTED_MODULES) {
+    ConnectedModule* module = &connectedModules[connectedModuleCount];
+    module->moduleId = moduleId;
+    module->moduleType = (moduleId >> 5) & 0x3F;
+    module->moduleTypeName = getModuleTypeName(module->moduleType);
+    module->firstSeen = millis();
+    module->lastMessageTime = millis();
+    module->messageCount = 0;
+    module->isConnected = true;
+    module->lastHeartbeat = millis();
+    connectedModuleCount++;
+    
+    Serial.println();
+    Serial.print("*** NEW MODULE CONNECTED ***");
+    Serial.print(" | ID: 0x");
+    Serial.print(moduleId, HEX);
+    Serial.print(" | Type: ");
+    Serial.print(module->moduleTypeName);
+    Serial.print(" | Type Code: 0x");
+    Serial.println(module->moduleType, HEX);
+    Serial.println();
+    
+    return module;
+  }
+  
+  return nullptr;
+}
+
+// Update module connection status (renamed to avoid conflict with can_bus library)
+void updateDebugModuleConnections() {
+  unsigned long now = millis();
+  
+  for(uint8_t i = 0; i < connectedModuleCount; i++) {
+    ConnectedModule* module = &connectedModules[i];
+    
+    // Check for timeout
+    if(module->isConnected && (now - module->lastMessageTime > MODULE_TIMEOUT_MS)) {
+      module->isConnected = false;
+      Serial.println();
+      Serial.print("*** MODULE DISCONNECTED ***");
+      Serial.print(" | ID: 0x");
+      Serial.print(module->moduleId, HEX);
+      Serial.print(" | Type: ");
+      Serial.print(module->moduleTypeName);
+      Serial.print(" | Last seen: ");
+      Serial.print((now - module->lastMessageTime) / 1000);
+      Serial.println(" seconds ago");
+      Serial.println();
+    }
+    
+    // Check if module reconnected
+    if(!module->isConnected && (now - module->lastMessageTime <= MODULE_TIMEOUT_MS)) {
+      module->isConnected = true;
+      Serial.println();
+      Serial.print("*** MODULE RECONNECTED ***");
+      Serial.print(" | ID: 0x");
+      Serial.print(module->moduleId, HEX);
+      Serial.print(" | Type: ");
+      Serial.println(module->moduleTypeName);
+      Serial.println();
+    }
+  }
+}
+
+// Print connected modules status
+void printGameState() {
+  Serial.println("==========================================");
+  Serial.println("GAME STATE - Connected Modules");
+  Serial.println("==========================================");
+  Serial.print("Total connected modules: ");
+  Serial.println(connectedModuleCount);
+  Serial.println();
+  
+  if(connectedModuleCount == 0) {
+    Serial.println("No modules connected yet.");
+    Serial.println();
+    return;
+  }
+  
+  for(uint8_t i = 0; i < connectedModuleCount; i++) {
+    ConnectedModule* module = &connectedModules[i];
+    unsigned long now = millis();
+    unsigned long timeSinceLastMsg = now - module->lastMessageTime;
+    
+    Serial.print("Module ");
+    Serial.print(i + 1);
+    Serial.print(": ");
+    Serial.print(module->moduleTypeName);
+    Serial.print(" (ID: 0x");
+    Serial.print(module->moduleId, HEX);
+    Serial.print(")");
+    Serial.print(" | Status: ");
+    Serial.print(module->isConnected ? "CONNECTED" : "DISCONNECTED");
+    Serial.print(" | Messages: ");
+    Serial.print(module->messageCount);
+    Serial.print(" | Last msg: ");
+    Serial.print(timeSinceLastMsg / 1000);
+    Serial.print("s ago");
+    Serial.print(" | Uptime: ");
+    Serial.print((now - module->firstSeen) / 1000);
+    Serial.println("s");
+  }
+  
+  Serial.println("==========================================");
+  Serial.println();
+}
 
 // Callback for regular CAN messages (filtered by module ID)
 void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
   totalMessageCount++;
+  
+  // Update game state: track sender module
+  if(senderId != 0) {
+    ConnectedModule* module = findOrCreateModule(senderId);
+    if(module) {
+      module->lastMessageTime = millis();
+      module->messageCount++;
+      module->isConnected = true;
+      
+      // Update heartbeat if this is a heartbeat message
+      if(len > 0 && data[0] == MODULE_HEARTBEAT) {
+        module->lastHeartbeat = millis();
+      }
+    }
+  }
   
   Serial.print("[MSG #");
   Serial.print(totalMessageCount);
@@ -97,7 +249,11 @@ void setup()
 void loop()
 {
   static unsigned long lastHeartbeat = 0;
+  static unsigned long lastGameStatePrint = 0;
   unsigned long now = millis();
+  
+  // Update module connections (check for timeouts)
+  updateDebugModuleConnections();
   
   // Print heartbeat every 5 seconds
   if(now - lastHeartbeat >= 5000) {
@@ -107,9 +263,21 @@ void loop()
     Serial.print("s | Messages received: ");
     Serial.print(totalMessageCount);
     Serial.print(" | Rate: ");
-    Serial.print(totalMessageCount * 1000 / now);
-    Serial.println(" msg/s");
+    if(now > 0) {
+      Serial.print(totalMessageCount * 1000 / now);
+    } else {
+      Serial.print("0");
+    }
+    Serial.print(" msg/s");
+    Serial.print(" | Connected modules: ");
+    Serial.println(connectedModuleCount);
     Serial.println();
+  }
+  
+  // Print game state every 10 seconds
+  if(now - lastGameStatePrint >= 10000) {
+    lastGameStatePrint = now;
+    printGameState();
   }
   
   // Process incoming CAN messages

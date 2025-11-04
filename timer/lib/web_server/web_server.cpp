@@ -36,13 +36,15 @@ void updateWebServer() {
     
     WiFiClient client = server->available();
     
-    if (client && client.available()) {
+    if (client && client.connected() && client.available()) {
         String method, path;
         if (parseRequest(client, method, path)) {
             // Handle different routes
             if (method == "GET" && path == "/") {
                 // Serve main HTML page
                 sendResponse(client, 200, "text/html", String(html_page));
+            } else if (method == "GET" && path == "/api/all") {
+                handleAll(client);
             } else if (method == "GET" && path == "/api/status") {
                 handleStatus(client);
             } else if (method == "GET" && path == "/api/config") {
@@ -54,16 +56,18 @@ void updateWebServer() {
             } else if (method == "POST" && path == "/api/ping") {
                 handlePing(client);
             } else if (method == "POST" && path == "/api/command") {
-                // Read POST body
+                // Read POST body with timeout
                 String body = "";
-                while (client.available()) {
+                unsigned long bodyStartTime = millis();
+                while (client.available() && (millis() - bodyStartTime < 500)) {
                     body += (char)client.read();
                 }
                 handleCommand(client, body);
             } else if (method == "POST" && path == "/api/config") {
-                // Read POST body
+                // Read POST body with timeout
                 String body = "";
-                while (client.available()) {
+                unsigned long bodyStartTime = millis();
+                while (client.available() && (millis() - bodyStartTime < 500)) {
                     body += (char)client.read();
                 }
                 handleSetConfig(client, body);

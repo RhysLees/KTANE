@@ -14,10 +14,11 @@ void ModuleTracker::handleCanMessage(uint16_t id, uint16_t senderId, const uint8
     
     // Process heartbeat messages (used for discovery when game is not running)
     if (msgType == MODULE_HEARTBEAT) {
-        Serial.print("ModuleTracker: Received heartbeat from 0x");
-        Serial.print(senderId, HEX);
-        Serial.print(", gameRunning=");
-        Serial.println(gameRunning ? "true" : "false");
+        // Reduced logging to avoid blocking - only log periodically or for new modules
+        // Serial.print("ModuleTracker: Received heartbeat from 0x");
+        // Serial.print(senderId, HEX);
+        // Serial.print(", gameRunning=");
+        // Serial.println(gameRunning ? "true" : "false");
         processHeartbeat(senderId, data, len);
     }
     
@@ -35,7 +36,7 @@ void ModuleTracker::handleCanMessage(uint16_t id, uint16_t senderId, const uint8
 void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uint8_t len) {
     // Skip timer module's own messages
     if (moduleId == CAN_ID_TIMER) {
-        Serial.println("ModuleTracker: Ignoring heartbeat from timer itself");
+        // Serial.println("ModuleTracker: Ignoring heartbeat from timer itself");
         return;
     }
     
@@ -59,13 +60,14 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
     info.moduleTypeName = getModuleTypeName(moduleId);
     
     // Only discover new modules when game is not running
+    // Reduced logging to avoid blocking
     if (isNewModule) {
-        Serial.print("ModuleTracker: New module detected: 0x");
-        Serial.print(moduleId, HEX);
-        Serial.print(", gameRunning=");
-        Serial.print(gameRunning ? "true" : "false");
-        Serial.print(", gameState=");
-        Serial.println(gameState ? "valid" : "null");
+        // Serial.print("ModuleTracker: New module detected: 0x");
+        // Serial.print(moduleId, HEX);
+        // Serial.print(", gameRunning=");
+        // Serial.print(gameRunning ? "true" : "false");
+        // Serial.print(", gameState=");
+        // Serial.println(gameState ? "valid" : "null");
     }
     
     if (isNewModule && !gameRunning && gameState) {
@@ -80,11 +82,15 @@ void ModuleTracker::processHeartbeat(uint16_t moduleId, const uint8_t* data, uin
         // Send discovery acknowledgment
         uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
         sendCanMessage(moduleId, discoveryAck, 1);
-        Serial.print("Module discovered via heartbeat: ");
+        // Removed delay - delays in callbacks can cause system hangs
+        // CAN.sendMsgBuf() now handles buffer full gracefully
+        
+        // Only log once per new module to avoid flooding serial
+        Serial.print("Module discovered: ");
         Serial.print(info.moduleTypeName);
-        Serial.print(" (ID: 0x");
+        Serial.print(" (0x");
         Serial.print(moduleId, HEX);
-        Serial.println(") - registered and sent discovery acknowledgment");
+        Serial.println(")");
     }
     
     // If module is registered for game, update registered modules too
