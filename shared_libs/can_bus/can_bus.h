@@ -101,8 +101,7 @@ enum ModuleToTimerMessage : uint8_t {
   MODULE_SOLVED = 0x21,           // Module was solved
   MODULE_STRIKE = 0x22,           // Module caused a strike  
   MODULE_STATUS = 0x23,           // Status update
-  MODULE_HEARTBEAT = 0x24,        // Periodic heartbeat
-  MODULE_PING = 0x25              // Discovery ping (when game not running)
+  MODULE_HEARTBEAT = 0x24         // Periodic heartbeat
 };
 
 // ID negotiation system
@@ -117,13 +116,11 @@ enum IdMessage : uint8_t {
 
 // Function declarations
 typedef void (*CanMessageCallback)(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
-typedef void (*RawCanMessageCallback)(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp);
 
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
 void registerCanCallback(CanMessageCallback callback);
-void registerRawCanCallback(RawCanMessageCallback callback);
 
 // ID negotiation functions
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
