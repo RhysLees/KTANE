@@ -1,7 +1,6 @@
 #include "web_api.h"
 #include "web_utils.h"
 #include <ArduinoJson.h>
-#include <module_tracker.h>
 #include <can_bus.h>
 
 // Global game state pointer (set by web_server.cpp)
@@ -170,35 +169,37 @@ void handleSetConfig(WiFiClient& client, String body) {
 
 // Handle modules API
 void handleModules(WiFiClient& client) {
-    ModuleTracker* tracker = getModuleTracker();
-    
-    if (!tracker) {
-        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Module tracker not initialized\"}");
+    if (!gameStatePtr) {
+        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Game state not initialized\"}");
         return;
     }
     
     DynamicJsonDocument doc(4096);
     doc["success"] = true;
     
-    // Get discovered modules
-    std::map<uint16_t, ModuleInfo> discoveredModules = tracker->getDiscoveredModules();
+    // Get all modules from game state
+    const std::vector<Module>& allModules = gameStatePtr->getAllModules();
     JsonArray modulesArray = doc.createNestedArray("modules");
     
-    for (const auto& pair : discoveredModules) {
+    for (const auto& module : allModules) {
         JsonObject moduleObj = modulesArray.createNestedObject();
-        moduleObj["id"] = "0x" + String(pair.first, HEX);
-        moduleObj["canId"] = pair.first;
-        moduleObj["type"] = pair.second.moduleTypeName;
-        moduleObj["isRegistered"] = pair.second.isRegistered;
-        moduleObj["isActive"] = pair.second.isActive;
-        moduleObj["isSolved"] = pair.second.isSolved;
-        moduleObj["progress"] = pair.second.progress;
-        moduleObj["lastStatus"] = pair.second.lastStatus;
-        moduleObj["lastHeartbeat"] = (millis() - pair.second.lastHeartbeat) / 1000;
+        moduleObj["id"] = "0x" + String(module.canId, HEX);
+        moduleObj["canId"] = module.canId;
+        
+        uint8_t moduleType = static_cast<uint8_t>(module.type);
+        moduleObj["type"] = getModuleTypeName(moduleType);
+        moduleObj["typeId"] = moduleType;
+        moduleObj["category"] = static_cast<uint8_t>(module.category);
+        
+        moduleObj["isRegistered"] = true;  // All modules in game_state are registered
+        moduleObj["isActive"] = module.isActive;
+        moduleObj["isSolved"] = module.isSolved;
+        moduleObj["lastSeen"] = (millis() - module.lastSeen) / 1000;
     }
     
-    doc["totalModules"] = discoveredModules.size();
-    doc["registeredModules"] = tracker->getRegisteredModuleCount();
+    doc["totalModules"] = allModules.size();
+    doc["registeredModules"] = allModules.size();  // All are registered
+    doc["solvedModules"] = gameStatePtr->getSolvedModules();
     
     String response;
     serializeJson(doc, response);
@@ -243,31 +244,28 @@ void handleAll(WiFiClient& client) {
     doc["config"]["enableEdgework"] = config.enableEdgework;
     
     // Include modules data
-    ModuleTracker* tracker = getModuleTracker();
-    if (tracker) {
-        std::map<uint16_t, ModuleInfo> discoveredModules = tracker->getDiscoveredModules();
-        JsonArray modulesArray = doc.createNestedArray("modules");
+    const std::vector<Module>& allModules = gameStatePtr->getAllModules();
+    JsonArray modulesArray = doc.createNestedArray("modules");
+    
+    for (const auto& module : allModules) {
+        JsonObject moduleObj = modulesArray.createNestedObject();
+        moduleObj["id"] = "0x" + String(module.canId, HEX);
+        moduleObj["canId"] = module.canId;
         
-        for (const auto& pair : discoveredModules) {
-            JsonObject moduleObj = modulesArray.createNestedObject();
-            moduleObj["id"] = "0x" + String(pair.first, HEX);
-            moduleObj["canId"] = pair.first;
-            moduleObj["type"] = pair.second.moduleTypeName;
-            moduleObj["isRegistered"] = pair.second.isRegistered;
-            moduleObj["isActive"] = pair.second.isActive;
-            moduleObj["isSolved"] = pair.second.isSolved;
-            moduleObj["progress"] = pair.second.progress;
-            moduleObj["lastStatus"] = pair.second.lastStatus;
-            moduleObj["lastHeartbeat"] = (millis() - pair.second.lastHeartbeat) / 1000;
-        }
+        uint8_t moduleType = static_cast<uint8_t>(module.type);
+        moduleObj["type"] = getModuleTypeName(moduleType);
+        moduleObj["typeId"] = moduleType;
+        moduleObj["category"] = static_cast<uint8_t>(module.category);
         
-        doc["modulesMeta"]["totalModules"] = discoveredModules.size();
-        doc["modulesMeta"]["registeredModules"] = tracker->getRegisteredModuleCount();
-    } else {
-        doc["modules"] = JsonArray();
-        doc["modulesMeta"]["totalModules"] = 0;
-        doc["modulesMeta"]["registeredModules"] = 0;
+        moduleObj["isRegistered"] = true;  // All modules in game_state are registered
+        moduleObj["isActive"] = module.isActive;
+        moduleObj["isSolved"] = module.isSolved;
+        moduleObj["lastSeen"] = (millis() - module.lastSeen) / 1000;
     }
+    
+    doc["modulesMeta"]["totalModules"] = allModules.size();
+    doc["modulesMeta"]["registeredModules"] = allModules.size();  // All are registered
+    doc["modulesMeta"]["solvedModules"] = gameStatePtr->getSolvedModules();
     
     String response;
     serializeJson(doc, response);

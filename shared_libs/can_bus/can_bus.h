@@ -141,3 +141,4 @@ void updateModuleConnections();
 // Utility functions
 const char* getModuleTypeName(uint8_t moduleType);
 const char* getMessageTypeName(uint8_t msgType);
+void decodeCanId(uint16_t canId, uint8_t* moduleType, uint8_t* instanceId);

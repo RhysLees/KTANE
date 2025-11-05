@@ -174,10 +174,19 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
   if(id < 0x10) Serial.print("0");
   Serial.print(id, HEX);
   
-  // Print sender ID (extracted from message)
+  // Print sender ID (extracted from message) - decode it
   Serial.print(" | Sender: 0x");
   if(senderId < 0x10) Serial.print("0");
   Serial.print(senderId, HEX);
+  if(senderId != 0) {
+    uint8_t moduleType, instanceId;
+    decodeCanId(senderId, &moduleType, &instanceId);
+    Serial.print(" (");
+    Serial.print(getModuleTypeName(moduleType));
+    Serial.print(" #");
+    Serial.print(instanceId);
+    Serial.print(")");
+  }
   
   // Print length
   Serial.print(" | Len: ");

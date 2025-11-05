@@ -105,41 +105,67 @@ void handleCanMessages() {
 
       CAN.readMsgBuf(&id, &len, buf);
 
-    handleIdNegotiation(id, buf, len);
+      handleIdNegotiation(id, buf, len);
 
-    uint16_t senderId = 0;
-    uint8_t shiftedData[8];
-    uint8_t shiftedLen = len;
-    
-    if (len >= 2) {
-      senderId = (buf[0] << 8) | buf[1];
-      shiftedLen = len - 2;
-      memcpy(shiftedData, &buf[2], shiftedLen);
-    } else {
-      memcpy(shiftedData, buf, len);
-    }
-
-    unsigned long timestamp = millis();
-    for (uint8_t i = 0; i < rawCallbackCount; i++) {
-      if (rawCanCallbacks[i]) {
-        rawCanCallbacks[i](id, senderId, shiftedData, shiftedLen, timestamp);
+      uint16_t senderId = 0;
+      uint8_t shiftedData[8];
+      uint8_t shiftedLen = len;
+      
+      if (len >= 2) {
+        senderId = (buf[0] << 8) | buf[1];
+        shiftedLen = len - 2;
+        memcpy(shiftedData, &buf[2], shiftedLen);
+      } else {
+        shiftedLen = len;
+        memcpy(shiftedData, buf, len);
       }
-    }
 
-    if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      continue;
-    }
-
-    for (uint8_t i = 0; i < callbackCount; i++) {
-      if (canCallbacks[i]) {
-        canCallbacks[i](id, senderId, shiftedData, shiftedLen);
+      unsigned long timestamp = millis();
+      for (uint8_t i = 0; i < rawCallbackCount; i++) {
+        if (rawCanCallbacks[i]) {
+          rawCanCallbacks[i](id, senderId, shiftedData, shiftedLen, timestamp);
+        }
       }
-    }
+
+      if (id != thisModuleId && id != CAN_ID_BROADCAST) {
+        continue;
+      }
+
+      for (uint8_t i = 0; i < callbackCount; i++) {
+        if (canCallbacks[i]) {
+          canCallbacks[i](id, senderId, shiftedData, shiftedLen);
+        }
+      }
+
+      // Decode and log the CAN message
+      if (senderId != 0) {
+        uint8_t moduleType, instanceId;
+        decodeCanId(senderId, &moduleType, &instanceId);
+        Serial.print("CAN RX: ID=0x");
+        Serial.print(id, HEX);
+        Serial.print(" | Sender=0x");
+        Serial.print(senderId, HEX);
+        Serial.print(" | Module=");
+        Serial.print(getModuleTypeName(moduleType));
+        Serial.print(" | Instance=");
+        Serial.print(instanceId);
+        Serial.print(" | Len=");
+        Serial.print(shiftedLen);
+        Serial.print(" | Data=");
+        for (uint8_t i = 0; i < shiftedLen; i++) {
+          Serial.print("0x");
+          if (shiftedData[i] < 0x10) Serial.print("0");
+          Serial.print(shiftedData[i], HEX);
+          if (i < shiftedLen - 1) Serial.print(" ");
+        }
+        Serial.println();
+      }
+      
     }
   }
 }
 
-void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
+void sendCanMessage(uint16_t receiverId, const uint8_t* data, uint8_t dataLen) {
   if (!canBusInitialized) {
     return;
   }
@@ -152,10 +178,32 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     
     memcpy(&messageData[2], data, dataLen);
     
-    byte sendStatus = CAN.sendMsgBuf(receiverID, 0, dataLen + 2, (byte*)messageData);
+    byte sendStatus = CAN.sendMsgBuf(receiverId, 0, dataLen + 2, (byte*)messageData);
     if (sendStatus != CAN_OK) {
+      Serial.println("Failed to send CAN message");
       return;
     }
+
+    uint8_t moduleType, instanceId;
+    decodeCanId(receiverId, &moduleType, &instanceId);
+    Serial.print("CAN TX: ID=0x");
+    Serial.print(receiverId, HEX);
+    Serial.print(" | Sender=0x");
+    Serial.print(thisModuleId, HEX);
+    Serial.print(" | Module=");
+    Serial.print(getModuleTypeName(moduleType));
+    Serial.print(" | Instance=");
+    Serial.print(instanceId);
+    Serial.print(" | Len=");
+    Serial.print(dataLen);
+    Serial.print(" | Data=");
+    for (uint8_t i = 0; i < dataLen; i++) {
+      Serial.print("0x");
+      if (data[i] < 0x10) Serial.print("0");
+      Serial.print(data[i], HEX);
+      if (i < dataLen - 1) Serial.print(" ");
+    }
+    Serial.println();
   }
 }
 
@@ -297,4 +345,9 @@ void updateModuleConnections() {
   if (serialDisplayConnected && (now - lastSerialDisplayPing > MODULE_TIMEOUT_MS)) {
     serialDisplayConnected = false;
   }
+}
+
+void decodeCanId(uint16_t canId, uint8_t* moduleType, uint8_t* instanceId) {
+  *moduleType = (canId >> 5) & 0x3F;
+  *instanceId = canId & 0x1F;
 }

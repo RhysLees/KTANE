@@ -7,7 +7,6 @@
 #include <game_state.h>
 #include <debug.h>
 #include <lcd1602.h>
-#include <module_tracker.h>
 #include <web_server.h>
 #include <web_api.h>
 
@@ -42,11 +41,6 @@ void onStateChange(GameState oldState, GameState newState) {
 	stateMessage[0] = gameRunning ? TIMER_GAME_START : TIMER_GAME_STOP;
 	stateMessage[1] = (uint8_t)newState;
 	sendCanMessage(CAN_ID_BROADCAST, stateMessage, 2);
-	
-	ModuleTracker* tracker = getModuleTracker();
-	if (tracker) {
-		tracker->setGameRunning(gameRunning);
-	}
 }
 
 void onStrikeChange(uint8_t strikes) {
@@ -80,10 +74,26 @@ void onTimeUpdate(unsigned long remainingMs) {
 }
 
 void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
-    gameState.handleCanMessage(id, senderId, data, len);
-}
-
-void onRawCanMessageSerial(uint16_t receiverId, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
+	if (len < 1) {
+		return;
+	}
+	
+	// Decode command from first byte and route to appropriate handler
+	uint8_t command = data[0];
+	
+	switch (command) {
+		case MODULE_REGISTER:
+		case MODULE_STRIKE:
+		case MODULE_SOLVED:
+		case MODULE_STATUS:
+		case MODULE_HEARTBEAT:
+			// Route module messages to game state for processing
+			gameState.handleCanMessage(id, senderId, data, len);
+			break;
+		default:
+			// Unknown message type - could add logging or other handlers here
+			break;
+	}
 }
 
 void setupHardware() {
@@ -140,7 +150,6 @@ void setup() {
 	initStrikeDisplay();
 	initCountdownDisplay();
 	initDebugInterface();
-	initModuleTracker(&gameState);
 	setupGameConfig();
 	setupCallbacks();
 	gameState.initialize();
@@ -155,11 +164,6 @@ void loop() {
 	updateStrikeCount(gameState);
 	handleSerialCommands(gameState);
 	handleCanMessages();
-	
-	ModuleTracker* tracker = getModuleTracker();
-	if (tracker) {
-		tracker->update();
-	}
 	
 	updateDebugInterface(gameState);
 	updateWebServer();

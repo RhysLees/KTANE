@@ -339,5 +339,5 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
 ## See Also
 
 - [CAN Bus Library](../can_bus/) - Underlying communication system
-- [Module Tracker](../../timer/lib/module_tracker/) - Timer-side module management
+- [Game State](../../timer/lib/game_state/) - Timer-side module management and game state
 - [Shared Libraries Overview](../) - Complete library documentation 

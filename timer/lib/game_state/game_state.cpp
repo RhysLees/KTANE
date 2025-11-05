@@ -734,10 +734,17 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             bool alreadyRegistered = (moduleMap.find(senderId) != moduleMap.end());
             
             if (!alreadyRegistered) {
-                uint8_t moduleType = (senderId >> 5) & 0x7F;
+                uint8_t moduleType = (senderId >> 5) & 0x3F;
                 registerModule(senderId, static_cast<ModuleType>(moduleType));
+                uint8_t decodedModuleType, decodedInstanceId;
+                decodeCanId(senderId, &decodedModuleType, &decodedInstanceId);
                 Serial.print("Module registered: 0x");
-                Serial.println(senderId, HEX);
+                Serial.print(senderId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(decodedModuleType));
+                Serial.print(" #");
+                Serial.print(decodedInstanceId);
+                Serial.println(")");
                 
                 // Mark audio or serial module as seen if they're registering
                 if (senderId == CAN_ID_AUDIO) {
@@ -745,6 +752,10 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
                     serialModule.markSeen();
                 }
+                
+                // Send module discovered acknowledgment
+                uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
+                sendCanMessage(senderId, discoveryAck, 1);
                 
                 // Send current state to newly registered module (only for new registrations)
                 broadcastGameState(senderId);
@@ -755,16 +766,33 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
         }
             
         case MODULE_STRIKE:
-            Serial.print("GameState: Strike received from module 0x");
-            Serial.println(senderId, HEX);
+            {
+                uint8_t moduleType, instanceId;
+                decodeCanId(senderId, &moduleType, &instanceId);
+                Serial.print("GameState: Strike received from module 0x");
+                Serial.print(senderId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(moduleType));
+                Serial.print(" #");
+                Serial.print(instanceId);
+                Serial.println(")");
+            }
             addStrike();
             // Strike callback will handle broadcasting
             break;
             
         case MODULE_SOLVED:
-            Serial.print("GameState: Module 0x");
-            Serial.print(senderId, HEX);
-            Serial.println(" solved!");
+            {
+                uint8_t moduleType, instanceId;
+                decodeCanId(senderId, &moduleType, &instanceId);
+                Serial.print("GameState: Module 0x");
+                Serial.print(senderId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(moduleType));
+                Serial.print(" #");
+                Serial.print(instanceId);
+                Serial.println(") solved!");
+            }
             setModuleSolved(senderId);
             // Module solved callback will handle broadcasting
             break;
@@ -791,9 +819,15 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 if (module && module->isSolved != isSolved) {
                     module->isSolved = isSolved;
                     if (isSolved) {
+                        uint8_t moduleType, instanceId;
+                        decodeCanId(senderId, &moduleType, &instanceId);
                         Serial.print("Status: Module 0x");
                         Serial.print(senderId, HEX);
-                        Serial.println(" solved via status update");
+                        Serial.print(" (");
+                        Serial.print(getModuleTypeName(moduleType));
+                        Serial.print(" #");
+                        Serial.print(instanceId);
+                        Serial.println(") solved via status update");
                     }
                 }
             }
@@ -819,18 +853,30 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                     if (module && module->isSolved != isSolved) {
                         module->isSolved = isSolved;
                         if (isSolved) {
+                            uint8_t moduleType, instanceId;
+                            decodeCanId(senderId, &moduleType, &instanceId);
                             Serial.print("Module: Module 0x");
                             Serial.print(senderId, HEX);
-                            Serial.println(" solved via heartbeat");
+                            Serial.print(" (");
+                            Serial.print(getModuleTypeName(moduleType));
+                            Serial.print(" #");
+                            Serial.print(instanceId);
+                            Serial.println(") solved via heartbeat");
                         }
                     }
                     
                     // Optional: Log detailed status for debugging
                     static unsigned long lastDetailedLog = 0;
                     if (millis() - lastDetailedLog > 30000) { // Every 30 seconds
+                        uint8_t moduleType, instanceId;
+                        decodeCanId(senderId, &moduleType, &instanceId);
                         Serial.print("Heartbeat: Module 0x");
                         Serial.print(senderId, HEX);
-                        Serial.print(" - State:");
+                        Serial.print(" (");
+                        Serial.print(getModuleTypeName(moduleType));
+                        Serial.print(" #");
+                        Serial.print(instanceId);
+                        Serial.print(") - State:");
                         Serial.print(moduleState);
                         Serial.print(" Solved:");
                         Serial.print(isSolved);
@@ -844,9 +890,17 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             
         // Handle epaper display messages
         case SERIAL_DISPLAY_CLEAR:
-            Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
-            Serial.print(senderId, HEX);
-            Serial.println(" - epaper display ready");
+            {
+                uint8_t moduleType, instanceId;
+                decodeCanId(senderId, &moduleType, &instanceId);
+                Serial.print("GameState: SERIAL_DISPLAY_CLEAR received from ID 0x");
+                Serial.print(senderId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(moduleType));
+                Serial.print(" #");
+                Serial.print(instanceId);
+                Serial.println(") - epaper display ready");
+            }
             if (senderId == CAN_ID_SERIAL_DISPLAY) {
                 serialModule.markSeen();
             }

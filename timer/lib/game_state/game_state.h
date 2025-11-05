@@ -316,6 +316,9 @@ public:
     bool allModulesSolved() const;
     bool hasActiveNeedyModules() const;
     
+    // Get all modules (for iteration)
+    const std::vector<Module>& getAllModules() const { return modules; }
+    
     // ========================================================================
     // SERIAL NUMBER
     // ========================================================================
