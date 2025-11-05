@@ -139,26 +139,7 @@ void handleCanMessages() {
 
       // Decode and log the CAN message
       if (senderId != 0) {
-        uint8_t moduleType, instanceId;
-        decodeCanId(senderId, &moduleType, &instanceId);
-        Serial.print("CAN RX: ID=0x");
-        Serial.print(id, HEX);
-        Serial.print(" | Sender=0x");
-        Serial.print(senderId, HEX);
-        Serial.print(" | Module=");
-        Serial.print(getModuleTypeName(moduleType));
-        Serial.print(" | Instance=");
-        Serial.print(instanceId);
-        Serial.print(" | Len=");
-        Serial.print(shiftedLen);
-        Serial.print(" | Data=");
-        for (uint8_t i = 0; i < shiftedLen; i++) {
-          Serial.print("0x");
-          if (shiftedData[i] < 0x10) Serial.print("0");
-          Serial.print(shiftedData[i], HEX);
-          if (i < shiftedLen - 1) Serial.print(" ");
-        }
-        Serial.println();
+        logCanMessage("RX", id, senderId, senderId, shiftedData, shiftedLen);
       }
       
     }
@@ -184,26 +165,7 @@ void sendCanMessage(uint16_t receiverId, const uint8_t* data, uint8_t dataLen) {
       return;
     }
 
-    uint8_t moduleType, instanceId;
-    decodeCanId(receiverId, &moduleType, &instanceId);
-    Serial.print("CAN TX: ID=0x");
-    Serial.print(receiverId, HEX);
-    Serial.print(" | Sender=0x");
-    Serial.print(thisModuleId, HEX);
-    Serial.print(" | Module=");
-    Serial.print(getModuleTypeName(moduleType));
-    Serial.print(" | Instance=");
-    Serial.print(instanceId);
-    Serial.print(" | Len=");
-    Serial.print(dataLen);
-    Serial.print(" | Data=");
-    for (uint8_t i = 0; i < dataLen; i++) {
-      Serial.print("0x");
-      if (data[i] < 0x10) Serial.print("0");
-      Serial.print(data[i], HEX);
-      if (i < dataLen - 1) Serial.print(" ");
-    }
-    Serial.println();
+    logCanMessage("TX", receiverId, thisModuleId, receiverId, data, dataLen);
   }
 }
 
@@ -350,4 +312,47 @@ void updateModuleConnections() {
 void decodeCanId(uint16_t canId, uint8_t* moduleType, uint8_t* instanceId) {
   *moduleType = (canId >> 5) & 0x3F;
   *instanceId = canId & 0x1F;
+}
+
+void logCanMessage(const char* direction, uint16_t receiverId, uint16_t senderId, uint16_t decodeId, const uint8_t* data, uint8_t len) {
+  if (decodeId == 0) {
+    return;
+  }
+  
+  uint8_t moduleType, instanceId;
+  decodeCanId(decodeId, &moduleType, &instanceId);
+  
+  Serial.print("CAN ");
+  Serial.print(direction);
+  Serial.print(": ID=0x");
+  Serial.print(receiverId, HEX);
+  Serial.print(" | Sender=0x");
+  Serial.print(senderId, HEX);
+  Serial.print(" | Module=");
+  Serial.print(getModuleTypeName(moduleType));
+  Serial.print(" | Instance=");
+  Serial.print(instanceId);
+  Serial.print(" | Len=");
+  Serial.print(len);
+  
+  // Decode command if data is available
+  if (len > 0) {
+    const char* commandName = getMessageTypeName(data[0]);
+    Serial.print(" | Command=");
+    Serial.print(commandName);
+    Serial.print(" (0x");
+    if (data[0] < 0x10) Serial.print("0");
+    Serial.print(data[0], HEX);
+    Serial.print(")");
+  }
+  
+  Serial.print(" | Data=");
+  
+  for (uint8_t i = 0; i < len; i++) {
+    Serial.print("0x");
+    if (data[i] < 0x10) Serial.print("0");
+    Serial.print(data[i], HEX);
+    if (i < len - 1) Serial.print(" ");
+  }
+  Serial.println();
 }

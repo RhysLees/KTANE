@@ -142,3 +142,4 @@ void updateModuleConnections();
 const char* getModuleTypeName(uint8_t moduleType);
 const char* getMessageTypeName(uint8_t msgType);
 void decodeCanId(uint16_t canId, uint8_t* moduleType, uint8_t* instanceId);
+void logCanMessage(const char* direction, uint16_t receiverId, uint16_t senderId, uint16_t decodeId, const uint8_t* data, uint8_t len);
