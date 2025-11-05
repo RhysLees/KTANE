@@ -1064,28 +1064,74 @@ void GameStateManager::updateSerialModuleSeen() {
 
 void GameStateManager::updateModuleConnections() {
     unsigned long now = millis();
-    const unsigned long MODULE_TIMEOUT_MS = 5000;  // 5 second timeout
+    
+    // Calculate timeout based on 2 missed heartbeats
+    // Discovery: 1s heartbeat -> 2s timeout
+    // Game: 5s heartbeat -> 10s timeout
+    // Use the longer timeout to be safe
+    const unsigned long MODULE_TIMEOUT_MS = 10000;  // 2 * 5s = 10 seconds (2 missed heartbeats)
+    const unsigned long DISCOVERY_TIMEOUT_MS = 2000;  // 2 * 1s = 2 seconds (2 missed heartbeats)
+    
+    // Determine timeout based on game state
+    unsigned long timeout = (currentState == GameState::RUNNING || currentState == GameState::PAUSED) 
+        ? MODULE_TIMEOUT_MS 
+        : DISCOVERY_TIMEOUT_MS;
     
     // Check audio module
     if (audioModule.isConnected() && 
-        audioModule.getTimeSinceLastSeen() > MODULE_TIMEOUT_MS) {
+        audioModule.getTimeSinceLastSeen() > timeout) {
         audioModule.markDisconnected();
         Serial.println("Audio module disconnected");
     }
     
     // Check serial module
     if (serialModule.isConnected() && 
-        serialModule.getTimeSinceLastSeen() > MODULE_TIMEOUT_MS) {
+        serialModule.getTimeSinceLastSeen() > timeout) {
         serialModule.markDisconnected();
         Serial.println("Serial module disconnected");
     }
     
     // Check all registered modules
+    // Only remove modules if game is NOT running or paused
+    bool canRemoveModules = (currentState != GameState::RUNNING && currentState != GameState::PAUSED);
+    
+    std::vector<uint16_t> modulesToRemove;
+    
     for (auto& module : modules) {
-        if (module.lastSeen > 0 && (now - module.lastSeen) > MODULE_TIMEOUT_MS) {
-            // Module hasn't been seen recently, mark as inactive
+        if (module.lastSeen > 0 && (now - module.lastSeen) > timeout) {
+            // Module hasn't been seen recently
             module.isActive = false;
+            
+            // Remove module if game is not running or paused
+            if (canRemoveModules) {
+                modulesToRemove.push_back(module.canId);
+                uint8_t moduleType, instanceId;
+                decodeCanId(module.canId, &moduleType, &instanceId);
+                Serial.print("Module removed (2 missed heartbeats): 0x");
+                Serial.print(module.canId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(moduleType));
+                Serial.print(" #");
+                Serial.print(instanceId);
+                Serial.println(")");
+            } else {
+                // Just mark as inactive, don't remove during game
+                uint8_t moduleType, instanceId;
+                decodeCanId(module.canId, &moduleType, &instanceId);
+                Serial.print("Module inactive (2 missed heartbeats, game active): 0x");
+                Serial.print(module.canId, HEX);
+                Serial.print(" (");
+                Serial.print(getModuleTypeName(moduleType));
+                Serial.print(" #");
+                Serial.print(instanceId);
+                Serial.println(")");
+            }
         }
+    }
+    
+    // Remove modules that timed out (only if game not running/paused)
+    for (uint16_t canId : modulesToRemove) {
+        unregisterModule(canId);
     }
 }
 

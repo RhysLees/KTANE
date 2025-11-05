@@ -68,61 +68,8 @@ void SimonSays::update() {
     updateButtons();
     updateLEDs();
     
-    // Heartbeat handles discovery - no need for separate ping messages
-    
-    // Update status in shared heartbeat system
-    ModuleStatus heartbeatStatus = MODULE_STATUS_IDLE;
-    switch (currentState) {
-        case SimonState::IDLE:
-            heartbeatStatus = MODULE_STATUS_IDLE;
-            break;
-        case SimonState::DISPLAYING:
-        case SimonState::WAITING_INPUT:
-            heartbeatStatus = MODULE_STATUS_ACTIVE;
-            break;
-        case SimonState::SOLVED:
-            heartbeatStatus = MODULE_STATUS_SOLVED;
-            break;
-    }
-    
-    setHeartbeatStatus(heartbeatStatus);
-    setHeartbeatProgress((currentSequenceLength * 100) / 5); // 5 is max sequence length
-    setHeartbeatSolved(isModuleSolved);
-    
-    // Send realtime status on state changes
-    static SimonState lastState = SimonState::IDLE;
-    static bool lastSolved = false;
-    static uint8_t lastSeqLength = 0;
-    
-    if (currentState != lastState || isModuleSolved != lastSolved || 
-        currentSequenceLength != lastSeqLength) {
-        
-        // Send status update to timer
-        uint8_t statusData[5];
-        statusData[0] = MODULE_STATUS;
-        statusData[1] = static_cast<uint8_t>(currentState);
-        statusData[2] = isModuleSolved ? 1 : 0;
-        statusData[3] = currentSequenceLength;
-        statusData[4] = strikeCount;
-        Serial.print("Simon Says: Sending status, MODULE_STATUS = 0x");
-        Serial.println(MODULE_STATUS, HEX);
-        sendCanMessage(CAN_ID_TIMER, statusData, 5);
-        
-        // Check for important state changes
-        if (isModuleSolved && !lastSolved) {
-            // Module just got solved!
-            uint8_t solvedData[1];
-            solvedData[0] = MODULE_SOLVED;
-            Serial.print("Simon Says: Sending solved, MODULE_SOLVED = 0x");
-            Serial.println(MODULE_SOLVED, HEX);
-            sendCanMessage(CAN_ID_TIMER, solvedData, 1);
-            Serial.println("Simon Says: Sent MODULE_SOLVED to timer");
-        }
-        
-        lastState = currentState;
-        lastSolved = isModuleSolved;
-        lastSeqLength = currentSequenceLength;
-    }
+    // Status updates are now handled by module_state library in main.cpp
+    // Module_state will automatically send heartbeats with status/progress
     
     if (isFlashing && currentTime - flashStartTime > SIMON_STRIKE_FLASH_MS) {
         isFlashing = false;
@@ -228,7 +175,7 @@ void SimonSays::reset() {
         ledStates[i] = false;
     }
     
-    digitalWrite(SIMON_STATUS_LED, LOW);
+    // Status LED is now handled by module_state library
     
     // Note: Status update will be sent automatically by update() method
     // when it detects the state change
@@ -248,10 +195,7 @@ void SimonSays::startGame() {
             currentState = SimonState::GENERATING;
             stateStartTime = millis();
             
-            // Turn off status LED when game starts (unless already solved)
-            if (!isModuleSolved) {
-                digitalWrite(SIMON_STATUS_LED, LOW);
-            }
+            // Status LED is now handled by module_state library
         } else {
             Serial.println("Simon Says: Cannot start game - initialization not complete");
         }
@@ -302,8 +246,7 @@ void SimonSays::setInitializationComplete(bool complete) {
 void SimonSays::setDiscoveredByTimer(bool discovered) {
     isDiscoveredByTimer = discovered;
     if (discovered) {
-        discoveryLedFlashing = false; // Stop flashing
-        digitalWrite(SIMON_STATUS_LED, HIGH); // Turn LED on solid
+        discoveryLedFlashing = false; // Stop flashing (LED now handled by module_state)
         Serial.println("Simon Says: Module discovered by timer - heartbeat continues");
     }
 }
@@ -317,7 +260,7 @@ void SimonSays::initHardware() {
     pinMode(SIMON_LED_YELLOW, OUTPUT);
     pinMode(SIMON_LED_GREEN, OUTPUT);
     pinMode(SIMON_LED_BLUE, OUTPUT);
-    pinMode(SIMON_STATUS_LED, OUTPUT);
+    // Status LED is now handled by module_state library
     
     pinMode(SIMON_BTN_RED, INPUT_PULLUP);
     pinMode(SIMON_BTN_YELLOW, INPUT_PULLUP);
@@ -327,8 +270,6 @@ void SimonSays::initHardware() {
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
-    
-    digitalWrite(SIMON_STATUS_LED, LOW);
 }
 
 void SimonSays::updateButtons() {
@@ -345,28 +286,8 @@ void SimonSays::updateButtons() {
 }
 
 void SimonSays::updateLEDs() {
-    // Handle discovery LED flashing when not discovered by timer and game is not running
-    // Blink at 2x per second (every 250ms) during discovery
-    if (!isDiscoveredByTimer && !isModuleSolved && !gameStarted && initializationComplete) {
-        unsigned long currentTime = millis();
-        if (currentTime - lastDiscoveryFlashTime >= 250) { // Flash every 0.25 seconds (2x per second)
-            discoveryLedFlashing = !discoveryLedFlashing;
-            lastDiscoveryFlashTime = currentTime;
-            digitalWrite(SIMON_STATUS_LED, discoveryLedFlashing ? HIGH : LOW);
-        }
-    } else if (isDiscoveredByTimer && !gameStarted && !isModuleSolved) {
-        // Solid on when discovered but game not started and not solved
-        digitalWrite(SIMON_STATUS_LED, HIGH);
-    } else if (isModuleSolved) {
-        // Solid on when solved
-        digitalWrite(SIMON_STATUS_LED, HIGH);
-    } else if (gameStarted && !isModuleSolved) {
-        // Off when game started but not solved
-        digitalWrite(SIMON_STATUS_LED, LOW);
-    } else {
-        // Off when not initialized
-        digitalWrite(SIMON_STATUS_LED, LOW);
-    }
+    // Status LED is now handled by module_state library
+    // No need to control it here
     
     // Handle game LED flashing (strikes)
     if (isFlashing) {

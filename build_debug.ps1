@@ -1,48 +1,40 @@
 #!/usr/bin/env pwsh
 
-# KTANE Module Build Script
-# Builds all module firmwares and copies uf2 files to firmware directory
+# KTANE Debug Module Build Script
+# Builds all can_debug and can_test module firmwares and copies uf2 files to firmware directory
 
-Write-Host "🔧 KTANE Module Build Script" -ForegroundColor Cyan
-Write-Host "=============================" -ForegroundColor Cyan
+Write-Host "🔧 KTANE Debug Module Build Script" -ForegroundColor Cyan
+Write-Host "===================================" -ForegroundColor Cyan
 
 # Define directories to exclude from module detection
 $excludeDirs = @("DOCS", "shared_libs", "build", "firmware", ".git", ".vscode", ".pio")
-# Note: Debug/test modules (can_debug*, can_test*) are excluded and built separately with build_debug.ps1
 $firmwareDir = "firmware"
 $buildDir = "build"
 
-# Auto-detect module directories (directories with platformio.ini files)
-Write-Host "🔍 Auto-detecting module directories..." -ForegroundColor Cyan
+# Auto-detect debug/test module directories (directories with platformio.ini files)
+Write-Host "🔍 Auto-detecting debug/test module directories..." -ForegroundColor Cyan
 $modules = @()
 Get-ChildItem -Directory | Where-Object { 
-    $moduleName = $_.Name
-    $moduleName -notin $excludeDirs -and 
+    $_.Name -notin $excludeDirs -and 
     (Test-Path (Join-Path $_.FullName "platformio.ini")) -and
-    -not ($moduleName -like "can_debug*" -or $moduleName -like "can_test*")
+    ($_.Name -like "can_debug*" -or $_.Name -like "can_test*")
 } | ForEach-Object {
     $modules += $_.Name
-    Write-Host "  • Found module: $($_.Name)" -ForegroundColor Gray
+    Write-Host "  • Found debug module: $($_.Name)" -ForegroundColor Gray
 }
 
 if ($modules.Count -eq 0) {
-    Write-Host "❌ No modules found! Make sure your module directories contain platformio.ini files." -ForegroundColor Red
+    Write-Host "❌ No debug/test modules found! Make sure your module directories contain platformio.ini files and match can_debug* or can_test* pattern." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "📋 Detected $($modules.Count) modules: $($modules -join ', ')" -ForegroundColor Green
+Write-Host "📋 Detected $($modules.Count) debug/test modules: $($modules -join ', ')" -ForegroundColor Green
 
 # Create firmware directory if it doesn't exist
 if (-not (Test-Path $firmwareDir)) {
     New-Item -ItemType Directory -Path $firmwareDir
     Write-Host "📁 Created firmware directory" -ForegroundColor Green
 }
-
-# Clean firmware directory (except debug/test modules which are built separately)
-Write-Host "🧹 Cleaning firmware directory (excluding debug/test modules)..." -ForegroundColor Yellow
-Get-ChildItem -Path $firmwareDir -Filter "*.uf2" -ErrorAction SilentlyContinue | Where-Object { 
-    -not ($_.Name -like "*can_debug*" -or $_.Name -like "*can_test*") 
-} | Remove-Item -Force -ErrorAction SilentlyContinue
 
 $successCount = 0
 $failCount = 0
@@ -76,7 +68,7 @@ foreach ($module in $modules) {
                 foreach ($uf2File in $uf2Files) {
                     $destinationName = "${module}_$($uf2File.Name)"
                     $destinationPath = "..\$firmwareDir\$destinationName"
-                    Copy-Item -Path $uf2File.FullName -Destination $destinationPath
+                    Copy-Item -Path $uf2File.FullName -Destination $destinationPath -Force
                     Write-Host "📦 Copied $($uf2File.Name) to $destinationName" -ForegroundColor Green
                 }
             }
@@ -106,16 +98,19 @@ Write-Host "✅ Successful builds: $successCount" -ForegroundColor Green
 Write-Host "❌ Failed builds: $failCount" -ForegroundColor Red
 
 if ($successCount -gt 0) {
-    Write-Host "`n📁 Firmware files available in '$firmwareDir' directory:" -ForegroundColor Green
-    Get-ChildItem -Path $firmwareDir -Filter "*.uf2" | ForEach-Object {
+    Write-Host "`n📁 Debug/Test firmware files available in '$firmwareDir' directory:" -ForegroundColor Green
+    Get-ChildItem -Path $firmwareDir -Filter "*.uf2" | Where-Object { 
+        $_.Name -like "*can_debug*" -or $_.Name -like "*can_test*" 
+    } | ForEach-Object {
         $size = [math]::Round($_.Length / 1KB, 2)
         Write-Host "  • $($_.Name) ($size KB)" -ForegroundColor Gray
     }
 }
 
 if ($failCount -eq 0) {
-    Write-Host "`n🎉 All modules built successfully!" -ForegroundColor Green
+    Write-Host "`n🎉 All debug/test modules built successfully!" -ForegroundColor Green
 }
 else {
-    Write-Host "`n⚠️  Some modules failed to build. Check the output above for details." -ForegroundColor Yellow
+    Write-Host "`n⚠️  Some debug/test modules failed to build. Check the output above for details." -ForegroundColor Yellow
 }
+

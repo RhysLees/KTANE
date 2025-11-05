@@ -2,95 +2,62 @@
 #include <Wire.h>
 #include <can_bus.h>
 #include <simon_says.h>
-#include <heartbeat.h>
+#include <module_state.h>
 
 SimonSays simonSays;
 
-bool gameRunning = false;
-uint8_t currentStrikes = 0;
-String serialNumber = "";
 bool initialization_complete = false;
 uint8_t countdown_seconds = 0;
 
+// Callbacks for module_state
+void onGameStateChange(bool running) {
+    if (initialization_complete || !running) {
+        // Only start game if initialized, but always allow stopping
+        simonSays.onGameStateChange(running);
+        if (running) {
+            Serial.println("Simon Says: Game started");
+        } else {
+            Serial.println("Simon Says: Game stopped");
+        }
+    } else {
+        Serial.println("Waiting for initialization to complete...");
+    }
+}
+
+void onStrike(uint8_t strikes) {
+    simonSays.setStrikeCount(strikes);
+}
+
+void onSerialNumber(const String& serial) {
+    simonSays.setSerialNumber(serial);
+}
+
+void onDiscovered() {
+    // Called when module is discovered by timer
+    simonSays.setDiscoveredByTimer(true);
+}
+
 void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    // Let module_state handle timer messages first
+    moduleStateHandleCanMessage(id, senderId, data, len);
+    
+    // Handle module-specific messages (TIMER_COUNTDOWN)
     if ((id == CAN_ID_TIMER || id == CAN_ID_BROADCAST) && len >= 1) {
         uint8_t msgType = data[0];
         
-        switch (msgType) {
-            case TIMER_GAME_START:
-                if (initialization_complete) {
-                    gameRunning = true;
-                    simonSays.onGameStateChange(true);
-                    setHeartbeatGameRunning(true);
-                    Serial.println("Simon Says: Game started - switching to 5s heartbeats");
-                } else {
-                    Serial.println("Waiting for initialization to complete...");
+        if (msgType == TIMER_COUNTDOWN) {
+            if (len >= 2) {
+                countdown_seconds = data[1];
+                
+                if (countdown_seconds == 0) {
+                    initialization_complete = true;
+                    simonSays.setInitializationComplete(true);
                 }
-                break;
-                
-            case TIMER_GAME_STOP:
-                gameRunning = false;
-                simonSays.onGameStateChange(false);
-                setHeartbeatGameRunning(false);
-                Serial.println("Simon Says: Game stopped - switching to 1s heartbeats");
-                break;
-                
-            case TIMER_MODULE_DISCOVERED:
-                Serial.println("Simon Says: Discovered by timer - stopping LED flashing");
-                simonSays.setDiscoveredByTimer(true);
-                // Heartbeat already running, just continue
-                break;
-                
-            case TIMER_STRIKE_UPDATE:
-                if (len >= 2) {
-                    uint8_t strikes = data[1];
-                    if (strikes != currentStrikes) {
-                        currentStrikes = strikes;
-                        simonSays.setStrikeCount(strikes);
-                    }
-                }
-                break;
-                
-            case TIMER_SERIAL_NUMBER:
-                if (len >= 7) {
-                    char serial[7];
-                    memcpy(serial, &data[1], 6);
-                    serial[6] = '\0';
-                    serialNumber = String(serial);
-                    simonSays.setSerialNumber(serialNumber);
-                }
-                break;
-                
-            case TIMER_RESET:
-                simonSays.reset();
-                gameRunning = false;
-                currentStrikes = 0;
-                setHeartbeatGameRunning(false);
-                break;
-                
-            case TIMER_TIME_UPDATE:
-                if (len >= 5) {
-                    uint32_t timeMs = 0;
-                    memcpy(&timeMs, &data[1], 4);
-                }
-                break;
-                
-            case TIMER_COUNTDOWN:
-                if (len >= 2) {
-                    countdown_seconds = data[1];
-                    
-                    if (countdown_seconds == 0) {
-                        initialization_complete = true;
-                        simonSays.setInitializationComplete(true);
-                    }
-                }
-                break;
-                
-            default:
-                break;
+            }
         }
     }
     
+    // Pass to simon_says for module-specific handling
     simonSays.handleCanMessage(id, senderId, data, len);
 }
 
@@ -104,11 +71,29 @@ void printStatus() {
     Serial.print("CAN ID: 0x");
     Serial.println(canId, HEX);
     Serial.print("Serial Number: ");
-    Serial.println(serialNumber);
+    if (globalModuleState) {
+        Serial.println(globalModuleState->getSerialNumber());
+    } else {
+        Serial.println("N/A");
+    }
     Serial.print("Strikes: ");
-    Serial.println(currentStrikes);
+    if (globalModuleState) {
+        Serial.println(globalModuleState->getStrikeCount());
+    } else {
+        Serial.println("N/A");
+    }
     Serial.print("Game Running: ");
-    Serial.println(gameRunning ? "YES" : "NO");
+    if (globalModuleState) {
+        Serial.println(globalModuleState->isGameRunning() ? "YES" : "NO");
+    } else {
+        Serial.println("N/A");
+    }
+    Serial.print("Discovered: ");
+    if (globalModuleState) {
+        Serial.println(globalModuleState->isDiscoveredByTimer() ? "YES" : "NO");
+    } else {
+        Serial.println("N/A");
+    }
     Serial.print("Initialized: ");
     Serial.println(initialization_complete ? "YES" : "NO");
     if (countdown_seconds > 0) {
@@ -144,10 +129,9 @@ void handleSerialCommands() {
     else if (input.startsWith("SERIAL ")) {
         String newSerial = input.substring(7);
         if (newSerial.length() == 6) {
-            serialNumber = newSerial;
-            simonSays.setSerialNumber(serialNumber);
+            simonSays.setSerialNumber(newSerial);
             Serial.print("Serial number set to ");
-            Serial.println(serialNumber);
+            Serial.println(newSerial);
         } else {
             Serial.println("Invalid serial number format (must be 6 characters)");
         }
@@ -156,7 +140,6 @@ void handleSerialCommands() {
         String strikeStr = input.substring(8);
         uint8_t strikes = strikeStr.toInt();
         if (strikes <= 3) {
-            currentStrikes = strikes;
             simonSays.setStrikeCount(strikes);
             Serial.print("Strike count set to ");
             Serial.println(strikes);
@@ -165,12 +148,10 @@ void handleSerialCommands() {
         }
     } 
     else if (input == "START") {
-        gameRunning = true;
         simonSays.onGameStateChange(true);
         Serial.println("Game started");
     } 
     else if (input == "STOP") {
-        gameRunning = false;
         simonSays.onGameStateChange(false);
         Serial.println("Game stopped");
     } 
@@ -206,22 +187,22 @@ void setup() {
     Serial.print("CAN ID: 0x");
     Serial.println(finalCanId, HEX);
     
-    // Initialize heartbeat system - start immediately when CAN ID is received
-    // Heartbeat will be used for discovery when game is not running
-    initHeartbeat();
-    setHeartbeatGameRunning(false); // Discovery mode (1 second interval)
+    // Initialize module_state with status LED on pin 11
+    initModuleState(SIMON_STATUS_LED);
     
-    // Register with timer module
-    uint8_t registerData[1] = {MODULE_REGISTER};
-    sendCanMessage(CAN_ID_TIMER, registerData, 1);
-    Serial.println("Registered with timer module");
+    // Set callbacks for game state, strikes, serial number, and discovery
+    if (globalModuleState) {
+        globalModuleState->setGameStateCallback(onGameStateChange);
+        globalModuleState->setStrikeCallback(onStrike);
+        globalModuleState->setSerialNumberCallback(onSerialNumber);
+        globalModuleState->setDiscoveredCallback(onDiscovered);
+    }
     
-    // Initialize with empty values - will be received from timer
-    serialNumber = "";
+    // Initialize Simon Says module
     simonSays.setStrikeCount(0);
     simonSays.begin();
     
-    Serial.println("Module initialized with dynamic heartbeat system");
+    Serial.println("Module initialized with module_state library");
     Serial.println("Type HELP for available commands");
     Serial.println("===============================");
 }
@@ -230,5 +211,40 @@ void loop() {
     simonSays.update();
     handleCanMessages();
     handleSerialCommands();
-    updateHeartbeat();
+    updateModuleState();
+    
+    // Update module state status based on Simon Says state
+    if (globalModuleState) {
+        ModuleStatus status = MODULE_STATUS_IDLE;
+        switch (simonSays.getState()) {
+            case SimonState::IDLE:
+                status = MODULE_STATUS_IDLE;
+                break;
+            case SimonState::DISPLAYING:
+            case SimonState::WAITING_INPUT:
+                status = MODULE_STATUS_ACTIVE;
+                break;
+            case SimonState::SOLVED:
+                status = MODULE_STATUS_SOLVED;
+                break;
+            default:
+                status = MODULE_STATUS_ACTIVE;
+                break;
+        }
+        setModuleStateStatus(status);
+        setModuleStateProgress((simonSays.getSequenceLength() * 100) / 5); // 5 is max sequence length
+        
+        // Handle solved state - turn on LED when solved
+        bool wasSolved = globalModuleState->isSolved();
+        bool isNowSolved = simonSays.isSolved();
+        setModuleStateSolved(isNowSolved);
+        
+        if (isNowSolved && !wasSolved) {
+            // Module just solved - turn on LED
+            setModuleStateLedState(true);
+        } else if (!isNowSolved && wasSolved) {
+            // Module no longer solved - return to automatic control
+            clearModuleStateLedOverride();
+        }
+    }
 } 
