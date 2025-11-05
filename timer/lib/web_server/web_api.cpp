@@ -29,6 +29,22 @@ void handleStatus(WiFiClient& client) {
     const Edgework& edge = gameStatePtr->getEdgework();
     doc["indicators"] = edge.indicators.size();
     doc["ports"] = edge.ports.size();
+    
+    // Include detailed edgework
+    JsonArray indicatorsArray = doc.createNestedArray("indicatorDetails");
+    for (const auto& indicator : edge.indicators) {
+        JsonObject indObj = indicatorsArray.createNestedObject();
+        indObj["label"] = indicator.label;
+        indObj["lit"] = indicator.lit;
+        indObj["type"] = static_cast<uint8_t>(indicator.type);
+    }
+    
+    JsonArray portsArray = doc.createNestedArray("portDetails");
+    for (const auto& port : edge.ports) {
+        JsonObject portObj = portsArray.createNestedObject();
+        portObj["label"] = port.label;
+        portObj["type"] = static_cast<uint8_t>(port.type);
+    }
 
     String response;
     serializeJson(doc, response);
@@ -194,7 +210,21 @@ void handleModules(WiFiClient& client) {
         moduleObj["isRegistered"] = true;  // All modules in game_state are registered
         moduleObj["isActive"] = module.isActive;
         moduleObj["isSolved"] = module.isSolved;
-        moduleObj["lastSeen"] = (millis() - module.lastSeen) / 1000;
+        // If lastSeen is 0, send 0 (never seen). Otherwise send seconds ago
+        moduleObj["lastSeen"] = (module.lastSeen == 0) ? 0 : (millis() - module.lastSeen) / 1000;
+        // For activationTime: if it's a needy module with interval, send time until next activation (or 0 if passed)
+        // For regular modules, activationTime is 0
+        if (module.intervalMs > 0 && module.activationTime > 0) {
+            unsigned long now = millis();
+            if (module.activationTime > now) {
+                moduleObj["activationTime"] = (module.activationTime - now) / 1000; // seconds until activation
+            } else {
+                moduleObj["activationTime"] = 0; // activation time has passed
+            }
+        } else {
+            moduleObj["activationTime"] = 0; // Not a needy module or not scheduled
+        }
+        moduleObj["intervalMs"] = module.intervalMs;
     }
     
     doc["totalModules"] = allModules.size();
@@ -233,6 +263,22 @@ void handleAll(WiFiClient& client) {
     doc["status"]["indicators"] = edge.indicators.size();
     doc["status"]["ports"] = edge.ports.size();
     
+    // Include detailed edgework
+    JsonArray indicatorsArray = doc["status"].createNestedArray("indicatorDetails");
+    for (const auto& indicator : edge.indicators) {
+        JsonObject indObj = indicatorsArray.createNestedObject();
+        indObj["label"] = indicator.label;
+        indObj["lit"] = indicator.lit;
+        indObj["type"] = static_cast<uint8_t>(indicator.type);
+    }
+    
+    JsonArray portsArray = doc["status"].createNestedArray("portDetails");
+    for (const auto& port : edge.ports) {
+        JsonObject portObj = portsArray.createNestedObject();
+        portObj["label"] = port.label;
+        portObj["type"] = static_cast<uint8_t>(port.type);
+    }
+    
     // Include config data
     GameConfig config = gameStatePtr->getConfig();
     doc["config"]["maxStrikes"] = config.maxStrikes;
@@ -260,7 +306,21 @@ void handleAll(WiFiClient& client) {
         moduleObj["isRegistered"] = true;  // All modules in game_state are registered
         moduleObj["isActive"] = module.isActive;
         moduleObj["isSolved"] = module.isSolved;
-        moduleObj["lastSeen"] = (millis() - module.lastSeen) / 1000;
+        // If lastSeen is 0, send 0 (never seen). Otherwise send seconds ago
+        moduleObj["lastSeen"] = (module.lastSeen == 0) ? 0 : (millis() - module.lastSeen) / 1000;
+        // For activationTime: if it's a needy module with interval, send time until next activation (or 0 if passed)
+        // For regular modules, activationTime is 0
+        if (module.intervalMs > 0 && module.activationTime > 0) {
+            unsigned long now = millis();
+            if (module.activationTime > now) {
+                moduleObj["activationTime"] = (module.activationTime - now) / 1000; // seconds until activation
+            } else {
+                moduleObj["activationTime"] = 0; // activation time has passed
+            }
+        } else {
+            moduleObj["activationTime"] = 0; // Not a needy module or not scheduled
+        }
+        moduleObj["intervalMs"] = module.intervalMs;
     }
     
     doc["modulesMeta"]["totalModules"] = allModules.size();

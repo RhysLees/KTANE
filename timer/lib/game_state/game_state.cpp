@@ -358,6 +358,7 @@ void GameStateManager::updateModuleSeen(uint16_t canId) {
     Module* module = getModule(canId);
     if (module) {
         module->lastSeen = millis();
+        module->isActive = true;  // Module is active if it's sending heartbeats
     }
 }
 
@@ -698,12 +699,6 @@ unsigned long GameStateManager::getTimeUntilExplosion() const {
 }
 
 // ============================================================================
-// DEBUG & UTILITY
-// ============================================================================
-
-// Debug functions removed
-
-// ============================================================================
 // STATISTICS
 // ============================================================================
 
@@ -839,7 +834,30 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 audioModule.markSeen();
             } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
                 serialModule.markSeen();
-            } else if (moduleMap.find(senderId) != moduleMap.end()) {
+            } else {
+                // Auto-register module if not already registered (discovery via heartbeat)
+                if (moduleMap.find(senderId) == moduleMap.end()) {
+                    uint8_t moduleType = (senderId >> 5) & 0x3F;
+                    registerModule(senderId, static_cast<ModuleType>(moduleType));
+                    uint8_t decodedModuleType, decodedInstanceId;
+                    decodeCanId(senderId, &decodedModuleType, &decodedInstanceId);
+                    Serial.print("Module auto-registered via heartbeat: 0x");
+                    Serial.print(senderId, HEX);
+                    Serial.print(" (");
+                    Serial.print(getModuleTypeName(decodedModuleType));
+                    Serial.print(" #");
+                    Serial.print(decodedInstanceId);
+                    Serial.println(")");
+                    
+                    // Send module discovered acknowledgment
+                    uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
+                    sendCanMessage(senderId, discoveryAck, 1);
+                    
+                    // Send current state to newly registered module
+                    broadcastGameState(senderId);
+                }
+                
+                // Update last seen time
                 updateModuleSeen(senderId);
                 
                 // Process enhanced heartbeat data if available
@@ -964,13 +982,7 @@ void GameStateManager::broadcastCountdown(uint8_t seconds) {
     uint8_t countdownData[2];
     countdownData[0] = TIMER_COUNTDOWN;
     countdownData[1] = seconds;
-    Serial.print("DEBUG: About to send countdown broadcast: ");
-    Serial.println(seconds);
     sendCanMessage(CAN_ID_BROADCAST, countdownData, 2);
-    
-    Serial.print("GameState: Countdown - ");
-    Serial.print(seconds);
-    Serial.println(" seconds");
 }
 
 

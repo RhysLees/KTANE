@@ -192,6 +192,26 @@ const char* html_page = R"rawliteral(
                         <span class="font-bold" id="ports">0</span>
                     </div>
                 </div>
+                <div class="mt-4 pt-4 border-t border-gray-700">
+                    <div class="mb-3">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-300">Battery Details:</h3>
+                        <div id="batteryDetails" class="space-y-1 text-xs">
+                            <div class="text-gray-500">None</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-300">Indicator Details:</h3>
+                        <div id="indicatorDetails" class="space-y-1 text-xs">
+                            <div class="text-gray-500">None</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold mb-2 text-gray-300">Port Details:</h3>
+                        <div id="portDetails" class="space-y-1 text-xs">
+                            <div class="text-gray-500">None</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -375,6 +395,55 @@ const char* html_page = R"rawliteral(
                         document.getElementById('batteries').textContent = status.batteries;
                         document.getElementById('indicators').textContent = status.indicators;
                         document.getElementById('ports').textContent = status.ports;
+                        
+                        // Update detailed batteries
+                        const batteryDetails = document.getElementById('batteryDetails');
+                        batteryDetails.innerHTML = '';
+                        if (status.batteries && status.batteries > 0) {
+                            const batteryDiv = document.createElement('div');
+                            batteryDiv.className = 'flex justify-between items-center';
+                            batteryDiv.innerHTML = `<span class="text-gray-400">Total Batteries:</span><span class="font-semibold">${status.batteries} battery${status.batteries !== 1 ? 'ies' : ''}</span>`;
+                            batteryDetails.appendChild(batteryDiv);
+                        } else {
+                            batteryDetails.innerHTML = '<div class="text-gray-500">None</div>';
+                        }
+                        
+                        // Update detailed indicators
+                        const indicatorDetails = document.getElementById('indicatorDetails');
+                        indicatorDetails.innerHTML = '';
+                        if (status.indicatorDetails && status.indicatorDetails.length > 0) {
+                            status.indicatorDetails.forEach(indicator => {
+                                const indicatorDiv = document.createElement('div');
+                                indicatorDiv.className = 'flex justify-between items-center';
+                                const litStatus = indicator.lit ? '🟢 LIT' : '⚫ UNLIT';
+                                indicatorDiv.innerHTML = `<span class="text-gray-400">${indicator.label}:</span><span class="${indicator.lit ? 'text-green-400' : 'text-gray-500'} font-semibold">${litStatus}</span>`;
+                                indicatorDetails.appendChild(indicatorDiv);
+                            });
+                        } else {
+                            indicatorDetails.innerHTML = '<div class="text-gray-500">None</div>';
+                        }
+                        
+                        // Update detailed ports
+                        const portDetails = document.getElementById('portDetails');
+                        portDetails.innerHTML = '';
+                        if (status.portDetails && status.portDetails.length > 0) {
+                            const portCounts = {};
+                            status.portDetails.forEach(port => {
+                                const label = port.label;
+                                portCounts[label] = (portCounts[label] || 0) + 1;
+                            });
+                            
+                            Object.keys(portCounts).sort().forEach(label => {
+                                const count = portCounts[label];
+                                const portDiv = document.createElement('div');
+                                portDiv.className = 'flex justify-between items-center';
+                                const countDisplay = count > 1 ? ` × ${count}` : ` (${count})`;
+                                portDiv.innerHTML = `<span class="text-gray-400">${label}:</span><span class="font-semibold">${countDisplay}</span>`;
+                                portDetails.appendChild(portDiv);
+                            });
+                        } else {
+                            portDetails.innerHTML = '<div class="text-gray-500">None</div>';
+                        }
 
                         // Update modules grid
                         const grid = document.getElementById('moduleGrid');
@@ -401,11 +470,77 @@ const char* html_page = R"rawliteral(
                                 const statusIcon = module.isSolved ? '✅' : (!module.isActive ? '❌' : (module.isRegistered ? '🔵' : '🟡'));
                                 const statusText = module.isSolved ? 'Solved' : (!module.isActive ? 'Offline' : (module.isRegistered ? 'Registered' : 'Discovered'));
                                 
+                                // Format category
+                                const categoryNames = {0: 'Regular', 1: 'Needy', 2: 'Ignored'};
+                                const category = categoryNames[module.category] || 'Unknown';
+                                
+                                // Format times
+                                const formatTime = (ms) => {
+                                    if (ms === 0) return 'Never';
+                                    const seconds = Math.floor(ms / 1000);
+                                    if (seconds < 60) return seconds + 's';
+                                    const minutes = Math.floor(seconds / 60);
+                                    const secs = seconds % 60;
+                                    return minutes + 'm ' + secs + 's';
+                                };
+                                
+                                const lastSeenSec = module.lastSeen;
+                                const lastSeenText = lastSeenSec === 0 ? 'Never' : (lastSeenSec < 60 ? lastSeenSec + 's ago' : Math.floor(lastSeenSec / 60) + 'm ' + (lastSeenSec % 60) + 's ago');
+                                
+                                // activationTime is now sent as seconds until next activation (or 0 if passed/not scheduled)
+                                // For needy modules: show activation time, for regular modules: hide it
+                                const isNeedyModule = module.category === 1; // Category 1 = NEEDY
+                                let activationRow = '';
+                                if (isNeedyModule) {
+                                    let activationTimeText;
+                                    if (module.activationTime > 0) {
+                                        // Time until next activation
+                                        activationTimeText = formatTime(module.activationTime * 1000) + ' until activation';
+                                    } else {
+                                        // Currently active (activationTime passed or is 0)
+                                        activationTimeText = 'Active now';
+                                    }
+                                    activationRow = `<div class="flex justify-between">
+                                        <span class="text-gray-400">Activation:</span>
+                                        <span>${activationTimeText}</span>
+                                    </div>`;
+                                }
+                                
+                                const intervalText = module.intervalMs > 0 ? formatTime(module.intervalMs) : 'N/A';
+                                
                                 card.innerHTML = `
                                     <div class="font-bold text-lg mb-2">${statusIcon} ${module.type}</div>
-                                    <div class="text-sm text-gray-400 mb-1">ID: ${module.id}</div>
-                                    <div class="text-xs text-gray-500">Status: ${statusText}</div>
-                                    ${module.progress > 0 ? `<div class="mt-2 bg-gray-600 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width: ${module.progress}%"></div></div>` : ''}
+                                    <div class="text-xs space-y-1">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">ID:</span>
+                                            <span class="font-mono">${module.id}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Category:</span>
+                                            <span>${category}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Status:</span>
+                                            <span>${statusText}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Active:</span>
+                                            <span>${module.isActive ? 'Yes' : 'No'}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Solved:</span>
+                                            <span>${module.isSolved ? 'Yes' : 'No'}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Last Seen:</span>
+                                            <span>${lastSeenText}</span>
+                                        </div>
+                                        ${activationRow}
+                                        ${module.intervalMs > 0 ? `<div class="flex justify-between">
+                                            <span class="text-gray-400">Interval:</span>
+                                            <span>${intervalText}</span>
+                                        </div>` : ''}
+                                    </div>
                                 `;
                                 
                                 grid.appendChild(card);
