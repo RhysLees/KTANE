@@ -137,8 +137,6 @@ void setup() {
 	setupHardware();
 	initCanBus(CAN_ID_TIMER);
 	registerCanCallback(onTimerCanMessage);
-	registerRawCanCallback(onRawCanMessage);
-	registerRawCanCallback(onRawCanMessageSerial);
 	initStrikeDisplay();
 	initCountdownDisplay();
 	initDebugInterface();
