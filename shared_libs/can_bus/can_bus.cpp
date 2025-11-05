@@ -40,13 +40,9 @@ void onCanInterrupt() {
 }
 
 void initCanBus(uint16_t fullCanId) {
-  // Initialize SPI before initializing CAN controller
   SPI.begin();
   
-  // Initialize MCP2515: MCP_ANY mode, 500kb/s baudrate, 8MHz clock
-  // NOTE: Examples use MCP_16MHZ - verify your hardware crystal frequency!
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
-    // Disable all CAN filters to receive all messages
     CAN.init_Mask(0, 0, 0x00000000);
     CAN.init_Mask(1, 0, 0x00000000);
     
@@ -56,10 +52,7 @@ void initCanBus(uint16_t fullCanId) {
 
     CAN.enOneShotTX();
     CAN.setMode(MCP_NORMAL);
-    
-    Serial.println("CAN bus initialized");
   } else {
-    Serial.println("CAN init failed - retrying");
     delay(1000);
     initCanBus(fullCanId);
   }
@@ -69,9 +62,6 @@ void initCanBus(uint16_t fullCanId) {
   
   canBusInitialized = true;
   thisModuleId = fullCanId;
-  
-  Serial.print("CAN ID: 0x");
-  Serial.println(thisModuleId, HEX);
 }
 
 void registerCanCallback(CanMessageCallback callback) {
@@ -105,11 +95,9 @@ void handleIdNegotiation(uint16_t id, const uint8_t* buf, uint8_t len) {
 }
 
 void handleCanMessages() {
-  // Check interrupt pin directly like the examples (more reliable than flag-only approach)
   if (!digitalRead(CAN_INT_PIN) || canInterruptFlag) {
     canInterruptFlag = false;
     
-    // Read all available messages while interrupt pin is low (like the examples)
     while (CAN.checkReceive() == CAN_MSGAVAIL) {
       long unsigned int id;
       unsigned char len = 0;
@@ -117,27 +105,20 @@ void handleCanMessages() {
 
       CAN.readMsgBuf(&id, &len, buf);
 
-    // Handle ID negotiation messages first
     handleIdNegotiation(id, buf, len);
 
-    // Extract sender ID from first 2 bytes and shift data
     uint16_t senderId = 0;
     uint8_t shiftedData[8];
     uint8_t shiftedLen = len;
     
     if (len >= 2) {
-      // Extract sender ID from first 2 bytes
       senderId = (buf[0] << 8) | buf[1];
-      
-      // Shift data to remove sender ID (copy bytes 2+ to start)
       shiftedLen = len - 2;
       memcpy(shiftedData, &buf[2], shiftedLen);
     } else {
-      // Not enough data for sender ID, pass original data
       memcpy(shiftedData, buf, len);
     }
 
-    // Call registered raw CAN callbacks
     unsigned long timestamp = millis();
     for (uint8_t i = 0; i < rawCallbackCount; i++) {
       if (rawCanCallbacks[i]) {
@@ -145,19 +126,17 @@ void handleCanMessages() {
       }
     }
 
-    // Filter to this module or broadcast messages only
     if (id != thisModuleId && id != CAN_ID_BROADCAST) {
-      continue;  // Skip this message but continue reading others
+      continue;
     }
 
-    // Call registered callbacks with extracted sender ID and shifted data
     for (uint8_t i = 0; i < callbackCount; i++) {
       if (canCallbacks[i]) {
         canCallbacks[i](id, senderId, shiftedData, shiftedLen);
       }
     }
-    }  // End of while loop - continue reading messages
-  }  // End of if interrupt pin check
+    }
+  }
 }
 
 void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
@@ -165,23 +144,16 @@ void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen) {
     return;
   }
   
-  // Automatically prepend sender module ID to message data
-  if (dataLen > 0 && dataLen <= 6) { // Leave room for 2-byte sender ID
+  if (dataLen > 0 && dataLen <= 6) {
     uint8_t messageData[8];
     
-    // Add sender module ID (2 bytes)
-    messageData[0] = (thisModuleId >> 8) & 0xFF;  // High byte
-    messageData[1] = thisModuleId & 0xFF;         // Low byte
+    messageData[0] = (thisModuleId >> 8) & 0xFF;
+    messageData[1] = thisModuleId & 0xFF;
     
-    // Add original data
     memcpy(&messageData[2], data, dataLen);
     
-    // Send with prepended sender ID
-    // Check return value - if buffer is full, don't block (fail silently to avoid hang)
     byte sendStatus = CAN.sendMsgBuf(receiverID, 0, dataLen + 2, (byte*)messageData);
     if (sendStatus != CAN_OK) {
-      // Buffer full or error - don't block, just return
-      // This prevents deadlock when called from within handleCanMessages()
       return;
     }
   }
@@ -222,7 +194,6 @@ const char* getModuleTypeName(uint8_t moduleType) {
 
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
   if (thisModuleId == CAN_ID_TIMER) {
-    Serial.println("Timer module cannot negotiate IDs");
     return false;
   }
   
@@ -234,7 +205,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
   for (uint8_t candidateId = 0x01; candidateId <= ID_MAX_INSTANCE; candidateId++) {
     bool idAvailable = true;
     
-    // Probe for ID availability
     for (int probe = 0; probe < 3; probe++) {
       uint8_t probeData[3] = {ID_PROBE, moduleType, candidateId};
       CAN.sendMsgBuf(CAN_INSTANCE_ID(moduleType, 0x00), 0, 3, (byte*)probeData);
@@ -256,7 +226,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
     }
     
     if (idAvailable) {
-      // Final confirmation probe
       uint8_t probeData[3] = {ID_PROBE, moduleType, candidateId};
       CAN.sendMsgBuf(CAN_INSTANCE_ID(moduleType, 0x00), 0, 3, (byte*)probeData);
       
@@ -277,7 +246,6 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
       }
     }
     
-    // Exponential backoff for higher IDs
     if (candidateId >= 3) {
       delay(random(100, 500) * candidateId);
     }
@@ -288,27 +256,21 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
 
 bool assignUniqueId(uint8_t moduleType) {
   if (thisModuleId == CAN_ID_TIMER) {
-    Serial.println("Timer module cannot negotiate IDs");
     return false;
   }
   
   if (!canBusInitialized) return false;
   
-  // Random startup delay to avoid collisions
   delay(random(50, 500));
   
   uint8_t assignedId = 0;
   if (negotiateInstanceId(moduleType, &assignedId)) {
     uint16_t finalCanId = CAN_INSTANCE_ID(moduleType, assignedId);
     updateCanId(finalCanId);
-    Serial.print("Assigned ID: ");
-    Serial.println(assignedId);
     return true;
   } else {
-    // Fallback to default ID
     uint16_t defaultCanId = CAN_INSTANCE_ID(moduleType, 0x01);
     updateCanId(defaultCanId);
-    Serial.println("Using default ID: 1");
     return false;
   }
 }
@@ -330,11 +292,9 @@ void updateModuleConnections() {
   
   if (audioModuleConnected && (now - lastAudioPing > MODULE_TIMEOUT_MS)) {
     audioModuleConnected = false;
-    Serial.println("Audio module disconnected");
   }
   
   if (serialDisplayConnected && (now - lastSerialDisplayPing > MODULE_TIMEOUT_MS)) {
     serialDisplayConnected = false;
-    Serial.println("Serial display disconnected");
   }
 }

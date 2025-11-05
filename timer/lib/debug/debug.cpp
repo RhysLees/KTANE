@@ -439,14 +439,6 @@ void initDebugInterface()
     pinMode(ENCODER_CLK, INPUT_PULLUP);
     pinMode(ENCODER_DT, INPUT_PULLUP);
     
-    // LCD is already initialized in main.cpp
-    // Start in dashboard mode
     currentMode = MODE_DASHBOARD;
     needsRefresh = true;
-    
-    Serial.println("Debug interface initialized");
-    Serial.println("Controls:");
-    Serial.println("- Rotate: Navigate menus");
-    Serial.println("- Short press: Select/Enter");
-    Serial.println("- Long press: Main menu");
 }

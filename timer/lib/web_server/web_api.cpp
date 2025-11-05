@@ -7,12 +7,6 @@
 // Global game state pointer (set by web_server.cpp)
 GameStateManager* gameStatePtr = nullptr;
 
-// External CAN bus variables
-extern bool canBusInitialized;
-extern uint16_t thisModuleId;
-extern volatile uint32_t canInterruptCount;
-extern bool idConflictDetected;
-
 // Handle status API
 void handleStatus(WiFiClient& client) {
     if (!gameStatePtr) {
