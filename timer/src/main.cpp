@@ -59,18 +59,32 @@ void onModuleSolved(uint8_t solved, uint8_t total) {
 }
 
 void onTimeUpdate(unsigned long remainingMs) {
+	static unsigned long lastTimeUpdateSent = 0;
+	static unsigned long lastRemainingMs = 0;
+	unsigned long now = millis();
+	
+	// Only send time update every 500ms, or if time changed significantly (>100ms)
+	unsigned long timeDelta = (remainingMs > lastRemainingMs) ? 
+		(remainingMs - lastRemainingMs) : (lastRemainingMs - remainingMs);
+	bool significantChange = timeDelta > 100;
+	bool timeToSend = (now - lastTimeUpdateSent >= 500); // 500ms
+	
+	if (timeToSend || significantChange) {
+		uint8_t timeMessage[5];
+		timeMessage[0] = TIMER_TIME_UPDATE;
+		memcpy(&timeMessage[1], &remainingMs, 4);
+		sendCanMessage(CAN_ID_BROADCAST, timeMessage, 5);
+		
+		lastTimeUpdateSent = now;
+		lastRemainingMs = remainingMs;
+	}
+	
 	if (gameState.isEmergencyTime() && remainingMs > 0) {
 		static unsigned long lastWarning = 0;
-		unsigned long now = millis();
 		if (now - lastWarning >= 10000) {
 			lastWarning = now;
 		}
 	}
-	
-	uint8_t timeMessage[5];
-	timeMessage[0] = TIMER_TIME_UPDATE;
-	memcpy(&timeMessage[1], &remainingMs, 4);
-	sendCanMessage(CAN_ID_BROADCAST, timeMessage, 5);
 }
 
 void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {

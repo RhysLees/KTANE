@@ -25,7 +25,10 @@ void onGameStateChange(bool running) {
 }
 
 void onStrike(uint8_t strikes) {
-    simonSays.setStrikeCount(strikes);
+    // Strike count is now managed by module_state
+    // No need to update Simon Says - it reads from module_state directly
+    Serial.print("Simon Says: Strike count updated to ");
+    Serial.println(strikes);
 }
 
 void onSerialNumber(const String& serial) {
@@ -34,7 +37,16 @@ void onSerialNumber(const String& serial) {
 
 void onDiscovered() {
     // Called when module is discovered by timer
-    simonSays.setDiscoveredByTimer(true);
+    // Discovery state is now handled by module_state
+    Serial.println("Simon Says: Module discovered by timer");
+    
+    // Mark as initialized when discovered (countdown may or may not be used)
+    // If countdown is used, it will override this when it reaches 0
+    if (!initialization_complete) {
+        initialization_complete = true;
+        simonSays.setInitializationComplete(true);
+        Serial.println("Simon Says: Initialization complete (discovered)");
+    }
 }
 
 void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
@@ -50,15 +62,22 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
                 countdown_seconds = data[1];
                 
                 if (countdown_seconds == 0) {
+                    // Countdown reached 0 - mark as initialized
                     initialization_complete = true;
                     simonSays.setInitializationComplete(true);
+                    Serial.println("Simon Says: Initialization complete (countdown finished)");
+                    
+                    // If game is already running, start it now
+                    if (globalModuleState && globalModuleState->isGameRunning()) {
+                        simonSays.onGameStateChange(true);
+                    }
                 }
             }
         }
     }
     
-    // Pass to simon_says for module-specific handling
-    simonSays.handleCanMessage(id, senderId, data, len);
+    // Note: TIMER_RESET is handled by module_state via callback (onGameStateChange -> stopGame -> reset)
+    // No need to pass to simonSays.handleCanMessage() unless there are module-specific messages
 }
 
 void printStatus() {
@@ -108,7 +127,7 @@ void printHelp() {
     Serial.println("Simon Says Commands:");
     Serial.println("  RESET        - Reset module");
     Serial.println("  SERIAL <xxx> - Set serial number");
-    Serial.println("  STRIKES <n>  - Set strike count (0-3)");
+    Serial.println("  STRIKES      - Show current strike count");
     Serial.println("  START        - Start game");
     Serial.println("  STOP         - Stop game");
     Serial.println("  STATUS       - Show module status");
@@ -140,9 +159,14 @@ void handleSerialCommands() {
         String strikeStr = input.substring(8);
         uint8_t strikes = strikeStr.toInt();
         if (strikes <= 3) {
-            simonSays.setStrikeCount(strikes);
-            Serial.print("Strike count set to ");
-            Serial.println(strikes);
+            Serial.print("Strike count: ");
+            if (globalModuleState) {
+                Serial.print(globalModuleState->getStrikeCount());
+                Serial.print(" (managed by timer, cannot set manually)");
+            } else {
+                Serial.print("N/A");
+            }
+            Serial.println();
         } else {
             Serial.println("Invalid strike count (must be 0-3)");
         }
@@ -199,7 +223,7 @@ void setup() {
     }
     
     // Initialize Simon Says module
-    simonSays.setStrikeCount(0);
+    // Strike count is managed by module_state, no need to set it here
     simonSays.begin();
     
     Serial.println("Module initialized with module_state library");
@@ -234,17 +258,20 @@ void loop() {
         setModuleStateStatus(status);
         setModuleStateProgress((simonSays.getSequenceLength() * 100) / 5); // 5 is max sequence length
         
-        // Handle solved state - turn on LED when solved
+        // Handle solved state - module_state will handle LED automatically
         bool wasSolved = globalModuleState->isSolved();
         bool isNowSolved = simonSays.isSolved();
         setModuleStateSolved(isNowSolved);
         
-        if (isNowSolved && !wasSolved) {
-            // Module just solved - turn on LED
-            setModuleStateLedState(true);
-        } else if (!isNowSolved && wasSolved) {
-            // Module no longer solved - return to automatic control
-            clearModuleStateLedOverride();
+        // Check if we need to trigger a strike
+        // When Simon Says enters STRIKE state, trigger it via module_state
+        static SimonState lastState = SimonState::IDLE;
+        if (simonSays.getState() == SimonState::STRIKE && lastState != SimonState::STRIKE) {
+            // Module just entered strike state - trigger strike via module_state
+            if (globalModuleState) {
+                globalModuleState->triggerStrike();
+            }
         }
+        lastState = simonSays.getState();
     }
 } 

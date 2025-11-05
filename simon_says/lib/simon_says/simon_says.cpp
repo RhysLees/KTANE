@@ -1,4 +1,8 @@
 #include "simon_says.h"
+#include <module_state.h>
+
+// Use module_state's strike flash duration
+#define SIMON_STRIKE_FLASH_MS MODULE_STATE_STRIKE_FLASH_DURATION
 
 // ============================================================================
 // CONSTRUCTOR
@@ -20,16 +24,7 @@ SimonSays::SimonSays() {
     
     audioPlayedForCurrentColor = false;
     
-    strikeCount = 0;
-    isFlashing = false;
-    flashStartTime = 0;
-    
-    isDiscoveredByTimer = false;
-    discoveryLedFlashing = false;
-    lastDiscoveryFlashTime = 0;
-    
     hasVowelInSerial = false;
-    numStrikes = 0;
     
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
@@ -56,7 +51,14 @@ void SimonSays::begin() {
     currentState = SimonState::IDLE;
     stateStartTime = millis();
     
-    flashAllLEDs(500);
+    // Welcome flash - flash all LEDs briefly
+    for (int i = 0; i < 4; i++) {
+        ledStates[i] = true;
+    }
+    delay(200);
+    for (int i = 0; i < 4; i++) {
+        ledStates[i] = false;
+    }
     
     Serial.println("Simon Says: Ready!");
 }
@@ -71,13 +73,6 @@ void SimonSays::update() {
     // Status updates are now handled by module_state library in main.cpp
     // Module_state will automatically send heartbeats with status/progress
     
-    if (isFlashing && currentTime - flashStartTime > SIMON_STRIKE_FLASH_MS) {
-        isFlashing = false;
-        for (int i = 0; i < 4; i++) {
-            ledStates[i] = false;
-        }
-    }
-    
     switch (currentState) {
         case SimonState::IDLE:
             break;
@@ -87,7 +82,39 @@ void SimonSays::update() {
             break;
             
         case SimonState::DISPLAYING:
-            displaySequence();
+            // Check for button presses during display (can interrupt sequence)
+            for (int i = 0; i < 4; i++) {
+                if (buttonStates[i] && !lastButtonStates[i]) {
+                    // Button pressed during display - interrupt and start input
+                    Serial.println("Simon Says: Button pressed during display - interrupting sequence");
+                    
+                    // Turn off all LEDs
+                    for (int j = 0; j < 4; j++) {
+                        ledStates[j] = false;
+                    }
+                    
+                    // Start collecting input
+                    playerInput.clear();
+                    inputIndex = 0;
+                    SimonColor pressedColor = static_cast<SimonColor>(i);
+                    playerInput.push_back(pressedColor);
+                    
+                    Serial.print("Simon Says: First input - ");
+                    Serial.println(getColorName(pressedColor));
+                    
+                    setLED(pressedColor, true);
+                    playAudioForColor(pressedColor);
+                    
+                    currentState = SimonState::CHECKING_INPUT;
+                    stateStartTime = millis();
+                    break;
+                }
+            }
+            
+            // Only continue display if no button was pressed
+            if (currentState == SimonState::DISPLAYING) {
+                displaySequence();
+            }
             break;
             
         case SimonState::WAITING_INPUT:
@@ -140,7 +167,12 @@ void SimonSays::update() {
             break;
             
         case SimonState::STRIKE:
-            if (currentTime - stateStartTime > SIMON_STRIKE_FLASH_MS) {
+            // Use module_state's strike flash duration
+            if (currentTime - stateStartTime > MODULE_STATE_STRIKE_FLASH_DURATION) {
+                // Turn off flashing LEDs
+                for (int i = 0; i < 4; i++) {
+                    ledStates[i] = false;
+                }
                 resetModule();
             }
             break;
@@ -159,23 +191,19 @@ void SimonSays::reset() {
     displayIndex = 0;
     inputIndex = 0;
     
-    isFlashing = false;
-    
     sequence.clear();
     playerInput.clear();
     
     audioPlayedForCurrentColor = false;
     
-    // Reset discovery state
-    isDiscoveredByTimer = false;
-    discoveryLedFlashing = false;
-    lastDiscoveryFlashTime = 0;
+    // Discovery state is now handled by module_state
     
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
     
     // Status LED is now handled by module_state library
+    // Note: Game LED flashing is now handled via strike callback
     
     // Note: Status update will be sent automatically by update() method
     // when it detects the state change
@@ -216,10 +244,8 @@ void SimonSays::onGameStateChange(bool gameRunning) {
     }
 }
 
-void SimonSays::setStrikeCount(uint8_t strikes) {
-    numStrikes = strikes;
-    strikeCount = strikes;
-}
+// Note: Strike count is now managed by module_state library
+// Use globalModuleState->getStrikeCount() to get current strike count
 
 void SimonSays::setSerialNumber(const String& serial) {
     hasVowelInSerial = false;
@@ -243,13 +269,8 @@ void SimonSays::setInitializationComplete(bool complete) {
     Serial.println(complete ? "YES" : "NO");
 }
 
-void SimonSays::setDiscoveredByTimer(bool discovered) {
-    isDiscoveredByTimer = discovered;
-    if (discovered) {
-        discoveryLedFlashing = false; // Stop flashing (LED now handled by module_state)
-        Serial.println("Simon Says: Module discovered by timer - heartbeat continues");
-    }
-}
+// Note: Discovery state is now handled by module_state
+// No need for setDiscoveredByTimer() anymore
 
 // ============================================================================
 // HARDWARE METHODS
@@ -289,19 +310,11 @@ void SimonSays::updateLEDs() {
     // Status LED is now handled by module_state library
     // No need to control it here
     
-    // Handle game LED flashing (strikes)
-    if (isFlashing) {
-        bool flashState = ((millis() - flashStartTime) % 200) < 100;
-        digitalWrite(SIMON_LED_RED, flashState);
-        digitalWrite(SIMON_LED_YELLOW, flashState);
-        digitalWrite(SIMON_LED_GREEN, flashState);
-        digitalWrite(SIMON_LED_BLUE, flashState);
-    } else {
-        digitalWrite(SIMON_LED_RED, ledStates[0]);
-        digitalWrite(SIMON_LED_YELLOW, ledStates[1]);
-        digitalWrite(SIMON_LED_GREEN, ledStates[2]);
-        digitalWrite(SIMON_LED_BLUE, ledStates[3]);
-    }
+    // Update game LEDs (no flash state needed - handled by strike state)
+    digitalWrite(SIMON_LED_RED, ledStates[0]);
+    digitalWrite(SIMON_LED_YELLOW, ledStates[1]);
+    digitalWrite(SIMON_LED_GREEN, ledStates[2]);
+    digitalWrite(SIMON_LED_BLUE, ledStates[3]);
 }
 
 void SimonSays::playAudioForColor(SimonColor color) {
@@ -327,26 +340,10 @@ void SimonSays::playAudioForColor(SimonColor color) {
     sendCanMessage(CAN_ID_AUDIO, audioData, 1);
 }
 
-void SimonSays::playStrikeSound() {
-    uint8_t audioData[1];
-    audioData[0] = AUDIO_STRIKE;
-    sendCanMessage(CAN_ID_AUDIO, audioData, 1);
-}
+// Note: Audio is now handled by module_state library
+// playStrikeSound() and playSolvedSound() are no longer needed
 
-void SimonSays::playSolvedSound() {
-    uint8_t audioData[1];
-    audioData[0] = AUDIO_DEFUSED;
-    sendCanMessage(CAN_ID_AUDIO, audioData, 1);
-}
-
-void SimonSays::flashAllLEDs(unsigned long duration) {
-    for (int i = 0; i < 4; i++) {
-        ledStates[i] = true;
-    }
-    
-    isFlashing = true;
-    flashStartTime = millis();
-}
+// Note: Game LED flashing is now handled in handleStrike() via module_state callback
 
 void SimonSays::setLED(SimonColor color, bool state) {
     if (color != SimonColor::NONE) {
@@ -454,17 +451,25 @@ void SimonSays::displaySequence() {
 }
 
 void SimonSays::processInput() {
+    // Check for button presses
     for (int i = 0; i < 4; i++) {
         if (buttonStates[i] && !lastButtonStates[i]) {
+            // Button pressed - add to input
             SimonColor pressedColor = static_cast<SimonColor>(i);
             playerInput.push_back(pressedColor);
             
             Serial.print("Simon Says: Button pressed - ");
-            Serial.println(getColorName(pressedColor));
+            Serial.print(getColorName(pressedColor));
+            Serial.print(" (input ");
+            Serial.print(playerInput.size());
+            Serial.print("/");
+            Serial.print(sequence.size());
+            Serial.println(")");
             
             setLED(pressedColor, true);
             playAudioForColor(pressedColor);
             
+            // Transition to checking state
             currentState = SimonState::CHECKING_INPUT;
             stateStartTime = millis();
             
@@ -472,6 +477,7 @@ void SimonSays::processInput() {
         }
     }
     
+    // Turn off LEDs when buttons are released
     for (int i = 0; i < 4; i++) {
         if (!buttonStates[i] && lastButtonStates[i]) {
             setLED(static_cast<SimonColor>(i), false);
@@ -534,24 +540,17 @@ void SimonSays::nextStage() {
 }
 
 void SimonSays::handleStrike() {
-    Serial.println("Simon Says: Strike!");
+    Serial.println("Simon Says: Strike! Flashing LEDs and transitioning to STRIKE state");
     
-    strikeCount++;
-    numStrikes++; // Update the strikes used for color mapping rules
+    // Note: Strike notification to timer and audio are handled by module_state
+    // via triggerStrike() in main.cpp when it detects STRIKE state change
     
-    Serial.print("Simon Says: Strike count now ");
-    Serial.print(strikeCount);
-    Serial.println(" - color mappings will change!");
+    // Flash all game LEDs as visual feedback (using module_state timing)
+    for (int i = 0; i < 4; i++) {
+        ledStates[i] = true;
+    }
     
-    // Send strike notification to timer
-    uint8_t strikeData[1];
-    strikeData[0] = MODULE_STRIKE;
-    sendCanMessage(CAN_ID_TIMER, strikeData, 1);
-    Serial.println("Simon Says: Strike notification sent to timer");
-    
-    flashAllLEDs(SIMON_STRIKE_FLASH_MS);
-    playStrikeSound();
-    
+    // Transition to STRIKE state (will reset and replay sequence after flash)
     currentState = SimonState::STRIKE;
     stateStartTime = millis();
 }
@@ -563,11 +562,8 @@ void SimonSays::solvePuzzle() {
     currentState = SimonState::SOLVED;
     stateStartTime = millis();
     
-    digitalWrite(SIMON_STATUS_LED, HIGH);
-    playSolvedSound();
-    
-    // Note: MODULE_SOLVED message is sent automatically by update() method
-    // when it detects the state change to solved
+    // Status LED is now handled by module_state library
+    // MODULE_SOLVED message and solved sound are sent automatically by module_state when setSolved(true) is called
 }
 
 void SimonSays::resetModule() {
@@ -591,8 +587,6 @@ void SimonSays::resetModule() {
     displayIndex = 0;
     inputIndex = 0;
     
-    isFlashing = false;
-    
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
@@ -612,9 +606,16 @@ bool SimonSays::shouldFlashColor(SimonColor color) const {
 }
 
 SimonColor SimonSays::getFlashColor(SimonColor color) const {
+    // Get strike count from module_state
+    extern ModuleState* globalModuleState;
+    uint8_t strikes = 0;
+    if (globalModuleState) {
+        strikes = globalModuleState->getStrikeCount();
+    }
+    
     if (hasVowelInSerial) {
         // Serial number contains a vowel
-        if (numStrikes == 0) {
+        if (strikes == 0) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::BLUE;
                 case SimonColor::BLUE: return SimonColor::RED;
@@ -622,7 +623,7 @@ SimonColor SimonSays::getFlashColor(SimonColor color) const {
                 case SimonColor::YELLOW: return SimonColor::GREEN;
                 default: return color;
             }
-        } else if (numStrikes == 1) {
+        } else if (strikes == 1) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::YELLOW;
                 case SimonColor::BLUE: return SimonColor::GREEN;
@@ -641,7 +642,7 @@ SimonColor SimonSays::getFlashColor(SimonColor color) const {
         }
     } else {
         // Serial number does NOT contain a vowel
-        if (numStrikes == 0) {
+        if (strikes == 0) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::BLUE;
                 case SimonColor::BLUE: return SimonColor::YELLOW;
@@ -649,7 +650,7 @@ SimonColor SimonSays::getFlashColor(SimonColor color) const {
                 case SimonColor::YELLOW: return SimonColor::RED;
                 default: return color;
             }
-        } else if (numStrikes == 1) {
+        } else if (strikes == 1) {
             switch (color) {
                 case SimonColor::RED: return SimonColor::RED;
                 case SimonColor::BLUE: return SimonColor::BLUE;
@@ -729,17 +730,10 @@ const char* SimonSays::getStateName(SimonState state) const {
 // ============================================================================
 
 void SimonSays::handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
-    if (len < 1) return;
+    // Note: TIMER_RESET is handled by module_state, which calls gameStateCallback(false)
+    // That triggers onGameStateChange(false) which calls stopGame() -> reset()
+    // So no need to handle it here directly
     
-    // Data is clean (sender ID already removed), first byte is message type
-    uint8_t msgType = data[0];
-    
-    switch (msgType) {
-        case SIMON_MSG_RESET:
-            reset();
-            break;
-            
-        default:
-            break;
-    }
+    // Module-specific messages can be handled here if needed
+    // (Currently none - all handled by module_state or main.cpp)
 }

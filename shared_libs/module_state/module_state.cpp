@@ -179,7 +179,13 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                             digitalWrite(statusLedPin, HIGH);  // Flash red (HIGH = on)
                         }
                         
-                        Serial.print("ModuleState: Strike received! Flashing LED (strikes: ");
+                        // Play strike sound (only if this is a new strike from timer)
+                        // Note: Module-initiated strikes already play sound in triggerStrike()
+                        uint8_t audioData[1];
+                        audioData[0] = AUDIO_STRIKE;
+                        sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+                        
+                        Serial.print("ModuleState: Strike received! Flashing LED and playing sound (strikes: ");
                         Serial.print(strikes);
                         Serial.println(")");
                     }
@@ -390,6 +396,12 @@ void ModuleState::setSolved(bool solved) {
             sendCanMessage(CAN_ID_TIMER, solvedData, 1);
             Serial.println("ModuleState: Module solved - sent MODULE_SOLVED");
             
+            // Play solved sound
+            uint8_t audioData[1];
+            audioData[0] = AUDIO_DEFUSED;
+            sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+            Serial.println("ModuleState: Playing solved sound");
+            
             // Update status
             currentStatus = MODULE_STATUS_SOLVED;
         }
@@ -406,6 +418,12 @@ void ModuleState::triggerStrike() {
     strikeData[0] = MODULE_STRIKE;
     sendCanMessage(CAN_ID_TIMER, strikeData, 1);
     Serial.println("ModuleState: Strike triggered - sent MODULE_STRIKE");
+    
+    // Play strike sound
+    uint8_t audioData[1];
+    audioData[0] = AUDIO_STRIKE;
+    sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+    Serial.println("ModuleState: Playing strike sound");
 }
 
 // ============================================================================

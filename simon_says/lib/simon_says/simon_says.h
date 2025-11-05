@@ -29,17 +29,10 @@
 #define SIMON_DISPLAY_TIME_MS     500
 #define SIMON_PAUSE_TIME_MS       250
 #define SIMON_INPUT_TIMEOUT_MS    5000
-#define SIMON_STRIKE_FLASH_MS     1000
+// Note: Strike flash duration is now from module_state (1000ms)
+// Use MODULE_STATE_STRIKE_FLASH_DURATION or ModuleState::getStrikeFlashDuration()
 
-// CAN message types
-enum SimonCanMessage : uint8_t {
-    SIMON_MSG_REGISTER    = 0x01,  // Register module with game state
-    SIMON_MSG_SOLVED      = 0x02,  // Module solved successfully
-    SIMON_MSG_STRIKE      = 0x03,  // Strike occurred
-    SIMON_MSG_HEARTBEAT   = 0x04,  // Realtime heartbeat
-    SIMON_MSG_RESET       = 0x05,  // Reset module
-    SIMON_MSG_STATUS      = 0x06   // Realtime status update
-};
+// Note: CAN message types are defined in can_bus.h (MODULE_REGISTER, MODULE_SOLVED, etc.)
 
 // ============================================================================
 // SIMON SAYS ENUMS
@@ -97,28 +90,14 @@ private:
     bool buttonStates[4];
     bool lastButtonStates[4];
     
-    // Strike counting
-    uint8_t strikeCount;
-    bool isFlashing;
-    unsigned long flashStartTime;
-    
-    // Discovery state tracking
-    bool isDiscoveredByTimer;
-    bool discoveryLedFlashing;
-    unsigned long lastDiscoveryFlashTime;
-    
     // KTANE rule variables
     bool hasVowelInSerial;
-    uint8_t numStrikes;
     
     // Hardware methods
     void initHardware();
     void updateButtons();
     void updateLEDs();
     void playAudioForColor(SimonColor color);
-    void playStrikeSound();
-    void playSolvedSound();
-    void flashAllLEDs(unsigned long duration);
     void setLED(SimonColor color, bool state);
     
     // Game logic methods
@@ -153,19 +132,18 @@ public:
     void startGame();
     void stopGame();
     void onGameStateChange(bool gameRunning);
-    void setStrikeCount(uint8_t strikes);
     void setSerialNumber(const String& serial);
     void setInitializationComplete(bool complete);
-    void setDiscoveredByTimer(bool discovered);
     
     // Status interface
     bool isSolved() const { return isModuleSolved; }
     SimonState getState() const { return currentState; }
     uint8_t getSequenceLength() const { return currentSequenceLength; }
-    uint8_t getStrikeCount() const { return strikeCount; }
     
     // Debug interface removed
     
-    // CAN message handler
+    // Note: CAN message handling is now done by module_state
+    // Module-specific messages can be handled in main.cpp's onCanMessage
+    // This method is kept for potential future module-specific messages
     void handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
 }; 
