@@ -15,7 +15,8 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
   uint8_t msgType = data[0];
   
   // Check for TIMER_MODULE_DISCOVERED acknowledgment
-  if (id == CAN_ID_TIMER && msgType == TIMER_MODULE_DISCOVERED) {
+  // Timer sends this message directly to the module's ID, not CAN_ID_TIMER
+  if (msgType == TIMER_MODULE_DISCOVERED) {
     if (!isRegistered) {
       isRegistered = true;
       Serial.println("==========================================");

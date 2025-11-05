@@ -322,6 +322,10 @@ void logCanMessage(const char* direction, uint16_t receiverId, uint16_t senderId
   uint8_t moduleType, instanceId;
   decodeCanId(decodeId, &moduleType, &instanceId);
   
+  unsigned long ttl = millis();
+  Serial.print("[");
+  Serial.print(ttl / 1000);
+  Serial.print("s] ");
   Serial.print("CAN ");
   Serial.print(direction);
   Serial.print(": ID=0x");

@@ -83,9 +83,17 @@ void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint
 	
 	switch (command) {
 		case MODULE_REGISTER:
+			gameState.handleCanMessage(id, senderId, data, len);
+			break;
 		case MODULE_STRIKE:
+			gameState.handleCanMessage(id, senderId, data, len);
+			break;
 		case MODULE_SOLVED:
+			gameState.handleCanMessage(id, senderId, data, len);
+			break;
 		case MODULE_STATUS:
+			gameState.handleCanMessage(id, senderId, data, len);
+			break;
 		case MODULE_HEARTBEAT:
 			// Route module messages to game state for processing
 			gameState.handleCanMessage(id, senderId, data, len);
