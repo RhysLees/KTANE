@@ -112,7 +112,7 @@ void onTimerCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint
 
 void setupHardware() {
 	delay(50);
-	randomSeed(millis());
+	randomSeed(rp2040.hwrand32());
 
 	Wire.setSDA(0);
 	Wire.setSCL(1);
