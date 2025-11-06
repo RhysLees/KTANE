@@ -3,7 +3,6 @@
 #include <can_bus.h>
 #include <countdown.h>
 #include <strikes.h>
-#include <serial_command.h>
 #include <game_state.h>
 #include <debug.h>
 #include <lcd1602.h>
@@ -168,7 +167,6 @@ void loop() {
 	gameState.tick();
 	updateCountdownDisplay(gameState);
 	updateStrikeCount(gameState);
-	handleSerialCommands(gameState);
 	handleCanMessages();
 	
 	updateDebugInterface(gameState);
