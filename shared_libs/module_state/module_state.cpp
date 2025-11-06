@@ -40,16 +40,6 @@ void ModuleState::begin(int statusLedPin) {
     
     // Send initial registration
     sendRegisterNow();
-    
-    Serial.print("ModuleState: Initialized");
-    if (statusLedPin != MODULE_STATE_NO_LED) {
-        Serial.print(" (Status LED on pin ");
-        Serial.print(statusLedPin);
-        Serial.print(")");
-    }
-    Serial.print(" - Discovery mode (");
-    Serial.print(getCurrentHeartbeatInterval());
-    Serial.println("ms heartbeat)");
 }
 
 void ModuleState::update() {
@@ -117,7 +107,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                 isDiscovered = true;
                 isRegistered = true;
                 discoveryLedState = false;
-                Serial.println("ModuleState: Discovered by timer - stopping LED flashing");
                 
                 // Turn off discovery LED
                 if (statusLedPin != MODULE_STATE_NO_LED) {
@@ -134,9 +123,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
         case TIMER_GAME_START:
             if (!gameRunning) {
                 gameRunning = true;
-                Serial.print("ModuleState: Game started - switching to ");
-                Serial.print(getCurrentHeartbeatInterval());
-                Serial.println("ms heartbeats");
                 
                 // Send immediate heartbeat on state change
                 sendHeartbeatNow();
@@ -151,9 +137,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
         case TIMER_GAME_STOP:
             if (gameRunning) {
                 gameRunning = false;
-                Serial.print("ModuleState: Game stopped - switching to ");
-                Serial.print(getCurrentHeartbeatInterval());
-                Serial.println("ms heartbeats");
                 
                 // Send immediate heartbeat on state change
                 sendHeartbeatNow();
@@ -184,10 +167,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                         uint8_t audioData[1];
                         audioData[0] = AUDIO_STRIKE;
                         sendCanMessage(CAN_ID_AUDIO, audioData, 1);
-                        
-                        Serial.print("ModuleState: Strike received! Flashing LED and playing sound (strikes: ");
-                        Serial.print(strikes);
-                        Serial.println(")");
                     }
                     
                     currentStrikes = strikes;
@@ -210,8 +189,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                 
                 if (newSerial != serialNumber) {
                     serialNumber = newSerial;
-                    Serial.print("ModuleState: Serial number received: ");
-                    Serial.println(serialNumber);
                     
                     // Call callback if set
                     if (serialNumberCallback) {
@@ -222,7 +199,6 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             break;
             
         case TIMER_RESET:
-            Serial.println("ModuleState: Reset command received");
             // Reset discovery state (will re-register)
             isDiscovered = false;
             isRegistered = false;
@@ -275,7 +251,6 @@ void ModuleState::sendRegister() {
     uint8_t registerData[1];
     registerData[0] = MODULE_REGISTER;
     
-    Serial.println("ModuleState: Sending registration request");
     sendCanMessage(CAN_ID_TIMER, registerData, 1);
     lastRegisterAttempt = millis();
 }
@@ -394,13 +369,11 @@ void ModuleState::setSolved(bool solved) {
             uint8_t solvedData[1];
             solvedData[0] = MODULE_SOLVED;
             sendCanMessage(CAN_ID_TIMER, solvedData, 1);
-            Serial.println("ModuleState: Module solved - sent MODULE_SOLVED");
             
             // Play solved sound
             uint8_t audioData[1];
             audioData[0] = AUDIO_DEFUSED;
             sendCanMessage(CAN_ID_AUDIO, audioData, 1);
-            Serial.println("ModuleState: Playing solved sound");
             
             // Update status
             currentStatus = MODULE_STATUS_SOLVED;
@@ -417,13 +390,11 @@ void ModuleState::triggerStrike() {
     uint8_t strikeData[1];
     strikeData[0] = MODULE_STRIKE;
     sendCanMessage(CAN_ID_TIMER, strikeData, 1);
-    Serial.println("ModuleState: Strike triggered - sent MODULE_STRIKE");
     
     // Play strike sound
     uint8_t audioData[1];
     audioData[0] = AUDIO_STRIKE;
     sendCanMessage(CAN_ID_AUDIO, audioData, 1);
-    Serial.println("ModuleState: Playing strike sound");
 }
 
 // ============================================================================

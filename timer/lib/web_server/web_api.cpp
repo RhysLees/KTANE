@@ -383,8 +383,6 @@ void handlePing(WiFiClient& client) {
     String response;
     serializeJson(doc, response);
     sendResponse(client, 200, "application/json", response);
-    
-    Serial.println("Web server: Ping info requested - heartbeat-based discovery is active");
 }
 
 // Forward declarations for WiFi functions
@@ -437,8 +435,6 @@ void handleSetWiFi(WiFiClient& client, String body) {
             String responseStr;
             serializeJson(response, responseStr);
             sendResponse(client, 200, "application/json", responseStr);
-            
-            Serial.println("WiFi credentials cleared - device will need to restart");
             // Note: In a production system, you might want to restart here
             // For now, the device will reconnect on next boot
         } else {
@@ -466,9 +462,6 @@ void handleSetWiFi(WiFiClient& client, String body) {
         sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Failed to save credentials\"}");
         return;
     }
-    
-    Serial.print("WiFi credentials saved: ");
-    Serial.println(ssid);
     
     // Try to connect to WiFi
     bool connected = connectToWiFi(ssid, password);

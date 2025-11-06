@@ -148,11 +148,7 @@ void setupCallbacks() {
 }
 
 void printGameInfo() {
-	Serial.println("KTANE Timer Ready");
-	Serial.print("Serial: ");
-	Serial.println(gameState.getSerialNumber());
-	Serial.print("Web UI: http://");
-	Serial.println(getWiFiIP());
+	// Game info removed - no serial logging
 }
 
 void setup() {

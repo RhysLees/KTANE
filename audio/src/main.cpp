@@ -78,10 +78,8 @@ void setup() {
   Wire.begin();
 
   initAudioMixer(15);
-  Serial.println("PWM audio ready.");
 
   if (!amp.begin()) {
-    Serial.println("Could not find TPA2016D2!");
     while (1);
   }
 
@@ -95,8 +93,6 @@ void setup() {
   
   // Initialize module_state system (starts in discovery mode)
   initModuleState(MODULE_STATE_NO_LED);  // Audio module doesn't have a status LED
-  
-  Serial.println("Audio module ready with module_state system");
 }
 
 void loop() {

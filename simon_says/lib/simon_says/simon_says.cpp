@@ -42,8 +42,6 @@ SimonSays::SimonSays() {
 // ============================================================================
 
 void SimonSays::begin() {
-    Serial.println("Simon Says: Initializing...");
-    
     initHardware();
     
     // Module registration will be handled by explicit registration
@@ -60,8 +58,6 @@ void SimonSays::begin() {
     for (int i = 0; i < 4; i++) {
         ledStates[i] = false;
     }
-    
-    Serial.println("Simon Says: Ready!");
 }
 
 void SimonSays::update() {
@@ -97,28 +93,12 @@ void SimonSays::update() {
                         // Update last input time for timeout tracking
                         lastInputTime = millis();
                         
-                        Serial.print("Simon Says: Button pressed during display - ");
-                        Serial.print(getColorName(pressedColor));
-                        Serial.print(" (input ");
-                        Serial.print(playerInput.size());
-                        Serial.print("/");
-                        Serial.print(sequence.size());
-                        Serial.print(", inputIndex=");
-                        Serial.print(inputIndex);
-                        Serial.println(")");
-                        
                         setLED(pressedColor, true);
                         playAudioForColor(pressedColor);
                         
                         // Transition to checking state (but display continues in background)
                         currentState = SimonState::CHECKING_INPUT;
                         stateStartTime = millis();
-                    } else {
-                        Serial.print("Simon Says: Ignoring button press - already have ");
-                        Serial.print(playerInput.size());
-                        Serial.print(" inputs (inputIndex=");
-                        Serial.print(inputIndex);
-                        Serial.println(")");
                     }
                     break;
                 }
@@ -178,8 +158,6 @@ void SimonSays::update() {
 }
 
 void SimonSays::reset() {
-    Serial.println("Simon Says: Resetting module...");
-    
     currentState = SimonState::IDLE;
     isModuleSolved = false;
     gameStarted = false;
@@ -205,8 +183,6 @@ void SimonSays::reset() {
     
     // Note: Status update will be sent automatically by update() method
     // when it detects the state change
-    
-    Serial.println("Simon Says: Reset complete.");
 }
 
 // ============================================================================
@@ -216,20 +192,16 @@ void SimonSays::reset() {
 void SimonSays::startGame() {
     if (currentState == SimonState::IDLE) {
         if (initializationComplete) {
-            Serial.println("Simon Says: Game starting...");
             gameStarted = true;
             currentState = SimonState::GENERATING;
             stateStartTime = millis();
             
             // Status LED is now handled by module_state library
-        } else {
-            Serial.println("Simon Says: Cannot start game - initialization not complete");
         }
     }
 }
 
 void SimonSays::stopGame() {
-    Serial.println("Simon Says: Game stopped.");
     gameStarted = false;
     reset();
 }
@@ -254,17 +226,10 @@ void SimonSays::setSerialNumber(const String& serial) {
             break;
         }
     }
-    
-    Serial.print("Simon Says: Serial number ");
-    Serial.print(serial);
-    Serial.print(" has vowel: ");
-    Serial.println(hasVowelInSerial ? "YES" : "NO");
 }
 
 void SimonSays::setInitializationComplete(bool complete) {
     initializationComplete = complete;
-    Serial.print("Simon Says: Initialization complete: ");
-    Serial.println(complete ? "YES" : "NO");
 }
 
 // Note: Discovery state is now handled by module_state
@@ -354,8 +319,6 @@ void SimonSays::setLED(SimonColor color, bool state) {
 // ============================================================================
 
 void SimonSays::generateSequence() {
-    Serial.println("Simon Says: Generating sequence...");
-    
     if (currentSequenceLength == 0) {
         // First time - generate random target sequence length (3-5 stages)
         targetSequenceLength = random(3, 6); // 3 to 5 inclusive
@@ -365,23 +328,12 @@ void SimonSays::generateSequence() {
         // Start with just one color
         SimonColor color = static_cast<SimonColor>(random(4));
         sequence.push_back(color);
-        
-        Serial.print("Simon Says: Target sequence length: ");
-        Serial.println(targetSequenceLength);
     } else {
         // Add one more color to the sequence
         SimonColor color = static_cast<SimonColor>(random(4));
         sequence.push_back(color);
         currentSequenceLength++;
     }
-    
-    // Debug: Show current sequence
-    Serial.print("Simon Says: Current sequence: ");
-    for (size_t i = 0; i < sequence.size(); i++) {
-        if (i > 0) Serial.print(" -> ");
-        Serial.print(getColorName(sequence[i]));
-    }
-    Serial.println();
     
     displayIndex = 0;
     currentState = SimonState::DISPLAYING;
@@ -442,7 +394,6 @@ void SimonSays::displaySequence() {
             // Check if we've waited more than one full loop since last input
             if (lastInputTime > 0 && (millis() - lastInputTime) > sequenceDuration) {
                 // Timeout - reset input sequence but don't strike
-                Serial.println("Simon Says: Input timeout - resetting input sequence (no strike)");
                 playerInput.clear();
                 inputIndex = 0;
                 lastInputTime = 0;  // Reset timeout tracking
@@ -468,13 +419,7 @@ void SimonSays::checkInput() {
     
     // Check if we have input to validate
     if (playerInput.size() <= inputIndex) {
-        // No input yet - this shouldn't happen, but log it
-        Serial.print("Simon Says: checkInput() - No input at index ");
-        Serial.print(inputIndex);
-        Serial.print(" (playerInput.size()=");
-        Serial.print(playerInput.size());
-        Serial.println(")");
-        // Transition back to displaying sequence
+        // No input yet - transition back to displaying sequence
         currentState = SimonState::DISPLAYING;
         displayIndex = 0;
         audioPlayedForCurrentColor = false;
@@ -486,40 +431,17 @@ void SimonSays::checkInput() {
     SimonColor pressedColor = playerInput[inputIndex];
     SimonColor expectedColor = getFlashColor(sequence[inputIndex]);
     
-    Serial.print("Simon Says: Validating input[");
-    Serial.print(inputIndex);
-    Serial.print("] = ");
-    Serial.print(getColorName(pressedColor));
-    Serial.print(" vs expected ");
-    Serial.print(getColorName(expectedColor));
-    Serial.print(" (sequence[");
-    Serial.print(inputIndex);
-    Serial.print("] = ");
-    Serial.print(getColorName(sequence[inputIndex]));
-    Serial.println(")");
-    
     if (pressedColor == expectedColor) {
-        Serial.print("Simon Says: Correct! Pressed ");
-        Serial.print(getColorName(pressedColor));
-        Serial.print(" (expected ");
-        Serial.print(getColorName(expectedColor));
-        Serial.print(") - Progress: ");
-        Serial.print(inputIndex + 1);
-        Serial.print("/");
-        Serial.println(sequence.size());
-        
         inputIndex++;
         
         if (inputIndex >= sequence.size()) {
             // Sequence completed correctly!
-            Serial.println("Simon Says: Sequence completed correctly!");
             playerInput.clear();
             inputIndex = 0;
             currentState = SimonState::CORRECT_SEQUENCE;
             stateStartTime = millis();
         } else {
             // Wait for next input - continue displaying sequence
-            Serial.println("Simon Says: Waiting for next input...");
             // Don't remove elements - inputIndex tracks position in both arrays
             // Continue displaying sequence (it loops)
             currentState = SimonState::DISPLAYING;
@@ -529,11 +451,6 @@ void SimonSays::checkInput() {
         }
     } else {
         // Wrong input!
-        Serial.print("Simon Says: WRONG! Pressed ");
-        Serial.print(getColorName(pressedColor));
-        Serial.print(" but expected ");
-        Serial.println(getColorName(expectedColor));
-        
         // Clear all input
         playerInput.clear();
         inputIndex = 0;
@@ -552,8 +469,6 @@ void SimonSays::nextStage() {
 }
 
 void SimonSays::handleStrike() {
-    Serial.println("Simon Says: Strike! Flashing LEDs and transitioning to STRIKE state");
-    
     // Note: Strike notification to timer and audio are handled by module_state
     // via triggerStrike() in main.cpp when it detects STRIKE state change
     
@@ -568,8 +483,6 @@ void SimonSays::handleStrike() {
 }
 
 void SimonSays::solvePuzzle() {
-    Serial.println("Simon Says: Module solved!");
-    
     isModuleSolved = true;
     currentState = SimonState::SOLVED;
     stateStartTime = millis();
@@ -579,19 +492,6 @@ void SimonSays::solvePuzzle() {
 }
 
 void SimonSays::resetModule() {
-    Serial.println("Simon Says: Resetting after strike - replaying same sequence...");
-    Serial.println("Simon Says: NEW color mappings due to strike:");
-    
-    // Show the new color mappings
-    for (int i = 0; i < 4; i++) {
-        SimonColor color = static_cast<SimonColor>(i);
-        SimonColor mapped = getFlashColor(color);
-        Serial.print("  ");
-        Serial.print(getColorName(color));
-        Serial.print(" flash -> press ");
-        Serial.println(getColorName(mapped));
-    }
-    
     // Don't change currentSequenceLength or sequence - replay the same sequence
     // Don't clear sequence - keep the same colors
     playerInput.clear();

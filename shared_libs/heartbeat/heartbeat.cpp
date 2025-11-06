@@ -14,9 +14,6 @@ HeartbeatManager::HeartbeatManager()
 void HeartbeatManager::begin() {
     enabled = true;
     lastHeartbeat = millis();
-    Serial.print("Heartbeat: Initialized - Discovery mode (");
-    Serial.print(getCurrentInterval());
-    Serial.println("ms)");
 }
 
 void HeartbeatManager::update() {
@@ -32,11 +29,6 @@ void HeartbeatManager::setGameRunning(bool running) {
     GameRunningState newState = running ? GAME_RUNNING : GAME_NOT_RUNNING;
     if (newState != gameState) {
         gameState = newState;
-        Serial.print("Heartbeat: Game state changed to ");
-        Serial.print(running ? "RUNNING" : "DISCOVERY");
-        Serial.print(" (");
-        Serial.print(getCurrentInterval());
-        Serial.println("ms)");
         
         // Send immediate heartbeat on state change
         sendNow();
@@ -55,9 +47,6 @@ void HeartbeatManager::enable(bool en) {
     enabled = en;
     if (enabled) {
         lastHeartbeat = millis();
-        Serial.println("Heartbeat: Enabled");
-    } else {
-        Serial.println("Heartbeat: Disabled");
     }
 }
 
@@ -79,7 +68,6 @@ void HeartbeatManager::setSolved(bool solved) {
 
 void HeartbeatManager::sendNow() {
     if (!enabled) {
-        Serial.println("Heartbeat: Not enabled, skipping send");
         return;
     }
     
@@ -87,10 +75,6 @@ void HeartbeatManager::sendNow() {
     // CAN library automatically prepends sender ID
     uint8_t heartbeatData[1];
     heartbeatData[0] = MODULE_HEARTBEAT;
-    
-    Serial.print("Heartbeat: Sending heartbeat to timer (mode: ");
-    Serial.print(gameState == GAME_RUNNING ? "GAME" : "DISCOVERY");
-    Serial.println(")");
     
     sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
     lastHeartbeat = millis();

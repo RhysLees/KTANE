@@ -10,8 +10,6 @@
 // Callback function called when serial number is received from timer via module_state
 void onSerialNumberReceived(const String& serial) {
   if (serial.length() > 0) {
-    Serial.print("Serial number received from timer: ");
-    Serial.println(serial);
     epaperDrawTag(serial);
   }
 }
@@ -36,8 +34,6 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t l
           memcpy(serial, &data[1], 6);
           serial[6] = '\0';
           epaperDrawTag(String(serial));
-          Serial.print("Serial number set via manual command: ");
-          Serial.println(serial);
         }
         break;
 
@@ -80,11 +76,8 @@ void setup() {
   // Check if serial number is already available (e.g., from previous game)
   if (globalModuleState && globalModuleState->getSerialNumber().length() > 0) {
     epaperDrawTag(globalModuleState->getSerialNumber());
-    Serial.print("Displaying existing serial number: ");
-    Serial.println(globalModuleState->getSerialNumber());
   }
 
-  Serial.println("Serial display ready with module_state system");
   delay(5000);
 }
 
