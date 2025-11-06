@@ -197,7 +197,7 @@ const char* html_page = R"rawliteral(
         <!-- Module Grid -->
         <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
             <h2 class="text-xl font-bold mb-4 pb-2 border-b border-gray-700">Connected Modules</h2>
-            <div id="moduleGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div id="moduleGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <!-- Modules will be populated here -->
             </div>
         </div>
@@ -495,25 +495,54 @@ const char* html_page = R"rawliteral(
                         grid.innerHTML = '';
                         
                         if (data.modules && data.modules.length === 0) {
-                            grid.innerHTML = '<div class="col-span-full text-center text-gray-400">No modules connected</div>';
+                            grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-8">No modules connected</div>';
                         } else if (data.modules) {
                             data.modules.forEach(module => {
                                 const card = document.createElement('div');
                                 card.className = 'bg-gray-700 rounded-lg p-4 border-2';
                                 
-                                // Determine border color based on status
-                                if (module.isSolved) {
+                                // Determine connection status and border color
+                                const isConnected = module.isActive;
+                                const isSolved = module.isSolved;
+                                
+                                // Set border color based on status
+                                if (isSolved) {
                                     card.classList.add('border-green-500');
-                                } else if (!module.isActive) {
+                                } else if (!isConnected) {
                                     card.classList.add('border-red-500');
-                                } else if (module.isRegistered) {
-                                    card.classList.add('border-blue-500');
                                 } else {
-                                    card.classList.add('border-yellow-500');
+                                    card.classList.add('border-blue-500');
                                 }
                                 
-                                const statusIcon = module.isSolved ? '✅' : (!module.isActive ? '❌' : (module.isRegistered ? '🔵' : '🟡'));
-                                const statusText = module.isSolved ? 'Solved' : (!module.isActive ? 'Offline' : (module.isRegistered ? 'Registered' : 'Discovered'));
+                                // Create connection indicator
+                                const indicator = document.createElement('div');
+                                indicator.className = 'w-3 h-3 rounded-full';
+                                if (isSolved) {
+                                    indicator.classList.add('bg-green-500', 'animate-pulse');
+                                } else if (!isConnected) {
+                                    indicator.classList.add('bg-red-500');
+                                } else {
+                                    indicator.classList.add('bg-blue-500', 'animate-pulse');
+                                }
+                                
+                                // Module icon/emoji based on type
+                                const moduleIcons = {
+                                    'Wires': '🔌',
+                                    'Button': '🔴',
+                                    'Keypad': '🔢',
+                                    'Simon Says': '🎵',
+                                    'Who\'s On First': '📝',
+                                    'Memory': '🧠',
+                                    'Morse Code': '📡',
+                                    'Complicated Wires': '🔗',
+                                    'Wire Sequences': '🔀',
+                                    'Maze': '🧩',
+                                    'Password': '🔑',
+                                    'Venting Gas': '💨',
+                                    'Capacitor Discharge': '⚡',
+                                    'Knob': '🎚️'
+                                };
+                                const moduleIcon = moduleIcons[module.type] || '📦';
                                 
                                 // Format category
                                 const categoryNames = {0: 'Regular', 1: 'Needy', 2: 'Ignored'};
@@ -529,20 +558,39 @@ const char* html_page = R"rawliteral(
                                     return minutes + 'm ' + secs + 's';
                                 };
                                 
+                                // Format last seen
                                 const lastSeenSec = module.lastSeen;
-                                const lastSeenText = lastSeenSec === 0 ? 'Never' : (lastSeenSec < 60 ? lastSeenSec + 's ago' : Math.floor(lastSeenSec / 60) + 'm ' + (lastSeenSec % 60) + 's ago');
+                                let lastSeenText;
+                                if (lastSeenSec === 0) {
+                                    lastSeenText = 'Never';
+                                } else if (lastSeenSec < 60) {
+                                    lastSeenText = lastSeenSec + 's ago';
+                                } else {
+                                    const minutes = Math.floor(lastSeenSec / 60);
+                                    const seconds = lastSeenSec % 60;
+                                    lastSeenText = minutes + 'm ' + seconds + 's ago';
+                                }
                                 
-                                // activationTime is now sent as seconds until next activation (or 0 if passed/not scheduled)
-                                // For needy modules: show activation time, for regular modules: hide it
-                                const isNeedyModule = module.category === 1; // Category 1 = NEEDY
+                                // Connection status text
+                                let connectionStatus, connectionStatusClass;
+                                if (isSolved) {
+                                    connectionStatus = 'Solved';
+                                    connectionStatusClass = 'text-green-400';
+                                } else if (!isConnected) {
+                                    connectionStatus = 'Disconnected';
+                                    connectionStatusClass = 'text-red-400';
+                                } else {
+                                    connectionStatus = 'Connected';
+                                    connectionStatusClass = 'text-blue-400';
+                                }
+                                
+                                // Activation time for needy modules
                                 let activationRow = '';
-                                if (isNeedyModule) {
+                                if (module.category === 1) { // Needy module
                                     let activationTimeText;
                                     if (module.activationTime > 0) {
-                                        // Time until next activation
                                         activationTimeText = formatTime(module.activationTime * 1000) + ' until activation';
                                     } else {
-                                        // Currently active (activationTime passed or is 0)
                                         activationTimeText = 'Active now';
                                     }
                                     activationRow = `<div class="flex justify-between">
@@ -551,43 +599,47 @@ const char* html_page = R"rawliteral(
                                     </div>`;
                                 }
                                 
-                                const intervalText = module.intervalMs > 0 ? formatTime(module.intervalMs) : 'N/A';
+                                // Header with icon, title, and indicator
+                                const header = document.createElement('div');
+                                header.className = 'flex items-center justify-between mb-2';
+                                header.innerHTML = `
+                                    <h3 class="text-lg font-semibold">${moduleIcon} ${module.type}</h3>
+                                `;
+                                header.appendChild(indicator);
                                 
-                                card.innerHTML = `
-                                    <div class="font-bold text-lg mb-2">${statusIcon} ${module.type}</div>
-                                    <div class="text-xs space-y-1">
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">ID:</span>
-                                            <span class="font-mono">${module.id}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">Category:</span>
-                                            <span>${category}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">Status:</span>
-                                            <span>${statusText}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">Active:</span>
-                                            <span>${module.isActive ? 'Yes' : 'No'}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">Solved:</span>
-                                            <span>${module.isSolved ? 'Yes' : 'No'}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-400">Last Seen:</span>
-                                            <span>${lastSeenText}</span>
-                                        </div>
-                                        ${activationRow}
-                                        ${module.intervalMs > 0 ? `<div class="flex justify-between">
-                                            <span class="text-gray-400">Interval:</span>
-                                            <span>${intervalText}</span>
-                                        </div>` : ''}
+                                // Content area
+                                const content = document.createElement('div');
+                                content.className = 'space-y-1 text-sm';
+                                content.innerHTML = `
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Connection:</span>
+                                        <span class="font-bold ${connectionStatusClass}">${connectionStatus}</span>
                                     </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Category:</span>
+                                        <span>${category}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Status:</span>
+                                        <span>${isSolved ? '✅ Solved' : (isConnected ? '🔵 Active' : '❌ Offline')}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Last Seen:</span>
+                                        <span class="font-mono">${lastSeenText}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">ID:</span>
+                                        <span class="font-mono text-xs">${module.id}</span>
+                                    </div>
+                                    ${activationRow}
+                                    ${module.intervalMs > 0 ? `<div class="flex justify-between">
+                                        <span class="text-gray-400">Interval:</span>
+                                        <span>${formatTime(module.intervalMs)}</span>
+                                    </div>` : ''}
                                 `;
                                 
+                                card.appendChild(header);
+                                card.appendChild(content);
                                 grid.appendChild(card);
                             });
                         }
