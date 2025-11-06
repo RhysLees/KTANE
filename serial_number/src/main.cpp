@@ -5,52 +5,56 @@
 #include <GxEPD2_3C.h>
 #include <Adafruit_GFX.h>
 #include <epaper.h>
-#include <heartbeat.h>
+#include <module_state.h>
 
-void handleSerialDisplayMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
-  if (id != CAN_ID_SERIAL_DISPLAY || len < 1)
-    return;
-
-  uint8_t command = data[0];
-  
-  // Set heartbeat to active when processing display commands
-  setHeartbeatStatus(MODULE_STATUS_ACTIVE);
-
-  switch (command) {
-    case SERIAL_DISPLAY_SET_SERIAL:
-      if (len >= 7) {
-        char serial[7];
-        memcpy(serial, &data[1], 6);
-        serial[6] = '\0';
-        epaperDrawTag(String(serial));
-      }
-      break;
-
-    case SERIAL_DISPLAY_CLEAR:
-      epaperClear();
-      break;
-
-    case SERIAL_DISPLAY_SHOW_CREDIT:
-      epaperDrawCredit();
-      break;
-
-    default:
-      break;
+// Callback function called when serial number is received from timer via module_state
+void onSerialNumberReceived(const String& serial) {
+  if (serial.length() > 0) {
+    Serial.print("Serial number received from timer: ");
+    Serial.println(serial);
+    epaperDrawTag(serial);
   }
+}
+
+void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
+  // Let module_state handle timer messages first
+  moduleStateHandleCanMessage(id, senderId, data, len);
   
-  // Return to idle status after processing
-  setHeartbeatStatus(MODULE_STATUS_IDLE);
-  
-  // Handle game state messages from timer
-  if (id == CAN_ID_BROADCAST && len >= 1) {
-    uint8_t messageType = data[0];
-    if (messageType == TIMER_GAME_START) {
-      setHeartbeatGameRunning(true);
-      Serial.println("Serial Display: Game started - switching to 5s heartbeats");
-    } else if (messageType == TIMER_GAME_STOP) {
-      setHeartbeatGameRunning(false);
-      Serial.println("Serial Display: Game stopped - switching to 1s heartbeats");
+  // Handle serial display-specific messages
+  if (id == CAN_ID_SERIAL_DISPLAY && len >= 1) {
+    uint8_t command = data[0];
+    
+    // Set module state to active when processing display commands
+    setModuleStateStatus(MODULE_STATUS_ACTIVE);
+
+    switch (command) {
+      // SERIAL_DISPLAY_SET_SERIAL is now handled by module_state callback
+      // Keeping this as a manual override option for testing
+      case SERIAL_DISPLAY_SET_SERIAL:
+        if (len >= 7) {
+          char serial[7];
+          memcpy(serial, &data[1], 6);
+          serial[6] = '\0';
+          epaperDrawTag(String(serial));
+          Serial.print("Serial number set via manual command: ");
+          Serial.println(serial);
+        }
+        break;
+
+      case SERIAL_DISPLAY_CLEAR:
+        epaperClear();
+        break;
+
+      case SERIAL_DISPLAY_SHOW_CREDIT:
+        epaperDrawCredit();
+        break;
+
+      default:
+        break;
     }
+    
+    // Return to idle status after processing
+    setModuleStateStatus(MODULE_STATUS_IDLE);
   }
 }
 
@@ -63,16 +67,28 @@ void setup() {
   epaperInit();
 
   initCanBus(CAN_ID_SERIAL_DISPLAY);
-  registerCanCallback(handleSerialDisplayMessage);
+  registerCanCallback(onCanMessage);
 
-  // Initialize heartbeat system (starts in discovery mode)
-  initHeartbeat();
+  // Initialize module_state system (starts in discovery mode)
+  initModuleState(MODULE_STATE_NO_LED);  // Serial display module doesn't have a status LED
+  
+  // Register callback to receive serial number from timer
+  if (globalModuleState) {
+    globalModuleState->setSerialNumberCallback(onSerialNumberReceived);
+  }
+  
+  // Check if serial number is already available (e.g., from previous game)
+  if (globalModuleState && globalModuleState->getSerialNumber().length() > 0) {
+    epaperDrawTag(globalModuleState->getSerialNumber());
+    Serial.print("Displaying existing serial number: ");
+    Serial.println(globalModuleState->getSerialNumber());
+  }
 
-  Serial.println("Serial display ready with dynamic heartbeat system");
+  Serial.println("Serial display ready with module_state system");
   delay(5000);
 }
 
 void loop() {
   handleCanMessages();
-  updateHeartbeat();
+  updateModuleState();
 }

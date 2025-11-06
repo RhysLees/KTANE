@@ -55,7 +55,7 @@ uint8_t Edgework::getPortCount() const {
 
 void AudioModule::sendSound(uint8_t soundType) {
     uint8_t soundData[1] = {soundType};
-    sendCanMessage(CAN_ID_AUDIO, soundData, 1);
+    sendCanMessage(canId, soundData, 1);
 }
 
 void AudioModule::markSeen() {
@@ -65,6 +65,12 @@ void AudioModule::markSeen() {
 
 void AudioModule::markDisconnected() {
     connected = false;
+}
+
+void AudioModule::updateStatus(uint8_t moduleStatus, uint8_t moduleProgress, bool moduleSolved) {
+    status = moduleStatus;
+    progress = moduleProgress;
+    solved = moduleSolved;
 }
 
 unsigned long AudioModule::getTimeSinceLastSeen() const {
@@ -86,18 +92,18 @@ void SerialModule::sendSerialNumber() {
         uint8_t buf[7];
         buf[0] = SERIAL_DISPLAY_SET_SERIAL;
         memcpy(&buf[1], serialNumber.c_str(), 6);
-        sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 7);
+        sendCanMessage(canId, buf, 7);
     }
 }
 
 void SerialModule::clear() {
     uint8_t buf[1] = {SERIAL_DISPLAY_CLEAR};
-    sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
+    sendCanMessage(canId, buf, 1);
 }
 
 void SerialModule::showCredit() {
     uint8_t buf[1] = {SERIAL_DISPLAY_SHOW_CREDIT};
-    sendCanMessage(CAN_ID_SERIAL_DISPLAY, buf, 1);
+    sendCanMessage(canId, buf, 1);
 }
 
 void SerialModule::markSeen() {
@@ -107,6 +113,12 @@ void SerialModule::markSeen() {
 
 void SerialModule::markDisconnected() {
     connected = false;
+}
+
+void SerialModule::updateStatus(uint8_t moduleStatus, uint8_t moduleProgress, bool moduleSolved) {
+    status = moduleStatus;
+    progress = moduleProgress;
+    solved = moduleSolved;
 }
 
 unsigned long SerialModule::getTimeSinceLastSeen() const {
@@ -127,8 +139,15 @@ void GameStateManager::initialize() {
     modules.clear();
     moduleMap.clear();
     
+    audioModules.clear();
+    audioModuleMap.clear();
+    serialModules.clear();
+    serialModuleMap.clear();
+    
     // Reserve capacity upfront to prevent pointer invalidation on reallocation
     modules.reserve(32);  // Reserve for up to 32 modules
+    audioModules.reserve(4);   // Reserve for audio modules
+    serialModules.reserve(4);   // Reserve for serial modules
     
     generateSerialNumber();
     setupEdgework();
@@ -278,6 +297,17 @@ void GameStateManager::clearStrikes() {
 }
 
 void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
+    // Route AUDIO and SERIAL_DISPLAY to their respective arrays instead of modules
+    // Check by CAN ID first (more reliable than type comparison due to CAN type vs ModuleType mismatch)
+    if (canId == CAN_ID_AUDIO || type == ModuleType::AUDIO) {
+        registerAudioModule(canId);
+        return;
+    }
+    if (canId == CAN_ID_SERIAL_DISPLAY || type == ModuleType::SERIAL_DISPLAY) {
+        registerSerialModule(canId);
+        return;
+    }
+    
     if (moduleMap.find(canId) != moduleMap.end()) {
         return;
     }
@@ -297,6 +327,112 @@ void GameStateManager::registerModule(uint16_t canId, ModuleType type) {
     if (category == ModuleCategory::NEEDY) {
         newModule->intervalMs = getNeedyModuleInterval(type);
         newModule->activationTime = millis() + newModule->intervalMs;
+    }
+}
+
+void GameStateManager::registerAudioModule(uint16_t canId) {
+    if (audioModuleMap.find(canId) != audioModuleMap.end()) {
+        return;
+    }
+    
+    // Reserve capacity to prevent reallocation (which would invalidate pointers in audioModuleMap)
+    if (audioModules.capacity() < 4) {
+        audioModules.reserve(4);
+    }
+    
+    audioModules.emplace_back(canId);
+    AudioModule* newModule = &audioModules.back();
+    audioModuleMap[canId] = newModule;
+}
+
+void GameStateManager::unregisterAudioModule(uint16_t canId) {
+    auto it = audioModuleMap.find(canId);
+    if (it != audioModuleMap.end()) {
+        // Remove from vector
+        auto vecIt = std::find_if(audioModules.begin(), audioModules.end(),
+            [canId](const AudioModule& m) { return m.canId == canId; });
+        if (vecIt != audioModules.end()) {
+            audioModules.erase(vecIt);
+        }
+        audioModuleMap.erase(it);
+    }
+}
+
+AudioModule* GameStateManager::getAudioModule(uint16_t canId) {
+    auto it = audioModuleMap.find(canId);
+    return it != audioModuleMap.end() ? it->second : nullptr;
+}
+
+const AudioModule* GameStateManager::getAudioModule(uint16_t canId) const {
+    auto it = audioModuleMap.find(canId);
+    return it != audioModuleMap.end() ? it->second : nullptr;
+}
+
+AudioModule* GameStateManager::getAudioModule() {
+    return getAudioModule(CAN_ID_AUDIO);
+}
+
+const AudioModule* GameStateManager::getAudioModule() const {
+    return getAudioModule(CAN_ID_AUDIO);
+}
+
+void GameStateManager::updateAudioModuleSeen(uint16_t canId) {
+    AudioModule* module = getAudioModule(canId);
+    if (module) {
+        module->markSeen();
+    }
+}
+
+void GameStateManager::registerSerialModule(uint16_t canId) {
+    if (serialModuleMap.find(canId) != serialModuleMap.end()) {
+        return;
+    }
+    
+    // Reserve capacity to prevent reallocation (which would invalidate pointers in serialModuleMap)
+    if (serialModules.capacity() < 4) {
+        serialModules.reserve(4);
+    }
+    
+    serialModules.emplace_back(canId);
+    SerialModule* newModule = &serialModules.back();
+    serialModuleMap[canId] = newModule;
+}
+
+void GameStateManager::unregisterSerialModule(uint16_t canId) {
+    auto it = serialModuleMap.find(canId);
+    if (it != serialModuleMap.end()) {
+        // Remove from vector
+        auto vecIt = std::find_if(serialModules.begin(), serialModules.end(),
+            [canId](const SerialModule& m) { return m.canId == canId; });
+        if (vecIt != serialModules.end()) {
+            serialModules.erase(vecIt);
+        }
+        serialModuleMap.erase(it);
+    }
+}
+
+SerialModule* GameStateManager::getSerialModule(uint16_t canId) {
+    auto it = serialModuleMap.find(canId);
+    return it != serialModuleMap.end() ? it->second : nullptr;
+}
+
+const SerialModule* GameStateManager::getSerialModule(uint16_t canId) const {
+    auto it = serialModuleMap.find(canId);
+    return it != serialModuleMap.end() ? it->second : nullptr;
+}
+
+SerialModule* GameStateManager::getSerialModule() {
+    return getSerialModule(CAN_ID_SERIAL_DISPLAY);
+}
+
+const SerialModule* GameStateManager::getSerialModule() const {
+    return getSerialModule(CAN_ID_SERIAL_DISPLAY);
+}
+
+void GameStateManager::updateSerialModuleSeen(uint16_t canId) {
+    SerialModule* module = getSerialModule(canId);
+    if (module) {
+        module->markSeen();
     }
 }
 
@@ -437,7 +573,10 @@ bool GameStateManager::hasActiveNeedyModules() const {
 }
 
 void GameStateManager::setSerialNumber(const String& serial) {
-    serialModule.setSerialNumber(serial);
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->setSerialNumber(serial);
+    }
 }
 
 void GameStateManager::generateSerialNumber() {
@@ -454,7 +593,10 @@ void GameStateManager::generateSerialNumber() {
     serialBuf[5] = alphanum[random(sizeof(alphanum) - 1)];
     serialBuf[6] = '\0';
     
-    serialModule.setSerialNumber(String(serialBuf));
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->setSerialNumber(String(serialBuf));
+    }
 }
 
 void GameStateManager::setupEdgework() {
@@ -725,8 +867,10 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
     switch (msgType) {
         case MODULE_REGISTER:
         {
-            // Check if already registered
-            bool alreadyRegistered = (moduleMap.find(senderId) != moduleMap.end());
+            // Check if already registered (in modules or system arrays)
+            bool alreadyRegistered = (moduleMap.find(senderId) != moduleMap.end()) ||
+                                     (audioModuleMap.find(senderId) != audioModuleMap.end()) ||
+                                     (serialModuleMap.find(senderId) != serialModuleMap.end());
             
             if (!alreadyRegistered) {
                 uint8_t moduleType = (senderId >> 5) & 0x3F;
@@ -743,9 +887,9 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 
                 // Mark audio or serial module as seen if they're registering
                 if (senderId == CAN_ID_AUDIO) {
-                    audioModule.markSeen();
+                    updateAudioModuleSeen(senderId);
                 } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
-                    serialModule.markSeen();
+                    updateSerialModuleSeen(senderId);
                 }
                 
                 // Send module discovered acknowledgment
@@ -795,34 +939,56 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
         case MODULE_STATUS:
             // Update audio or serial module seen time
             if (senderId == CAN_ID_AUDIO) {
-                audioModule.markSeen();
+                updateAudioModuleSeen(senderId);
+                // Handle additional status data if available
+                if (len >= 5) {
+                    uint8_t moduleStatus = data[1];
+                    bool moduleSolved = (data[2] != 0);
+                    uint8_t moduleProgress = data[3];
+                    uint8_t strikes = data[4];
+                    AudioModule* audioModule = getAudioModule(senderId);
+                    if (audioModule) {
+                        audioModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
+                    }
+                }
             } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
-                serialModule.markSeen();
+                updateSerialModuleSeen(senderId);
+                // Handle additional status data if available
+                if (len >= 5) {
+                    uint8_t moduleStatus = data[1];
+                    bool moduleSolved = (data[2] != 0);
+                    uint8_t moduleProgress = data[3];
+                    uint8_t strikes = data[4];
+                    SerialModule* serialModule = getSerialModule(senderId);
+                    if (serialModule) {
+                        serialModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
+                    }
+                }
             } else {
                 updateModuleSeen(senderId);
-            }
-            
-            // Handle additional status data if available
-            if (len >= 5) {
-                uint8_t moduleState = data[1];
-                bool isSolved = (data[2] != 0);
-                uint8_t progress = data[3];
-                uint8_t strikes = data[4];
                 
-                // Update module solved status if changed
-                Module* module = moduleMap[senderId];
-                if (module && module->isSolved != isSolved) {
-                    module->isSolved = isSolved;
-                    if (isSolved) {
-                        uint8_t moduleType, instanceId;
-                        decodeCanId(senderId, &moduleType, &instanceId);
-                        Serial.print("Status: Module 0x");
-                        Serial.print(senderId, HEX);
-                        Serial.print(" (");
-                        Serial.print(getModuleTypeName(moduleType));
-                        Serial.print(" #");
-                        Serial.print(instanceId);
-                        Serial.println(") solved via status update");
+                // Handle additional status data if available
+                if (len >= 5) {
+                    uint8_t moduleState = data[1];
+                    bool isSolved = (data[2] != 0);
+                    uint8_t progress = data[3];
+                    uint8_t strikes = data[4];
+                    
+                    // Update module solved status if changed
+                    Module* module = moduleMap[senderId];
+                    if (module && module->isSolved != isSolved) {
+                        module->isSolved = isSolved;
+                        if (isSolved) {
+                            uint8_t moduleType, instanceId;
+                            decodeCanId(senderId, &moduleType, &instanceId);
+                            Serial.print("Status: Module 0x");
+                            Serial.print(senderId, HEX);
+                            Serial.print(" (");
+                            Serial.print(getModuleTypeName(moduleType));
+                            Serial.print(" #");
+                            Serial.print(instanceId);
+                            Serial.println(") solved via status update");
+                        }
                     }
                 }
             }
@@ -831,12 +997,35 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
         case MODULE_HEARTBEAT:
             // Update last seen time for known modules
             if (senderId == CAN_ID_AUDIO) {
-                audioModule.markSeen();
+                updateAudioModuleSeen(senderId);
+                // Process enhanced heartbeat data if available
+                if (len >= 4) {
+                    uint8_t moduleStatus = data[1];
+                    bool moduleSolved = (data[2] != 0);
+                    uint8_t moduleProgress = data[3];
+                    AudioModule* audioModule = getAudioModule(senderId);
+                    if (audioModule) {
+                        audioModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
+                    }
+                }
             } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
-                serialModule.markSeen();
+                updateSerialModuleSeen(senderId);
+                // Process enhanced heartbeat data if available
+                if (len >= 4) {
+                    uint8_t moduleStatus = data[1];
+                    bool moduleSolved = (data[2] != 0);
+                    uint8_t moduleProgress = data[3];
+                    SerialModule* serialModule = getSerialModule(senderId);
+                    if (serialModule) {
+                        serialModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
+                    }
+                }
             } else {
                 // Auto-register module if not already registered (discovery via heartbeat)
-                if (moduleMap.find(senderId) == moduleMap.end()) {
+                // Check all maps (modules and system arrays)
+                if (moduleMap.find(senderId) == moduleMap.end() &&
+                    audioModuleMap.find(senderId) == audioModuleMap.end() &&
+                    serialModuleMap.find(senderId) == serialModuleMap.end()) {
                     uint8_t moduleType = (senderId >> 5) & 0x3F;
                     registerModule(senderId, static_cast<ModuleType>(moduleType));
                     uint8_t decodedModuleType, decodedInstanceId;
@@ -920,7 +1109,7 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                 Serial.println(") - epaper display ready");
             }
             if (senderId == CAN_ID_SERIAL_DISPLAY) {
-                serialModule.markSeen();
+                updateSerialModuleSeen(senderId);
             }
             break;
             
@@ -948,10 +1137,11 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     // Delays in callbacks can cause system hangs
     
     // Send serial number
-    if (serialModule.getSerialNumber().length() == 6) {
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule && serialModule->getSerialNumber().length() == 6) {
         uint8_t serialData[7];
         serialData[0] = TIMER_SERIAL_NUMBER;
-        memcpy(&serialData[1], serialModule.getSerialNumber().c_str(), 6);
+        memcpy(&serialData[1], serialModule->getSerialNumber().c_str(), 6);
         sendCanMessage(targetId, serialData, 7);
     }
     
@@ -961,12 +1151,8 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     strikeData[1] = strikeCount;
     sendCanMessage(targetId, strikeData, 2);
     
-    // Send time remaining
-    uint8_t timeData[5];
-    timeData[0] = TIMER_TIME_UPDATE;
-    uint32_t timeMs = remainingMs;
-    memcpy(&timeData[1], &timeMs, 4);
-    sendCanMessage(targetId, timeData, 5);
+    // Note: Time updates are sent continuously via onTimeUpdate() callback (rate-limited to 500ms)
+    // Don't send time update here to avoid duplicates
     
     // Send game state
     uint8_t gameStateData[1];
@@ -1014,9 +1200,12 @@ void GameStateManager::createNewGame() {
     Serial.println(" regular modules");
     
     // Send serial number to epaper display
-    serialModule.sendSerialNumber();
-    Serial.print("GameState: Sent serial number to display: ");
-    Serial.println(serialModule.getSerialNumber());
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->sendSerialNumber();
+        Serial.print("GameState: Sent serial number to display: ");
+        Serial.println(serialModule->getSerialNumber());
+    }
 }
 
 void GameStateManager::startGame() {
@@ -1043,11 +1232,17 @@ void GameStateManager::startGame() {
 // ============================================================================
 
 void GameStateManager::updateAudioModuleSeen() {
-    audioModule.markSeen();
+    AudioModule* audioModule = getAudioModule();
+    if (audioModule) {
+        audioModule->markSeen();
+    }
 }
 
 void GameStateManager::sendAudioSound(uint8_t soundType) {
-    audioModule.sendSound(soundType);
+    AudioModule* audioModule = getAudioModule();
+    if (audioModule) {
+        audioModule->sendSound(soundType);
+    }
 }
 
 // ============================================================================
@@ -1055,7 +1250,10 @@ void GameStateManager::sendAudioSound(uint8_t soundType) {
 // ============================================================================
 
 void GameStateManager::updateSerialModuleSeen() {
-    serialModule.markSeen();
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->markSeen();
+    }
 }
 
 // ============================================================================
@@ -1077,18 +1275,22 @@ void GameStateManager::updateModuleConnections() {
         ? MODULE_TIMEOUT_MS 
         : DISCOVERY_TIMEOUT_MS;
     
-    // Check audio module
-    if (audioModule.isConnected() && 
-        audioModule.getTimeSinceLastSeen() > timeout) {
-        audioModule.markDisconnected();
-        Serial.println("Audio module disconnected");
+    // Check audio modules
+    for (auto& audioModule : audioModules) {
+        if (audioModule.isConnected() && 
+            audioModule.getTimeSinceLastSeen() > timeout) {
+            audioModule.markDisconnected();
+            Serial.println("Audio module disconnected");
+        }
     }
     
-    // Check serial module
-    if (serialModule.isConnected() && 
-        serialModule.getTimeSinceLastSeen() > timeout) {
-        serialModule.markDisconnected();
-        Serial.println("Serial module disconnected");
+    // Check serial modules
+    for (auto& serialModule : serialModules) {
+        if (serialModule.isConnected() && 
+            serialModule.getTimeSinceLastSeen() > timeout) {
+            serialModule.markDisconnected();
+            Serial.println("Serial module disconnected");
+        }
     }
     
     // Check all registered modules
@@ -1137,13 +1339,15 @@ void GameStateManager::updateModuleConnections() {
 
 bool GameStateManager::isModuleConnected(uint16_t canId) const {
     // Check audio module
-    if (canId == CAN_ID_AUDIO) {
-        return audioModule.isConnected();
+    const AudioModule* audioModule = getAudioModule(canId);
+    if (audioModule) {
+        return audioModule->isConnected();
     }
     
     // Check serial module
-    if (canId == CAN_ID_SERIAL_DISPLAY) {
-        return serialModule.isConnected();
+    const SerialModule* serialModule = getSerialModule(canId);
+    if (serialModule) {
+        return serialModule->isConnected();
     }
     
     // Check registered modules
@@ -1161,13 +1365,15 @@ bool GameStateManager::isModuleConnected(uint16_t canId) const {
 
 unsigned long GameStateManager::getModuleLastSeen(uint16_t canId) const {
     // Check audio module
-    if (canId == CAN_ID_AUDIO) {
-        return audioModule.getTimeSinceLastSeen();
+    const AudioModule* audioModule = getAudioModule(canId);
+    if (audioModule) {
+        return audioModule->getTimeSinceLastSeen();
     }
     
     // Check serial module
-    if (canId == CAN_ID_SERIAL_DISPLAY) {
-        return serialModule.getTimeSinceLastSeen();
+    const SerialModule* serialModule = getSerialModule(canId);
+    if (serialModule) {
+        return serialModule->getTimeSinceLastSeen();
     }
     
     // Check registered modules
@@ -1183,9 +1389,20 @@ unsigned long GameStateManager::getModuleLastSeen(uint16_t canId) const {
 }
 
 void GameStateManager::clearSerialDisplay() {
-    serialModule.clear();
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->clear();
+    }
 }
 
 void GameStateManager::showSerialCredit() {
-    serialModule.showCredit();
+    SerialModule* serialModule = getSerialModule();
+    if (serialModule) {
+        serialModule->showCredit();
+    }
+}
+
+String GameStateManager::getSerialNumber() const {
+    const SerialModule* serialModule = getSerialModule();
+    return serialModule ? serialModule->getSerialNumber() : String("");
 }

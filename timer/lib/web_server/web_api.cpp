@@ -193,11 +193,15 @@ void handleModules(WiFiClient& client) {
     DynamicJsonDocument doc(4096);
     doc["success"] = true;
     
-    // Get all modules from game state
+    // Get all modules from game state (exclude system modules like AUDIO and SERIAL_DISPLAY)
     const std::vector<Module>& allModules = gameStatePtr->getAllModules();
     JsonArray modulesArray = doc.createNestedArray("modules");
     
     for (const auto& module : allModules) {
+        // Skip system modules (AUDIO and SERIAL_DISPLAY) - they're shown separately
+        if (module.type == ModuleType::AUDIO || module.type == ModuleType::SERIAL_DISPLAY) {
+            continue;
+        }
         JsonObject moduleObj = modulesArray.createNestedObject();
         moduleObj["id"] = "0x" + String(module.canId, HEX);
         moduleObj["canId"] = module.canId;
@@ -279,6 +283,33 @@ void handleAll(WiFiClient& client) {
         portObj["type"] = static_cast<uint8_t>(port.type);
     }
     
+    // Include audio modules
+    JsonArray audioModulesArray = doc["status"].createNestedArray("audioModules");
+    const std::vector<AudioModule>& allAudioModules = gameStatePtr->getAllAudioModules();
+    for (const auto& audioModule : allAudioModules) {
+        JsonObject audioObj = audioModulesArray.createNestedObject();
+        audioObj["canId"] = audioModule.canId;
+        audioObj["connected"] = audioModule.isConnected();
+        audioObj["lastSeen"] = (audioModule.lastSeen == 0) ? 0 : (millis() - audioModule.lastSeen) / 1000;
+        audioObj["status"] = audioModule.getStatus();
+        audioObj["progress"] = audioModule.getProgress();
+        audioObj["solved"] = audioModule.isSolved();
+    }
+    
+    // Include serial modules
+    JsonArray serialModulesArray = doc["status"].createNestedArray("serialModules");
+    const std::vector<SerialModule>& allSerialModules = gameStatePtr->getAllSerialModules();
+    for (const auto& serialModule : allSerialModules) {
+        JsonObject serialObj = serialModulesArray.createNestedObject();
+        serialObj["canId"] = serialModule.canId;
+        serialObj["connected"] = serialModule.isConnected();
+        serialObj["lastSeen"] = (serialModule.lastSeen == 0) ? 0 : (millis() - serialModule.lastSeen) / 1000;
+        serialObj["status"] = serialModule.getStatus();
+        serialObj["progress"] = serialModule.getProgress();
+        serialObj["solved"] = serialModule.isSolved();
+        serialObj["serialNumber"] = serialModule.getSerialNumber();
+    }
+    
     // Include config data
     GameConfig config = gameStatePtr->getConfig();
     doc["config"]["maxStrikes"] = config.maxStrikes;
@@ -289,11 +320,15 @@ void handleAll(WiFiClient& client) {
     doc["config"]["enableNeedyModules"] = config.enableNeedyModules;
     doc["config"]["enableEdgework"] = config.enableEdgework;
     
-    // Include modules data
+    // Include modules data (exclude system modules like AUDIO and SERIAL_DISPLAY)
     const std::vector<Module>& allModules = gameStatePtr->getAllModules();
     JsonArray modulesArray = doc.createNestedArray("modules");
     
     for (const auto& module : allModules) {
+        // Skip system modules (AUDIO and SERIAL_DISPLAY) - they're shown separately
+        if (module.type == ModuleType::AUDIO || module.type == ModuleType::SERIAL_DISPLAY) {
+            continue;
+        }
         JsonObject moduleObj = modulesArray.createNestedObject();
         moduleObj["id"] = "0x" + String(module.canId, HEX);
         moduleObj["canId"] = module.canId;

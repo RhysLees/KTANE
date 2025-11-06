@@ -191,13 +191,14 @@ void handleSerialCommands() {
 }
 
 void setup() {
-    Serial.begin(115200);
-    delay(50);
+    Serial.begin(115200); // USB Serial
+    Serial1.begin(115200); // UART Serial
+    delay(5000);
     randomSeed(millis());
     
-    Serial.println("===============================");
-    Serial.println("KTANE Simon Says Module v1.0");
-    Serial.println("===============================");
+    Serial1.println("===============================");
+    Serial1.println("KTANE Simon Says Module v1.0");
+    Serial1.println("===============================");
     
     // Initialize CAN bus and negotiate unique ID
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));

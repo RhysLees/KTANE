@@ -81,6 +81,7 @@ private:
     // Timing
     unsigned long lastUpdateTime;
     unsigned long stateStartTime;
+    unsigned long lastInputTime;  // For timeout tracking
     
     // Audio control
     bool audioPlayedForCurrentColor;
@@ -103,7 +104,6 @@ private:
     // Game logic methods
     void generateSequence();
     void displaySequence();
-    void processInput();
     void checkInput();
     void nextStage();
     void handleStrike();

@@ -130,22 +130,42 @@ struct Edgework
 
 struct AudioModule
 {
+    uint16_t canId;
     bool connected = false;
     unsigned long lastSeen = 0;
+    
+    // ModuleState-like tracking
+    uint8_t status = 0;  // ModuleStatus (MODULE_STATUS_IDLE, etc.)
+    uint8_t progress = 0;
+    bool solved = false;
+    
+    AudioModule(uint16_t id) : canId(id) {}
     
     // Helper methods
     void sendSound(uint8_t soundType);
     void markSeen();
     void markDisconnected();
+    void updateStatus(uint8_t moduleStatus, uint8_t moduleProgress, bool moduleSolved);
     bool isConnected() const { return connected; }
     unsigned long getTimeSinceLastSeen() const;
+    uint8_t getStatus() const { return status; }
+    uint8_t getProgress() const { return progress; }
+    bool isSolved() const { return solved; }
 };
 
 struct SerialModule
 {
+    uint16_t canId;
     bool connected = false;
     unsigned long lastSeen = 0;
     String serialNumber = "";
+    
+    // ModuleState-like tracking
+    uint8_t status = 0;  // ModuleStatus (MODULE_STATUS_IDLE, etc.)
+    uint8_t progress = 0;
+    bool solved = false;
+    
+    SerialModule(uint16_t id) : canId(id) {}
     
     // Helper methods
     void setSerialNumber(const String& serial);
@@ -154,9 +174,13 @@ struct SerialModule
     void showCredit();
     void markSeen();
     void markDisconnected();
+    void updateStatus(uint8_t moduleStatus, uint8_t moduleProgress, bool moduleSolved);
     bool isConnected() const { return connected; }
     unsigned long getTimeSinceLastSeen() const;
     String getSerialNumber() const { return serialNumber; }
+    uint8_t getStatus() const { return status; }
+    uint8_t getProgress() const { return progress; }
+    bool isSolved() const { return solved; }
 };
 
 struct Module
@@ -212,12 +236,14 @@ private:
     std::vector<Module> modules;
     std::map<uint16_t, Module*> moduleMap;
     
+    // System Management (Audio, Serial Display)
+    std::vector<AudioModule> audioModules;
+    std::map<uint16_t, AudioModule*> audioModuleMap;
+    std::vector<SerialModule> serialModules;
+    std::map<uint16_t, SerialModule*> serialModuleMap;
+    
     // Game Configuration
     GameConfig config;
-    
-    // Module States
-    AudioModule audioModule;
-    SerialModule serialModule;
     
     // Edgework
     Edgework edgework;
@@ -320,26 +346,44 @@ public:
     const std::vector<Module>& getAllModules() const { return modules; }
     
     // ========================================================================
+    // AUDIO MODULE MANAGEMENT
+    // ========================================================================
+    void registerAudioModule(uint16_t canId);
+    void unregisterAudioModule(uint16_t canId);
+    void updateAudioModuleSeen(uint16_t canId);
+    void updateAudioModuleSeen();  // Updates default audio module
+    AudioModule* getAudioModule(uint16_t canId);
+    const AudioModule* getAudioModule(uint16_t canId) const;
+    AudioModule* getAudioModule();
+    const AudioModule* getAudioModule() const;
+    void sendAudioSound(uint8_t soundType);
+    
+    // Get all audio modules (for iteration)
+    const std::vector<AudioModule>& getAllAudioModules() const { return audioModules; }
+    
+    // ========================================================================
+    // SERIAL MODULE MANAGEMENT
+    // ========================================================================
+    void registerSerialModule(uint16_t canId);
+    void unregisterSerialModule(uint16_t canId);
+    void updateSerialModuleSeen(uint16_t canId);
+    void updateSerialModuleSeen();  // Updates default serial module
+    SerialModule* getSerialModule(uint16_t canId);
+    const SerialModule* getSerialModule(uint16_t canId) const;
+    SerialModule* getSerialModule();
+    const SerialModule* getSerialModule() const;
+    void clearSerialDisplay();
+    void showSerialCredit();
+    
+    // Get all serial modules (for iteration)
+    const std::vector<SerialModule>& getAllSerialModules() const { return serialModules; }
+    
+    // ========================================================================
     // SERIAL NUMBER
     // ========================================================================
     void setSerialNumber(const String& serial);
     void generateSerialNumber();
-    String getSerialNumber() const { return serialModule.getSerialNumber(); }
-    
-    // ========================================================================
-    // AUDIO MODULE
-    // ========================================================================
-    void updateAudioModuleSeen();
-    void sendAudioSound(uint8_t soundType);
-    const AudioModule& getAudioModule() const { return audioModule; }
-    
-    // ========================================================================
-    // SERIAL MODULE
-    // ========================================================================
-    void updateSerialModuleSeen();
-    void clearSerialDisplay();
-    void showSerialCredit();
-    const SerialModule& getSerialModule() const { return serialModule; }
+    String getSerialNumber() const;
     
     // ========================================================================
     // MODULE CONNECTION TRACKING

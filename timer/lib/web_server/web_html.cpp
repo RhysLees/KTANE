@@ -152,6 +152,56 @@ const char* html_page = R"rawliteral(
             </div>
         </div>
 
+        <!-- System Modules Status -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 pb-2 border-b border-gray-700">System Modules</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Audio Module Status -->
+                <div class="bg-gray-700 rounded-lg p-4 border-2" id="audioModuleCard">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-lg font-semibold">🔊 Audio Module</h3>
+                        <div class="w-3 h-3 rounded-full" id="audioModuleIndicator"></div>
+                    </div>
+                    <div class="space-y-1 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Connection:</span>
+                            <span class="font-bold" id="audioModuleStatus">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Last Seen:</span>
+                            <span class="font-mono" id="audioModuleLastSeen">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Serial Display Module Status -->
+                <div class="bg-gray-700 rounded-lg p-4 border-2" id="serialModuleCard">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-lg font-semibold">📟 Serial Display</h3>
+                        <div class="w-3 h-3 rounded-full" id="serialModuleIndicator"></div>
+                    </div>
+                    <div class="space-y-1 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Connection:</span>
+                            <span class="font-bold" id="serialModuleStatus">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Last Seen:</span>
+                            <span class="font-mono" id="serialModuleLastSeen">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Module Grid -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
+            <h2 class="text-xl font-bold mb-4 pb-2 border-b border-gray-700">Connected Modules</h2>
+            <div id="moduleGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <!-- Modules will be populated here -->
+            </div>
+        </div>
+
         <!-- Module Info -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
@@ -212,14 +262,6 @@ const char* html_page = R"rawliteral(
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Module Grid -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-            <h2 class="text-xl font-bold mb-4 pb-2 border-b border-gray-700">Connected Modules</h2>
-            <div id="moduleGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <!-- Modules will be populated here -->
             </div>
         </div>
 
@@ -385,6 +427,9 @@ const char* html_page = R"rawliteral(
                         else if (status.strikes > 0) strikeCard.classList.add('border-yellow-500');
                         else strikeCard.classList.add('border-green-500');
 
+                        // Update system modules (audio and serial)
+                        updateSystemModules(status.audioModules, status.serialModules);
+                        
                         // Update modules summary
                         document.getElementById('totalModules').textContent = status.totalModules;
                         document.getElementById('solvedModules').textContent = status.solvedModules;
@@ -561,6 +606,91 @@ const char* html_page = R"rawliteral(
 
         function updateModules() {
             updateAll(); // Just call the combined update
+        }
+
+        // Update system modules display
+        function updateSystemModules(audioModules, serialModules) {
+            // Audio Module
+            const audioModuleCard = document.getElementById('audioModuleCard');
+            const audioIndicator = document.getElementById('audioModuleIndicator');
+            const audioStatus = document.getElementById('audioModuleStatus');
+            const audioLastSeen = document.getElementById('audioModuleLastSeen');
+            
+            if (audioModules && audioModules.length > 0) {
+                const audio = audioModules[0]; // Get first audio module
+                audioModuleCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                
+                if (audio.connected) {
+                    audioModuleCard.classList.add('border-green-500');
+                    audioIndicator.className = 'w-3 h-3 rounded-full bg-green-500 animate-pulse';
+                    audioStatus.textContent = 'Connected';
+                    audioStatus.className = 'font-bold text-green-400';
+                } else {
+                    audioModuleCard.classList.add('border-red-500');
+                    audioIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
+                    audioStatus.textContent = 'Disconnected';
+                    audioStatus.className = 'font-bold text-red-400';
+                }
+                
+                const lastSeenSec = audio.lastSeen;
+                if (lastSeenSec === 0) {
+                    audioLastSeen.textContent = 'Never';
+                } else if (lastSeenSec < 60) {
+                    audioLastSeen.textContent = lastSeenSec + 's ago';
+                } else {
+                    const minutes = Math.floor(lastSeenSec / 60);
+                    const seconds = lastSeenSec % 60;
+                    audioLastSeen.textContent = minutes + 'm ' + seconds + 's ago';
+                }
+            } else {
+                audioModuleCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                audioModuleCard.classList.add('border-gray-600');
+                audioIndicator.className = 'w-3 h-3 rounded-full bg-gray-500';
+                audioStatus.textContent = 'Not Found';
+                audioStatus.className = 'font-bold text-gray-400';
+                audioLastSeen.textContent = '-';
+            }
+            
+            // Serial Module
+            const serialModuleCard = document.getElementById('serialModuleCard');
+            const serialIndicator = document.getElementById('serialModuleIndicator');
+            const serialStatus = document.getElementById('serialModuleStatus');
+            const serialLastSeen = document.getElementById('serialModuleLastSeen');
+            
+            if (serialModules && serialModules.length > 0) {
+                const serial = serialModules[0]; // Get first serial module
+                serialModuleCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                
+                if (serial.connected) {
+                    serialModuleCard.classList.add('border-green-500');
+                    serialIndicator.className = 'w-3 h-3 rounded-full bg-green-500 animate-pulse';
+                    serialStatus.textContent = 'Connected';
+                    serialStatus.className = 'font-bold text-green-400';
+                } else {
+                    serialModuleCard.classList.add('border-red-500');
+                    serialIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
+                    serialStatus.textContent = 'Disconnected';
+                    serialStatus.className = 'font-bold text-red-400';
+                }
+                
+                const lastSeenSec = serial.lastSeen;
+                if (lastSeenSec === 0) {
+                    serialLastSeen.textContent = 'Never';
+                } else if (lastSeenSec < 60) {
+                    serialLastSeen.textContent = lastSeenSec + 's ago';
+                } else {
+                    const minutes = Math.floor(lastSeenSec / 60);
+                    const seconds = lastSeenSec % 60;
+                    serialLastSeen.textContent = minutes + 'm ' + seconds + 's ago';
+                }
+            } else {
+                serialModuleCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                serialModuleCard.classList.add('border-gray-600');
+                serialIndicator.className = 'w-3 h-3 rounded-full bg-gray-500';
+                serialStatus.textContent = 'Not Found';
+                serialStatus.className = 'font-bold text-gray-400';
+                serialLastSeen.textContent = '-';
+            }
         }
 
         // Update button states
