@@ -48,7 +48,7 @@ void onStrikeChange(uint8_t strikes) {
 		sendCanMessage(CAN_ID_AUDIO, strikeSound, 1);
 	}
 	
-	uint8_t strikeMessage[2] = {TIMER_STRIKE_UPDATE, strikes};
+	uint8_t strikeMessage[2] = {TIMER_STRIKES, strikes};
 	sendCanMessage(CAN_ID_BROADCAST, strikeMessage, 2);
 }
 
@@ -64,7 +64,7 @@ void onTimeUpdate(unsigned long remainingMs) {
 	// Send time update exactly 2 times per second (every 500ms)
 	if (now - lastTimeUpdateSent >= 500) {
 		uint8_t timeMessage[5];
-		timeMessage[0] = TIMER_TIME_UPDATE;
+		timeMessage[0] = TIMER_TIME;
 		memcpy(&timeMessage[1], &remainingMs, 4);
 		sendCanMessage(CAN_ID_BROADCAST, timeMessage, 5);
 		

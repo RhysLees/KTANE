@@ -71,11 +71,12 @@ void setup() {
   // Register callback to receive serial number from timer
   if (globalModuleState) {
     globalModuleState->setSerialNumberCallback(onSerialNumberReceived);
-  }
-  
-  // Check if serial number is already available (e.g., from previous game)
-  if (globalModuleState && globalModuleState->getSerialNumber().length() > 0) {
-    epaperDrawTag(globalModuleState->getSerialNumber());
+    
+    // Check if serial number is already available (e.g., from previous game)
+    String existingSerial = globalModuleState->getSerialNumber();
+    if (existingSerial.length() > 0) {
+      epaperDrawTag(existingSerial);
+    }
   }
 
   delay(5000);

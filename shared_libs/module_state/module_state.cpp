@@ -16,10 +16,11 @@ ModuleState::ModuleState()
       enabled(false), statusLedPin(MODULE_STATE_NO_LED),
       discoveryLedState(false), manualLedState(false), manualLedOverride(false),
       currentStrikes(0), strikeFlashActive(false), strikeFlashStart(0),
-      lastStrikeCount(0),       edgeworkReceived(false),
+      lastStrikeCount(0), hasSerialFirstHalf(false), edgeworkReceived(false),
       gameStateCallback(nullptr), strikeCallback(nullptr),
       serialNumberCallback(nullptr), edgeworkCallback(nullptr),
       discoveredCallback(nullptr) {
+    serialNumberFirstHalf[0] = '\0';
 }
 
 // ============================================================================
@@ -148,7 +149,7 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             }
             break;
             
-        case TIMER_STRIKE_UPDATE:
+        case TIMER_STRIKES:
             if (len >= 2) {
                 uint8_t strikes = data[1];
                 if (strikes != currentStrikes) {
@@ -180,20 +181,34 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             }
             break;
             
-        case TIMER_SERIAL_NUMBER:
-            if (len >= 7) {
+        case TIMER_SERIAL_NUMBER_FIRST_HALF:
+            if (len >= 4) {
+                // Store first 3 characters
+                memcpy(serialNumberFirstHalf, &data[1], 3);
+                serialNumberFirstHalf[3] = '\0';
+                hasSerialFirstHalf = true;
+            }
+            break;
+            
+        case TIMER_SERIAL_NUMBER_LAST_HALF:
+            if (len >= 4 && hasSerialFirstHalf) {
+                // Combine first and last halves
                 char serial[7];
-                memcpy(serial, &data[1], 6);
+                memcpy(serial, serialNumberFirstHalf, 3);
+                memcpy(&serial[3], &data[1], 3);
                 serial[6] = '\0';
                 String newSerial = String(serial);
                 
                 if (newSerial != serialNumber) {
                     serialNumber = newSerial;
+                    hasSerialFirstHalf = false;  // Reset for next time
                     
                     // Call callback if set
                     if (serialNumberCallback) {
                         serialNumberCallback(serialNumber);
                     }
+                } else {
+                    hasSerialFirstHalf = false;  // Reset for next time
                 }
             }
             break;
@@ -209,6 +224,8 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             currentStatus = MODULE_STATUS_IDLE;
             progress = 0;
             serialNumber = "";
+            serialNumberFirstHalf[0] = '\0';
+            hasSerialFirstHalf = false;
             edgework.clear();
             edgeworkReceived = false;
             strikeFlashActive = false;
@@ -223,7 +240,7 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             }
             break;
             
-        case TIMER_TIME_UPDATE:
+        case TIMER_TIME:
             // Time updates are passed through but not stored by module_state
             // Modules can handle this in their own message handlers if needed
             break;

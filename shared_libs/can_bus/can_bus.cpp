@@ -112,10 +112,12 @@ void handleCanMessages() {
       uint8_t shiftedLen = len;
       
       if (len >= 2) {
+        // Standard message with sender ID prefix
         senderId = (buf[0] << 8) | buf[1];
         shiftedLen = len - 2;
         memcpy(shiftedData, &buf[2], shiftedLen);
       } else {
+        // Short message without sender ID
         shiftedLen = len;
         memcpy(shiftedData, buf, len);
       }
@@ -151,7 +153,12 @@ void sendCanMessage(uint16_t receiverId, const uint8_t* data, uint8_t dataLen) {
     return;
   }
   
+  // CAN messages can hold 8 bytes total
+  // We prepend 2 bytes for sender ID, so max data length is 6 bytes
+  // But TIMER_SERIAL_NUMBER needs 7 bytes (1 command + 6 serial)
+  // For 7-byte messages, we'll omit the sender ID since it's implied by the CAN ID
   if (dataLen > 0 && dataLen <= 6) {
+    // Standard message: prepend sender ID
     uint8_t messageData[8];
     
     messageData[0] = (thisModuleId >> 8) & 0xFF;
@@ -166,6 +173,10 @@ void sendCanMessage(uint16_t receiverId, const uint8_t* data, uint8_t dataLen) {
     }
 
     logCanMessage("TX", receiverId, thisModuleId, receiverId, data, dataLen);
+  } else {
+    Serial.print("ERROR: Cannot send CAN message with dataLen=");
+    Serial.print(dataLen);
+    Serial.println(" (max 6 bytes supported)");
   }
 }
 
@@ -175,10 +186,11 @@ const char* getMessageTypeName(uint8_t msgType) {
     case ID_TAKEN: return "ID_TAKEN";
     case TIMER_GAME_START: return "GAME_START";
     case TIMER_GAME_STOP: return "GAME_STOP";
-    case TIMER_STRIKE_UPDATE: return "STRIKE_UPDATE";
-    case TIMER_SERIAL_NUMBER: return "SERIAL_NUMBER";
+    case TIMER_STRIKES: return "STRIKES";
+    case TIMER_SERIAL_NUMBER_FIRST_HALF: return "SERIAL_FIRST_HALF";
+    case TIMER_SERIAL_NUMBER_LAST_HALF: return "SERIAL_LAST_HALF";
     case TIMER_RESET: return "RESET";
-    case TIMER_TIME_UPDATE: return "TIME_UPDATE";
+    case TIMER_TIME: return "TIME";
     case TIMER_COUNTDOWN: return "COUNTDOWN";
     case TIMER_MODULE_DISCOVERED: return "MODULE_DISCOVERED";
     case MODULE_REGISTER: return "REGISTER";

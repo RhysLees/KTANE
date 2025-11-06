@@ -274,7 +274,7 @@ void GameStateManager::setStrikes(uint8_t strikes) {
     
     if (strikeCount != oldStrikes) {
         uint8_t strikeData[2];
-        strikeData[0] = TIMER_STRIKE_UPDATE;
+        strikeData[0] = TIMER_STRIKES;
         strikeData[1] = strikeCount;
         sendCanMessage(CAN_ID_BROADCAST, strikeData, 2);
         
@@ -396,8 +396,13 @@ void GameStateManager::registerSerialModule(uint16_t canId) {
     serialModuleMap[canId] = newModule;
     
     // Send stored serial number to newly registered serial module
+    // Use both methods: direct setSerialNumber (for backward compatibility) 
+    // and broadcastGameState (for module_state compatibility)
     if (serialNumber.length() == 6) {
+        // Method 1: Direct setSerialNumber (sends SERIAL_DISPLAY_SET_SERIAL)
         newModule->setSerialNumber(serialNumber);
+        // Method 2: broadcastGameState (sends TIMER_SERIAL_NUMBER for module_state)
+        broadcastGameState(canId);
     }
 }
 
@@ -606,7 +611,10 @@ void GameStateManager::generateSerialNumber() {
     // Send to serial module if it exists
     SerialModule* serialModule = getSerialModule();
     if (serialModule) {
+        // Method 1: Direct setSerialNumber (sends SERIAL_DISPLAY_SET_SERIAL)
         serialModule->setSerialNumber(serialNumber);
+        // Method 2: broadcastGameState (sends TIMER_SERIAL_NUMBER for module_state)
+        broadcastGameState(serialModule->canId);
     }
 }
 
@@ -896,14 +904,14 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                     updateSerialModuleSeen(senderId);
                 }
                 
-                // Send module discovered acknowledgment
+                // Send module discovered acknowledgment (message 1)
                 uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
                 sendCanMessage(senderId, discoveryAck, 1);
                 
-                // Send current state to newly registered module (only for new registrations)
+                // Send current state to newly registered module (messages 2-5)
+                // Order: TIMER_SERIAL_NUMBER_FIRST_HALF, TIMER_SERIAL_NUMBER_LAST_HALF, TIMER_STRIKES, TIMER_TIME
                 broadcastGameState(senderId);
             }
-            // else - already registered, skip verbose logging and broadcast
             
             break;
         }
@@ -1042,30 +1050,39 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
 }
 
 void GameStateManager::broadcastGameState(uint16_t targetId) {
-    // Send serial number (use stored serial number from GameStateManager)
+    // Send 5 messages in order:
+    // 1. TIMER_MODULE_DISCOVERED (already sent before this function is called)
+    // 2. TIMER_SERIAL_NUMBER_FIRST_HALF
+    // 3. TIMER_SERIAL_NUMBER_LAST_HALF
+    // 4. TIMER_STRIKES
+    // 5. TIMER_TIME
+    
+    // Send serial number in two parts (first 3 chars, then last 3 chars)
     if (serialNumber.length() == 6) {
-        uint8_t serialData[7];
-        serialData[0] = TIMER_SERIAL_NUMBER;
-        memcpy(&serialData[1], serialNumber.c_str(), 6);
-        sendCanMessage(targetId, serialData, 7);
+        // First half: first 3 characters
+        uint8_t firstHalf[4];
+        firstHalf[0] = TIMER_SERIAL_NUMBER_FIRST_HALF;
+        memcpy(&firstHalf[1], serialNumber.c_str(), 3);
+        sendCanMessage(targetId, firstHalf, 4);
+        
+        // Second half: last 3 characters
+        uint8_t lastHalf[4];
+        lastHalf[0] = TIMER_SERIAL_NUMBER_LAST_HALF;
+        memcpy(&lastHalf[1], serialNumber.c_str() + 3, 3);
+        sendCanMessage(targetId, lastHalf, 4);
     }
     
     // Send strike count
     uint8_t strikeData[2];
-    strikeData[0] = TIMER_STRIKE_UPDATE;
+    strikeData[0] = TIMER_STRIKES;
     strikeData[1] = strikeCount;
     sendCanMessage(targetId, strikeData, 2);
     
-    // Note: Time updates are sent continuously via onTimeUpdate() callback (rate-limited to 500ms)
-    
-    // Send game state
-    uint8_t gameStateData[1];
-    if (currentState == GameState::RUNNING) {
-        gameStateData[0] = TIMER_GAME_START;
-    } else {
-        gameStateData[0] = TIMER_GAME_STOP;
-    }
-    sendCanMessage(targetId, gameStateData, 1);
+    // Send time remaining
+    uint8_t timeData[5];
+    timeData[0] = TIMER_TIME;
+    memcpy(&timeData[1], &remainingMs, 4);
+    sendCanMessage(targetId, timeData, 5);
 }
 
 

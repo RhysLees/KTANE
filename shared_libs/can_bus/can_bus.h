@@ -91,12 +91,13 @@ enum CanSerialDisplayCommand : uint8_t
 enum TimerToModuleMessage : uint8_t {
   TIMER_GAME_START = 0x10,        // Game started
   TIMER_GAME_STOP = 0x11,         // Game stopped  
-  TIMER_STRIKE_UPDATE = 0x12,     // Strike count changed [strikes]
-  TIMER_SERIAL_NUMBER = 0x13,     // Serial number [6 chars]
-  TIMER_RESET = 0x14,             // Reset module
-  TIMER_TIME_UPDATE = 0x15,       // Time remaining [4 bytes, ms]
-  TIMER_COUNTDOWN = 0x16,         // Initialization countdown [seconds]
-  TIMER_MODULE_DISCOVERED = 0x17  // Module discovered acknowledgment
+  TIMER_STRIKES = 0x12,            // Strike count [strikes]
+  TIMER_SERIAL_NUMBER_FIRST_HALF = 0x13,  // Serial number first 3 chars [3 chars]
+  TIMER_SERIAL_NUMBER_LAST_HALF = 0x14,   // Serial number last 3 chars [3 chars]
+  TIMER_RESET = 0x15,             // Reset module
+  TIMER_TIME = 0x16,              // Time remaining [4 bytes, ms]
+  TIMER_COUNTDOWN = 0x17,         // Initialization countdown [seconds]
+  TIMER_MODULE_DISCOVERED = 0x18  // Module discovered acknowledgment
 };
 
 // Module to Timer messages

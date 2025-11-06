@@ -153,6 +153,8 @@ private:
     
     // Bomb state
     String serialNumber;
+    char serialNumberFirstHalf[4];  // Buffer for first 3 chars of serial number
+    bool hasSerialFirstHalf;        // Whether we've received the first half
     Edgework edgework;
     bool edgeworkReceived;
     
