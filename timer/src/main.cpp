@@ -147,10 +147,6 @@ void setupCallbacks() {
 	gameState.setTimeUpdateCallback(onTimeUpdate);
 }
 
-void printGameInfo() {
-	// Game info removed - no serial logging
-}
-
 void setup() {
 	Serial.begin(115200);
 	delay(2000);
@@ -165,7 +161,6 @@ void setup() {
 	setupCallbacks();
 	gameState.initialize();
 	initWebServer(&gameState);
-	printGameInfo();
 }
 
 

@@ -119,22 +119,3 @@ void updateCountdownDisplay(GameStateManager& gameState)
 	}
 }
 
-// Legacy compatibility functions
-void startCountdown(unsigned long durationMillis)
-{
-	// This is now handled by the game state manager
-	// Left for backward compatibility
-}
-
-bool isCountdownRunning()
-{
-	// This would need a reference to game state
-	// For now, return false for compatibility
-	return false;
-}
-
-unsigned long getCountdownStartTime()
-{
-	// Legacy function - not used in new system
-	return 0;
-}

@@ -381,9 +381,3 @@ void handleSerialCommands(GameStateManager& gameState)
 		break;
 	}
 }
-
-bool isCountdownActive()
-{
-	// Legacy function - would need game state reference
-	return false;
-}

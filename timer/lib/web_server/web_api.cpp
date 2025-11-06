@@ -247,9 +247,7 @@ void handleAll(WiFiClient& client) {
         return;
     }
 
-    // Create a document - reduced size to avoid heap exhaustion on RP2040
-    // Start with 8KB, allocate more if needed (but this should be sufficient)
-    DynamicJsonDocument doc(8192);  // Reduced from 16KB to avoid memory issues
+    DynamicJsonDocument doc(8192);
     doc["success"] = true;
     
     // Include status data

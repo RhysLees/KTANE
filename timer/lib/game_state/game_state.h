@@ -248,6 +248,9 @@ private:
     // Edgework
     Edgework edgework;
     
+    // Serial Number
+    String serialNumber = "";
+    
     // Callbacks
     std::function<void(GameState, GameState)> onStateChange;
     std::function<void(uint8_t)> onStrikeChange;
@@ -273,7 +276,6 @@ public:
     
     void initialize();
     void reset();
-    void createNewGame();
     
     // ========================================================================
     // CORE GAME LOOP
@@ -351,12 +353,10 @@ public:
     void registerAudioModule(uint16_t canId);
     void unregisterAudioModule(uint16_t canId);
     void updateAudioModuleSeen(uint16_t canId);
-    void updateAudioModuleSeen();  // Updates default audio module
     AudioModule* getAudioModule(uint16_t canId);
     const AudioModule* getAudioModule(uint16_t canId) const;
     AudioModule* getAudioModule();
     const AudioModule* getAudioModule() const;
-    void sendAudioSound(uint8_t soundType);
     
     // Get all audio modules (for iteration)
     const std::vector<AudioModule>& getAllAudioModules() const { return audioModules; }
@@ -367,7 +367,6 @@ public:
     void registerSerialModule(uint16_t canId);
     void unregisterSerialModule(uint16_t canId);
     void updateSerialModuleSeen(uint16_t canId);
-    void updateSerialModuleSeen();  // Updates default serial module
     SerialModule* getSerialModule(uint16_t canId);
     const SerialModule* getSerialModule(uint16_t canId) const;
     SerialModule* getSerialModule();
@@ -434,7 +433,6 @@ public:
     // ========================================================================
     void handleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
     void broadcastGameState(uint16_t targetId = CAN_ID_BROADCAST); // Default to broadcast ID
-    void broadcastCountdown(uint8_t seconds);
     
     // ========================================================================
     // GAME LOGIC HELPERS

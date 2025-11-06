@@ -6,8 +6,5 @@
 // Handle serial commands for game control
 void handleSerialCommands(GameStateManager& gameState);
 
-// Legacy compatibility function
-bool isCountdownActive();
-
 // Print help text
 void printHelp();

@@ -146,8 +146,8 @@ void GameStateManager::initialize() {
     
     // Reserve capacity upfront to prevent pointer invalidation on reallocation
     modules.reserve(32);  // Reserve for up to 32 modules
-    audioModules.reserve(4);   // Reserve for audio modules
-    serialModules.reserve(4);   // Reserve for serial modules
+    audioModules.reserve(1);   // Reserve for audio modules
+    serialModules.reserve(1);   // Reserve for serial modules
     
     generateSerialNumber();
     setupEdgework();
@@ -334,8 +334,8 @@ void GameStateManager::registerAudioModule(uint16_t canId) {
     }
     
     // Reserve capacity to prevent reallocation (which would invalidate pointers in audioModuleMap)
-    if (audioModules.capacity() < 4) {
-        audioModules.reserve(4);
+    if (audioModules.capacity() < 1) {
+        audioModules.reserve(1);
     }
     
     audioModules.emplace_back(canId);
@@ -387,13 +387,18 @@ void GameStateManager::registerSerialModule(uint16_t canId) {
     }
     
     // Reserve capacity to prevent reallocation (which would invalidate pointers in serialModuleMap)
-    if (serialModules.capacity() < 4) {
-        serialModules.reserve(4);
+    if (serialModules.capacity() < 1) {
+        serialModules.reserve(1);
     }
     
     serialModules.emplace_back(canId);
     SerialModule* newModule = &serialModules.back();
     serialModuleMap[canId] = newModule;
+    
+    // Send stored serial number to newly registered serial module
+    if (serialNumber.length() == 6) {
+        newModule->setSerialNumber(serialNumber);
+    }
 }
 
 void GameStateManager::unregisterSerialModule(uint16_t canId) {
@@ -571,9 +576,13 @@ bool GameStateManager::hasActiveNeedyModules() const {
 }
 
 void GameStateManager::setSerialNumber(const String& serial) {
+    // Store serial number in GameStateManager
+    serialNumber = serial.substring(0, 6);
+    
+    // Send to serial module if it exists
     SerialModule* serialModule = getSerialModule();
     if (serialModule) {
-        serialModule->setSerialNumber(serial);
+        serialModule->setSerialNumber(serialNumber);
     }
 }
 
@@ -591,9 +600,13 @@ void GameStateManager::generateSerialNumber() {
     serialBuf[5] = alphanum[random(sizeof(alphanum) - 1)];
     serialBuf[6] = '\0';
     
+    // Store serial number in GameStateManager
+    serialNumber = String(serialBuf);
+    
+    // Send to serial module if it exists
     SerialModule* serialModule = getSerialModule();
     if (serialModule) {
-        serialModule->setSerialNumber(String(serialBuf));
+        serialModule->setSerialNumber(serialNumber);
     }
 }
 
@@ -1029,16 +1042,11 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
 }
 
 void GameStateManager::broadcastGameState(uint16_t targetId) {
-    // Reduced logging to avoid blocking on Serial output
-    // Removed delays - CAN.sendMsgBuf() now handles buffer full gracefully
-    // Delays in callbacks can cause system hangs
-    
-    // Send serial number
-    SerialModule* serialModule = getSerialModule();
-    if (serialModule && serialModule->getSerialNumber().length() == 6) {
+    // Send serial number (use stored serial number from GameStateManager)
+    if (serialNumber.length() == 6) {
         uint8_t serialData[7];
         serialData[0] = TIMER_SERIAL_NUMBER;
-        memcpy(&serialData[1], serialModule->getSerialNumber().c_str(), 6);
+        memcpy(&serialData[1], serialNumber.c_str(), 6);
         sendCanMessage(targetId, serialData, 7);
     }
     
@@ -1049,7 +1057,6 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     sendCanMessage(targetId, strikeData, 2);
     
     // Note: Time updates are sent continuously via onTimeUpdate() callback (rate-limited to 500ms)
-    // Don't send time update here to avoid duplicates
     
     // Send game state
     uint8_t gameStateData[1];
@@ -1061,40 +1068,6 @@ void GameStateManager::broadcastGameState(uint16_t targetId) {
     sendCanMessage(targetId, gameStateData, 1);
 }
 
-void GameStateManager::broadcastCountdown(uint8_t seconds) {
-    uint8_t countdownData[2];
-    countdownData[0] = TIMER_COUNTDOWN;
-    countdownData[1] = seconds;
-    sendCanMessage(CAN_ID_BROADCAST, countdownData, 2);
-}
-
-
-
-
-
-void GameStateManager::createNewGame() {
-    // Initialize game state
-    gameStartTime = millis();
-    
-    timeLimitMs = config.timeLimitMs;
-    remainingMs = timeLimitMs;
-    lastUpdateTime = millis();
-    timerRunning = false;
-    
-    strikeCount = 0;
-    maxStrikes = config.maxStrikes;
-    
-    resetStats();
-    
-    // Set to IDLE state (ready to start)
-    setState(GameState::IDLE);
-    
-    // Send serial number to epaper display
-    SerialModule* serialModule = getSerialModule();
-    if (serialModule) {
-        serialModule->sendSerialNumber();
-    }
-}
 
 void GameStateManager::startGame() {
     if (currentState != GameState::IDLE) {
@@ -1108,35 +1081,6 @@ void GameStateManager::startGame() {
     // Then start the timer
     setState(GameState::RUNNING);
     startTimer();
-}
-
-// ============================================================================
-// AUDIO MODULE MANAGEMENT
-// ============================================================================
-
-void GameStateManager::updateAudioModuleSeen() {
-    AudioModule* audioModule = getAudioModule();
-    if (audioModule) {
-        audioModule->markSeen();
-    }
-}
-
-void GameStateManager::sendAudioSound(uint8_t soundType) {
-    AudioModule* audioModule = getAudioModule();
-    if (audioModule) {
-        audioModule->sendSound(soundType);
-    }
-}
-
-// ============================================================================
-// SERIAL MODULE MANAGEMENT
-// ============================================================================
-
-void GameStateManager::updateSerialModuleSeen() {
-    SerialModule* serialModule = getSerialModule();
-    if (serialModule) {
-        serialModule->markSeen();
-    }
 }
 
 // ============================================================================
@@ -1264,6 +1208,12 @@ void GameStateManager::showSerialCredit() {
 }
 
 String GameStateManager::getSerialNumber() const {
+    // Return stored serial number if available
+    if (serialNumber.length() == 6) {
+        return serialNumber;
+    }
+    
+    // Fallback to serial module if no stored serial number
     const SerialModule* serialModule = getSerialModule();
     return serialModule ? serialModule->getSerialNumber() : String("");
 }

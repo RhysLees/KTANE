@@ -32,10 +32,8 @@ bool parseRequest(WiFiClient& client, String& method, String& path) {
     String request = "";
     unsigned long startTime = millis();
     
-    // Read with timeout to avoid blocking
-    // Reduced timeout and add connection check
     while (client.available() == 0) {
-        if (millis() - startTime > 50) {  // Reduced from 100ms to 50ms
+        if (millis() - startTime > 50) {
             return false; // Timeout
         }
         if (!client.connected()) {
@@ -67,7 +65,7 @@ bool parseRequest(WiFiClient& client, String& method, String& path) {
     // Read rest of headers with timeout
     startTime = millis();
     while (client.available()) {
-        if (millis() - startTime > 100) {  // Reduced from 200ms to 100ms
+        if (millis() - startTime > 100) {
             break; // Timeout for headers
         }
         if (!client.connected()) {
