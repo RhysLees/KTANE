@@ -133,7 +133,7 @@ void loop() {
 
 ### Initialization
 
-- `void begin(int statusLedPin = MODULE_STATE_NO_LED)` - Initialize module state
+- `void begin(int statusLedPin = MODULE_STATE_DEFAULT_LED_PIN)` - Initialize module state
 - `void update()` - Update module state (call in loop())
 
 ### CAN Message Handling
@@ -173,16 +173,23 @@ void loop() {
 - `void sendRegisterNow()` - Send registration immediately
 - `void sendHeartbeatNow()` - Send heartbeat immediately
 - `void triggerStrike()` - Trigger a strike (send MODULE_STRIKE)
+- `void setCommunicationEnabled(bool enabled)` - Enable/disable automatic CAN traffic
+- `void setDiscovered(bool discovered = true)` - Manually set discovery state
+- `void setGameRunning(bool running)` - Manually set game running state
+- `void setStrikeCount(uint8_t strikeCount)` - Manually set strike count
+- `void setSerialNumber(const String& serial)` - Manually set serial number
+- `void setEdgework(const Edgework& edgework)` - Manually set full edgework data
 
 ### LED Control
 
 - `void setLedPin(int pin)` - Set status LED pin
 - `void setLedState(bool state)` - Manually set LED state (override automatic)
 - `void clearLedOverride()` - Return to automatic LED control
+- `void disableLed()` - Disable LED updates and release the pin
 
 ### Global Convenience Functions
 
-- `void initModuleState(int statusLedPin)` - Initialize global instance
+- `void initModuleState(int statusLedPin = MODULE_STATE_DEFAULT_LED_PIN)` - Initialize global instance
 - `void updateModuleState()` - Update global instance
 - `void setModuleStateStatus(ModuleStatus status)` - Set status
 - `void setModuleStateProgress(uint8_t progress)` - Set progress
@@ -191,6 +198,13 @@ void loop() {
 - `void setModuleStateLedPin(int pin)` - Set LED pin
 - `void setModuleStateLedState(bool state)` - Set LED state
 - `void clearModuleStateLedOverride()` - Clear LED override
+- `void disableModuleStateLed()` - Disable LED handling for the global instance
+- `void setModuleStateCommunicationEnabled(bool enabled)` - Enable/disable CAN traffic for the global instance
+- `void setModuleStateDiscovered(bool discovered = true)` - Manually set discovery state
+- `void setModuleStateGameRunning(bool running)` - Manually set game running state
+- `void setModuleStateStrikeCount(uint8_t strikeCount)` - Manually set strike count
+- `void setModuleStateSerialNumber(const String& serial)` - Manually set serial number
+- `void setModuleStateEdgework(const Edgework& edgework)` - Manually set full edgework data
 
 ## Status LED Behavior
 
@@ -293,9 +307,16 @@ void setup() {
 
 - **Timer Module Exception**: The timer module should NOT use this library
 - **CAN Message Handling**: Must call `handleCanMessage()` from your module's CAN callback
-- **Status LED**: Optional - set to `MODULE_STATE_NO_LED` to disable
+- **Status LED**: Optional - set to `MODULE_STATE_NO_LED` (or call `disableLed`) to disable
 - **Edgework**: Currently edgework is not sent from timer (future enhancement)
 - **Automatic Timing**: Heartbeat timing is automatic based on discovery and game state
+- **Offline Modules**: Disable communications and use the manual setters when running without CAN
+
+## Configuring the Default LED Pin
+
+- Define `MODULE_STATE_DEFAULT_LED_PIN` **before** including `module_state.h` to set a project-wide default
+- Defaults to `MODULE_STATE_NO_LED` if not specified
+- Individual modules can override by passing an explicit pin to `initModuleState()` or `setModuleStateLedPin()`
 
 ## See Also
 

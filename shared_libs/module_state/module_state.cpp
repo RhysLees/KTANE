@@ -13,7 +13,7 @@ ModuleState::ModuleState()
     : isDiscovered(false), isRegistered(false), lastRegisterAttempt(0),
       lastDiscoveryFlashTime(0), lastHeartbeat(0), gameRunning(false),
       currentStatus(MODULE_STATUS_IDLE), progress(0), solved(false),
-      enabled(false), statusLedPin(MODULE_STATE_NO_LED),
+      enabled(false), communicationsEnabled(true), statusLedPin(MODULE_STATE_NO_LED),
       discoveryLedState(false), manualLedState(false), manualLedOverride(false),
       currentStrikes(0), strikeFlashActive(false), strikeFlashStart(0),
       lastStrikeCount(0), hasSerialFirstHalf(false), edgeworkReceived(false),
@@ -27,17 +27,11 @@ ModuleState::ModuleState()
 // INITIALIZATION
 // ============================================================================
 
-void ModuleState::begin(int statusLedPin) {
-    this->statusLedPin = statusLedPin;
+void ModuleState::begin(int statusLedPinParam) {
     enabled = true;
     lastHeartbeat = millis();
     lastRegisterAttempt = millis();
-    
-    // Initialize LED pin if provided
-    if (statusLedPin != MODULE_STATE_NO_LED) {
-        pinMode(statusLedPin, OUTPUT);
-        digitalWrite(statusLedPin, LOW);
-    }
+    setLedPin(statusLedPinParam);
     
     // Send initial registration
     sendRegisterNow();
@@ -49,12 +43,14 @@ void ModuleState::update() {
     unsigned long now = millis();
     
     // Send registration if not discovered
-    if (!isDiscovered && (now - lastRegisterAttempt >= MODULE_STATE_REGISTER_INTERVAL)) {
+    if (communicationsEnabled && !isDiscovered &&
+        (now - lastRegisterAttempt >= MODULE_STATE_REGISTER_INTERVAL)) {
         sendRegister();
     }
     
     // Send heartbeat at appropriate interval
-    if (now - lastHeartbeat >= getCurrentHeartbeatInterval()) {
+    if (communicationsEnabled &&
+        (now - lastHeartbeat >= getCurrentHeartbeatInterval())) {
         sendHeartbeat();
     }
     
@@ -261,6 +257,10 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
 // ============================================================================
 
 void ModuleState::sendRegister() {
+    if (!communicationsEnabled) {
+        return;
+    }
+    
     if (isRegistered) {
         return;  // Already registered
     }
@@ -291,7 +291,7 @@ unsigned long ModuleState::getCurrentHeartbeatInterval() const {
 }
 
 void ModuleState::sendHeartbeat() {
-    if (!enabled) {
+    if (!enabled || !communicationsEnabled) {
         return;
     }
     
@@ -341,11 +341,26 @@ void ModuleState::updateStrikeLed() {
 }
 
 void ModuleState::setLedPin(int pin) {
-    statusLedPin = pin;
-    if (pin != MODULE_STATE_NO_LED) {
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
+    if (pin == statusLedPin) {
+        return;
     }
+
+    if (pin == MODULE_STATE_NO_LED) {
+        disableLed();
+        return;
+    }
+
+    if (statusLedPin != MODULE_STATE_NO_LED) {
+        digitalWrite(statusLedPin, LOW);
+        pinMode(statusLedPin, INPUT);
+    }
+
+    statusLedPin = pin;
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+    manualLedOverride = false;
+    strikeFlashActive = false;
+    discoveryLedState = false;
 }
 
 void ModuleState::setLedState(bool state) {
@@ -360,6 +375,85 @@ void ModuleState::clearLedOverride() {
     manualLedOverride = false;
     if (statusLedPin != MODULE_STATE_NO_LED && !strikeFlashActive) {
         digitalWrite(statusLedPin, LOW);
+    }
+}
+
+void ModuleState::disableLed() {
+    if (statusLedPin != MODULE_STATE_NO_LED) {
+        digitalWrite(statusLedPin, LOW);
+        pinMode(statusLedPin, INPUT);
+    }
+
+    statusLedPin = MODULE_STATE_NO_LED;
+    manualLedOverride = false;
+    strikeFlashActive = false;
+    discoveryLedState = false;
+}
+
+void ModuleState::setCommunicationEnabled(bool enabledFlag) {
+    communicationsEnabled = enabledFlag;
+}
+
+void ModuleState::setDiscovered(bool discovered) {
+    if (isDiscovered == discovered) {
+        return;
+    }
+    
+    isDiscovered = discovered;
+    isRegistered = discovered;
+    
+    if (!discovered) {
+        discoveryLedState = false;
+    } else if (discoveredCallback) {
+        discoveredCallback();
+    }
+}
+
+void ModuleState::setGameRunning(bool running) {
+    if (gameRunning == running) {
+        return;
+    }
+    
+    gameRunning = running;
+    
+    if (gameStateCallback) {
+        gameStateCallback(running);
+    }
+}
+
+void ModuleState::setStrikeCount(uint8_t strikeCount) {
+    if (currentStrikes == strikeCount) {
+        return;
+    }
+    
+    currentStrikes = strikeCount;
+    lastStrikeCount = strikeCount;
+    strikeFlashActive = false;
+    
+    if (strikeCallback) {
+        strikeCallback(strikeCount);
+    }
+}
+
+void ModuleState::setSerialNumber(const String& serial) {
+    if (serialNumber == serial) {
+        return;
+    }
+    
+    serialNumber = serial;
+    hasSerialFirstHalf = false;
+    
+    if (serialNumberCallback) {
+        serialNumberCallback(serialNumber);
+    }
+}
+
+void ModuleState::setEdgework(const Edgework& edgeworkData) {
+    edgework = edgeworkData;
+    edgeworkReceived = true;
+    
+    if (edgeworkCallback) {
+        edgeworkCallback(edgework);
     }
 }
 
@@ -469,6 +563,48 @@ void setModuleStateLedState(bool state) {
 void clearModuleStateLedOverride() {
     if (globalModuleState) {
         globalModuleState->clearLedOverride();
+    }
+}
+
+void disableModuleStateLed() {
+    if (globalModuleState) {
+        globalModuleState->disableLed();
+    }
+}
+
+void setModuleStateCommunicationEnabled(bool enabled) {
+    if (globalModuleState) {
+        globalModuleState->setCommunicationEnabled(enabled);
+    }
+}
+
+void setModuleStateDiscovered(bool discovered) {
+    if (globalModuleState) {
+        globalModuleState->setDiscovered(discovered);
+    }
+}
+
+void setModuleStateGameRunning(bool running) {
+    if (globalModuleState) {
+        globalModuleState->setGameRunning(running);
+    }
+}
+
+void setModuleStateStrikeCount(uint8_t strikeCount) {
+    if (globalModuleState) {
+        globalModuleState->setStrikeCount(strikeCount);
+    }
+}
+
+void setModuleStateSerialNumber(const String& serial) {
+    if (globalModuleState) {
+        globalModuleState->setSerialNumber(serial);
+    }
+}
+
+void setModuleStateEdgework(const Edgework& edgeworkData) {
+    if (globalModuleState) {
+        globalModuleState->setEdgework(edgeworkData);
     }
 }
 

@@ -9,6 +9,11 @@
 // Use this value to disable LED
 #define MODULE_STATE_NO_LED -1
 
+// Default status LED pin (can be overridden before including this header)
+#ifndef MODULE_STATE_DEFAULT_LED_PIN
+#define MODULE_STATE_DEFAULT_LED_PIN MODULE_STATE_NO_LED
+#endif
+
 // Heartbeat timing constants
 #define MODULE_STATE_HEARTBEAT_INTERVAL_DISCOVERY 1000   // 1 second for fast discovery
 #define MODULE_STATE_HEARTBEAT_INTERVAL_GAME 5000        // 5 seconds during game
@@ -138,6 +143,7 @@ private:
     uint8_t progress;
     bool solved;
     bool enabled;
+    bool communicationsEnabled;
     
     // Status LED
     int statusLedPin;
@@ -177,7 +183,7 @@ public:
     ModuleState();
     
     // Initialization
-    void begin(int statusLedPin = MODULE_STATE_NO_LED);
+    void begin(int statusLedPin = MODULE_STATE_DEFAULT_LED_PIN);
     void update();  // Call in loop()
     
     // CAN message handler (must be called from module's onCanMessage)
@@ -220,12 +226,23 @@ public:
     void setLedPin(int pin);
     void setLedState(bool state);  // Manual override (for solved state, etc.)
     void clearLedOverride();  // Return to automatic control
+    void disableLed();  // Disable status LED handling entirely
+    
+    // Communication control
+    void setCommunicationEnabled(bool enabled);
+    
+    // Manual state overrides (for modules without CAN connectivity)
+    void setDiscovered(bool discovered = true);
+    void setGameRunning(bool running);
+    void setStrikeCount(uint8_t strikeCount);
+    void setSerialNumber(const String& serial);
+    void setEdgework(const Edgework& edgeworkData);
 };
 
 // Global convenience functions (singleton pattern)
 extern ModuleState* globalModuleState;
 
-void initModuleState(int statusLedPin = MODULE_STATE_NO_LED);
+void initModuleState(int statusLedPin = MODULE_STATE_DEFAULT_LED_PIN);
 void updateModuleState();
 void setModuleStateStatus(ModuleStatus status);
 void setModuleStateProgress(uint8_t progress);
@@ -236,4 +253,13 @@ void moduleStateHandleCanMessage(uint16_t id, uint16_t senderId, const uint8_t* 
 void setModuleStateLedPin(int pin);
 void setModuleStateLedState(bool state);
 void clearModuleStateLedOverride();
+void disableModuleStateLed();
+
+// Communication and manual state control
+void setModuleStateCommunicationEnabled(bool enabled);
+void setModuleStateDiscovered(bool discovered = true);
+void setModuleStateGameRunning(bool running);
+void setModuleStateStrikeCount(uint8_t strikeCount);
+void setModuleStateSerialNumber(const String& serial);
+void setModuleStateEdgework(const Edgework& edgeworkData);
 

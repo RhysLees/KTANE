@@ -12,7 +12,7 @@ This Simon Says module implements the classic memory game where players must rep
 - **Sequence Generation**: Starts with 3 colors, adds 1 per stage up to 5 total
 - **Color Display**: Visual feedback with configurable timing
 - **Input Validation**: Real-time button press detection and validation
-- **Strike Handling**: Immediate strike reporting to timer module
+- **Strike Handling**: Immediate strike reporting to module state
 - **KTANE Rules**: Full implementation of official color mapping rules
 
 ### 🔧 **Hardware Interface**
@@ -21,28 +21,33 @@ This Simon Says module implements the classic memory game where players must rep
 - **Status LED**: Module state indication
 - **Audio via CAN**: All audio handled by dedicated audio module
 
-### 📡 **CAN Bus Integration**
-- **Registration**: Automatic registration with game state manager
-- **Realtime Status**: Immediate status updates on state changes
-- **Strike Reporting**: Immediate strike notification to timer module
-- **Audio Messages**: Color sounds and strike/solve audio via audio module
-- **Game State**: Integration with master timer and game flow
-
 ### 🎯 **KTANE Rule Implementation**
 
 The module implements the official Simon Says rules based on strikes and serial number:
 
-#### No Strikes
-- **Serial has vowel**: Red↔Blue swap, Yellow/Green unchanged
-- **No vowel**: Red→Blue→Green→Yellow→Red cycle
+---
 
-#### 1 Strike
-- **Serial has vowel**: Red→Yellow, Blue→Green, others unchanged
-- **No vowel**: Red→Blue→Green→Yellow→Red cycle
+### **If the serial number *contains a vowel*:**
 
-#### 2+ Strikes
-- **Serial has vowel**: Red→Yellow, Green→Blue, others unchanged
-- **No vowel**: Red→Blue→Green→Yellow→Red cycle
+| Flashing Color | 0 Strikes → Press | 1 Strike → Press | 2+ Strikes → Press |
+|----------------|------------------|------------------|--------------------|
+| Red            | Blue             | Yellow           | Green              |
+| Blue           | Red              | Green            | Red                |
+| Green          | Yellow           | Blue             | Yellow             |
+| Yellow         | Green            | Red              | Blue               |
+
+---
+
+### **If the serial number does *not* contain a vowel:**
+
+| Flashing Color | 0 Strikes → Press | 1 Strike → Press | 2+ Strikes → Press |
+|----------------|------------------|------------------|--------------------|
+| Red            | Blue             | Red              | Yellow             |
+| Blue           | Yellow           | Blue             | Green              |
+| Green          | Green            | Yellow           | Blue               |
+| Yellow         | Red              | Green            | Red                |
+
+---
 
 ## Hardware Connections
 
@@ -58,10 +63,6 @@ The module implements the official Simon Says rules based on strikes and serial 
 - **Yellow Button**: Pin 7 (INPUT_PULLUP)
 - **Green Button**: Pin 8 (INPUT_PULLUP)
 - **Blue Button**: Pin 9 (INPUT_PULLUP)
-
-### CAN Bus
-- **SPI CS**: Pin 17
-- **Interrupt**: Pin 20
 
 ## Audio System
 
@@ -80,51 +81,11 @@ Audio is handled entirely by the dedicated audio module via CAN bus messages:
 1. **Initialization**: Module registers with game state manager
 2. **Game Start**: Receives start signal from timer module
 3. **Sequence Generation**: Creates random 3-color sequence
-4. **Display Phase**: Shows sequence with LEDs and audio via CAN
-5. **Input Phase**: Waits for player button presses
+4. **Display & Input Phase**: Shows sequence with LEDs and audio via CAN and check for player button presses at the same time (an input will interupt the display sequence)
 6. **Validation**: Checks input against expected sequence (with rule transformations)
 7. **Strike Handling**: Immediate strike notification to timer module on wrong input
 8. **Progression**: Adds one color and repeats until 5 colors total
 9. **Victory**: Module marked as solved when all 5 stages completed
-
-## CAN Bus Messages
-
-### Outgoing Messages
-- `0x01` - Registration (module type and instance)
-- `0x02` - Module solved notification
-- `0x03` - Strike occurred (with count)
-- `0x04` - Realtime status update
-- `0x06` - Status update
-- Audio messages to `CAN_ID_AUDIO` with sound types
-
-### Incoming Messages
-- `0x10` - Game start signal
-- `0x11` - Game stop signal
-- `0x12` - Strike count update
-- `0x13` - Serial number update
-- `0x14` - Reset command
-
-### Strike Communication
-When a wrong input is detected, the module immediately sends:
-1. Strike message to itself (`SIMON_MSG_STRIKE`)
-2. Strike update directly to timer module (`0x12` with strike count)
-3. Realtime status update with new state
-
-## Serial Commands
-
-The module supports these debug commands via serial console:
-
-```
-STATUS       - Show module status
-SEQUENCE     - Show current sequence
-RULES        - Show color mapping rules
-RESET        - Reset module
-SERIAL <xxx> - Set serial number
-STRIKES <n>  - Set strike count (0-3)
-START        - Start game
-STOP         - Stop game
-HELP         - Show command help
-```
 
 ## Configuration
 
@@ -161,7 +122,8 @@ pio upload
 - SPI library
 - Wire library
 - Seeed CAN library
-- Shared CAN bus library
+- Shared CAN Bus Library
+- Shared Module State Library
 
 ## Realtime Operation
 
@@ -174,26 +136,6 @@ The module operates with realtime status updates instead of periodic heartbeats:
 
 This ensures the game state manager always has current information without polling delays.
 
-## Usage Example
-
-### Basic Integration
-```cpp
-#include <simon_says.h>
-
-SimonSays module;
-
-void setup() {
-    module.begin();
-    module.setSerialNumber("A1B2C3");
-    module.setStrikeCount(0);
-}
-
-void loop() {
-    module.update(); // Handles realtime status updates
-    // Handle CAN messages, serial commands, etc.
-}
-```
-
 ### Strike Handling
 ```cpp
 // When wrong input detected, module automatically:
@@ -202,61 +144,8 @@ void loop() {
 // 3. Plays strike audio via audio module
 // 4. Updates status in realtime
 // 5. Flashes all LEDs
-```
 
-## State Machine
-
-The module operates with these internal states:
-
-- **IDLE**: Waiting for game to start
-- **GENERATING**: Creating new sequence
-- **DISPLAYING**: Showing sequence to player
-- **WAITING_INPUT**: Waiting for button presses
-- **CHECKING_INPUT**: Validating input
-- **CORRECT_SEQUENCE**: Sequence completed correctly
-- **WRONG_INPUT**: Incorrect input detected
-- **SOLVED**: Module completely solved
-- **STRIKE**: Error state with visual feedback
-
-## Debugging
-
-### Serial Output
-The module provides detailed logging:
-```
-Simon Says: Initializing...
-Simon Says: Registration sent
-Simon Says: Ready!
-Simon Says: Game starting...
-Simon Says: Generating sequence...
-Simon Says: Sequence (3): RED -> BLUE -> GREEN
-Simon Says: Strike!
-Simon Says: Strike message sent
-```
-
-### Status Commands
-Use `STATUS` command to see current state:
-```
-=== SIMON SAYS STATUS ===
-State: WAITING_INPUT
-Solved: NO
-Game Started: YES
-Sequence Length: 3
-Strikes: 0
-Has Vowel in Serial: YES
-Current Strikes: 0
-```
-
-### Rule Debugging
-Use `RULES` command to see current color mappings:
-```
-=== SIMON SAYS RULES ===
-Strikes: 0
-Serial has vowel: YES
-Color mappings:
-  RED -> BLUE
-  YELLOW -> YELLOW
-  GREEN -> GREEN
-  BLUE -> RED
+// Note: not completing all the inputs does not count as a strike only if the sequence is input wrong does that count
 ```
 
 ## File Structure
@@ -272,37 +161,6 @@ simon_says/
 ├── platformio.ini            # PlatformIO configuration
 └── README.md                 # This file
 ```
-
-## Contributing
-
-When modifying the module:
-
-1. Follow the existing code style and patterns
-2. Update timing constants for hardware changes
-3. Test all KTANE rule combinations
-4. Verify CAN bus message compatibility
-5. Update documentation for any API changes
-6. Ensure realtime status updates work correctly
-
-## Troubleshooting
-
-### Common Issues
-
-1. **No CAN communication**: Check wiring and bus termination
-2. **Incorrect sequences**: Verify random seed initialization
-3. **Button not responding**: Check pull-up resistors and debouncing
-4. **LED not lighting**: Verify pin assignments and current limiting
-5. **No audio**: Check CAN communication with audio module
-6. **Strikes not registering**: Verify CAN messages to timer module
-
-### Debug Steps
-
-1. Use serial monitor to check initialization
-2. Send `STATUS` command to verify state
-3. Use `RULES` command to check color mappings
-4. Monitor CAN bus traffic for audio and strike messages
-5. Check hardware connections with multimeter
-6. Verify realtime status updates are being sent
 
 ## License
 
