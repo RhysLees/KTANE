@@ -198,7 +198,23 @@ const char* getMessageTypeName(uint8_t msgType) {
     case MODULE_SOLVED: return "SOLVED";
     case MODULE_STATUS: return "STATUS";
     case MODULE_HEARTBEAT: return "HEARTBEAT";
-    case 0x30: return "AUDIO_*";
+    case MODULE_TELEMETRY: return "TELEMETRY";
+    case AUDIO_TITLE: return "AUDIO_TITLE";
+    case AUDIO_BEEP_NORMAL: return "AUDIO_BEEP_NORMAL";
+    case AUDIO_BEEP_FAST: return "AUDIO_BEEP_FAST";
+    case AUDIO_BEEP_HIGH: return "AUDIO_BEEP_HIGH";
+    case AUDIO_STRIKE: return "AUDIO_STRIKE";
+    case AUDIO_DEFUSED: return "AUDIO_DEFUSED";
+    case AUDIO_EXPLODED: return "AUDIO_EXPLODED";
+    case AUDIO_CORRECT_TIME: return "AUDIO_CORRECT_TIME";
+    case AUDIO_GAME_OVER_FANFARE: return "AUDIO_GAME_OVER_FANFARE";
+    case AUDIO_ALARM_CLOCK_BEEP: return "AUDIO_ALARM_CLOCK_BEEP";
+    case AUDIO_ALARM_CLOCK_SNOOZE: return "AUDIO_ALARM_CLOCK_SNOOZE";
+    case AUDIO_ALARM_EMERGENCY: return "AUDIO_ALARM_EMERGENCY";
+    case AUDIO_SIMON_RED: return "AUDIO_SIMON_RED";
+    case AUDIO_SIMON_GREEN: return "AUDIO_SIMON_GREEN";
+    case AUDIO_SIMON_YELLOW: return "AUDIO_SIMON_YELLOW";
+    case AUDIO_SIMON_BLUE: return "AUDIO_SIMON_BLUE";
     default: return "UNKNOWN";
   }
 }

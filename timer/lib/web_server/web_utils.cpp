@@ -27,6 +27,17 @@ String formatGameState(GameState state) {
     }
 }
 
+String formatModuleStatus(ModuleStatus status) {
+    switch (status) {
+        case MODULE_STATUS_IDLE: return "IDLE";
+        case MODULE_STATUS_ACTIVE: return "ACTIVE";
+        case MODULE_STATUS_SOLVED: return "SOLVED";
+        case MODULE_STATUS_ARMED: return "ARMED";
+        case MODULE_STATUS_ERROR: return "ERROR";
+        default: return "UNKNOWN";
+    }
+}
+
 // Parse HTTP request
 bool parseRequest(WiFiClient& client, String& method, String& path) {
     String request = "";

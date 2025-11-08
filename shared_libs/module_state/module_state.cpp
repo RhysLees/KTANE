@@ -13,7 +13,8 @@ ModuleState::ModuleState()
     : isDiscovered(false), isRegistered(false), lastRegisterAttempt(0),
       lastDiscoveryFlashTime(0), lastHeartbeat(0), gameRunning(false),
       currentStatus(MODULE_STATUS_IDLE), progress(0), solved(false),
-      enabled(false), communicationsEnabled(true), statusLedPin(MODULE_STATE_NO_LED),
+      moduleId(0xFFFF), enabled(false), communicationsEnabled(true), statusDirty(false),
+      statusLedPin(MODULE_STATE_NO_LED),
       discoveryLedState(false), manualLedState(false), manualLedOverride(false),
       currentStrikes(0), strikeFlashActive(false), strikeFlashStart(0),
       lastStrikeCount(0), hasSerialFirstHalf(false), edgeworkReceived(false),
@@ -32,6 +33,8 @@ void ModuleState::begin(int statusLedPinParam) {
     lastHeartbeat = millis();
     lastRegisterAttempt = millis();
     setLedPin(statusLedPinParam);
+    refreshModuleId();
+    statusDirty = true;
     
     // Send initial registration
     sendRegisterNow();
@@ -39,6 +42,12 @@ void ModuleState::begin(int statusLedPinParam) {
 
 void ModuleState::update() {
     if (!enabled) return;
+
+    refreshModuleId();
+    
+    if (statusDirty && isDiscovered && communicationsEnabled) {
+        sendStatusUpdate();
+    }
     
     unsigned long now = millis();
     
@@ -104,6 +113,7 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                 isDiscovered = true;
                 isRegistered = true;
                 discoveryLedState = false;
+                statusDirty = true;
                 
                 // Turn off discovery LED
                 if (statusLedPin != MODULE_STATE_NO_LED) {
@@ -158,12 +168,7 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
                         if (statusLedPin != MODULE_STATE_NO_LED) {
                             digitalWrite(statusLedPin, HIGH);  // Flash red (HIGH = on)
                         }
-                        
-                        // Play strike sound (only if this is a new strike from timer)
-                        // Note: Module-initiated strikes already play sound in triggerStrike()
-                        uint8_t audioData[1];
-                        audioData[0] = AUDIO_STRIKE;
-                        sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+
                     }
                     
                     currentStrikes = strikes;
@@ -226,6 +231,7 @@ void ModuleState::handleTimerMessage(uint8_t msgType, const uint8_t* data, uint8
             edgeworkReceived = false;
             strikeFlashActive = false;
             manualLedOverride = false;
+            statusDirty = true;
             
             // Send registration immediately
             sendRegisterNow();
@@ -268,8 +274,9 @@ void ModuleState::sendRegister() {
     uint8_t registerData[1];
     registerData[0] = MODULE_REGISTER;
     
-    sendCanMessage(CAN_ID_TIMER, registerData, 1);
+    sendCanFrame(CAN_ID_TIMER, registerData, 1);
     lastRegisterAttempt = millis();
+    statusDirty = true;
 }
 
 void ModuleState::sendRegisterNow() {
@@ -303,7 +310,7 @@ void ModuleState::sendHeartbeat() {
     heartbeatData[2] = solved ? 1 : 0;
     heartbeatData[3] = progress;
     
-    sendCanMessage(CAN_ID_TIMER, heartbeatData, 4);
+    sendCanFrame(CAN_ID_TIMER, heartbeatData, 4);
     lastHeartbeat = millis();
 }
 
@@ -392,6 +399,10 @@ void ModuleState::disableLed() {
 
 void ModuleState::setCommunicationEnabled(bool enabledFlag) {
     communicationsEnabled = enabledFlag;
+    if (communicationsEnabled) {
+        statusDirty = true;
+        sendStatusUpdate(true);
+    }
 }
 
 void ModuleState::setDiscovered(bool discovered) {
@@ -464,11 +475,18 @@ void ModuleState::setEdgework(const Edgework& edgeworkData) {
 void ModuleState::setStatus(ModuleStatus status) {
     if (currentStatus != status) {
         currentStatus = status;
+        statusDirty = true;
+        sendStatusUpdate();
     }
 }
 
 void ModuleState::setProgress(uint8_t progressPercent) {
-    progress = min(progressPercent, (uint8_t)100);
+    uint8_t clamped = min(progressPercent, (uint8_t)100);
+    if (progress != clamped) {
+        progress = clamped;
+        statusDirty = true;
+        sendStatusUpdate();
+    }
 }
 
 void ModuleState::setSolved(bool solved) {
@@ -479,16 +497,19 @@ void ModuleState::setSolved(bool solved) {
         if (solved) {
             uint8_t solvedData[1];
             solvedData[0] = MODULE_SOLVED;
-            sendCanMessage(CAN_ID_TIMER, solvedData, 1);
+            sendCanFrame(CAN_ID_TIMER, solvedData, 1);
             
             // Play solved sound
-            uint8_t audioData[1];
-            audioData[0] = AUDIO_DEFUSED;
-            sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+            playAudio(AUDIO_DEFUSED);
             
             // Update status
             currentStatus = MODULE_STATUS_SOLVED;
+        } else if (currentStatus == MODULE_STATUS_SOLVED) {
+            currentStatus = MODULE_STATUS_IDLE;
         }
+        
+        statusDirty = true;
+        sendStatusUpdate(true);
     }
 }
 
@@ -500,12 +521,112 @@ void ModuleState::triggerStrike() {
     // Send strike message to timer
     uint8_t strikeData[1];
     strikeData[0] = MODULE_STRIKE;
-    sendCanMessage(CAN_ID_TIMER, strikeData, 1);
+    sendCanFrame(CAN_ID_TIMER, strikeData, 1);
+}
+
+void ModuleState::refreshModuleId() {
+    uint16_t currentId = ::getCurrentModuleId();
+    if (currentId != 0 && currentId != 0xFFFF) {
+        moduleId = currentId;
+    }
+}
+
+bool ModuleState::sendCanFrame(uint16_t receiverId, const uint8_t* data, uint8_t len) {
+    if (!enabled || !communicationsEnabled) {
+        return false;
+    }
     
-    // Play strike sound
-    uint8_t audioData[1];
-    audioData[0] = AUDIO_STRIKE;
-    sendCanMessage(CAN_ID_AUDIO, audioData, 1);
+    if (receiverId == 0 || len == 0 || len > MAX_CAN_PAYLOAD) {
+        return false;
+    }
+    
+    if (data == nullptr) {
+        return false;
+    }
+    
+    refreshModuleId();
+    sendCanMessage(receiverId, data, len);
+    return true;
+}
+
+bool ModuleState::sendStatusUpdate(bool force) {
+    if (!enabled || !communicationsEnabled) {
+        return false;
+    }
+    
+    if (!isDiscovered) {
+        return false;
+    }
+    
+    if (!force && !statusDirty) {
+        return true;
+    }
+    
+    uint8_t statusData[4];
+    statusData[0] = MODULE_STATUS;
+    statusData[1] = currentStatus;
+    statusData[2] = solved ? 1 : 0;
+    statusData[3] = progress;
+    
+    bool sent = sendCanFrame(CAN_ID_TIMER, statusData, 4);
+    if (sent) {
+        statusDirty = false;
+    }
+    return sent;
+}
+
+uint16_t ModuleState::getModuleId() const {
+    if (moduleId != 0xFFFF && moduleId != 0) {
+        return moduleId;
+    }
+    return ::getCurrentModuleId();
+}
+
+uint8_t ModuleState::getModuleInstanceId() const {
+    return getModuleId() & 0x1F;
+}
+
+bool ModuleState::sendMessage(uint16_t receiverId, const uint8_t* data, uint8_t len) {
+    return sendCanFrame(receiverId, data, len);
+}
+
+bool ModuleState::sendTimerMessage(const uint8_t* data, uint8_t len) {
+    return sendCanFrame(CAN_ID_TIMER, data, len);
+}
+
+bool ModuleState::sendBroadcastMessage(const uint8_t* data, uint8_t len) {
+    return sendCanFrame(CAN_ID_BROADCAST, data, len);
+}
+
+bool ModuleState::playAudio(CanAudioSound sound) {
+    uint8_t payload = static_cast<uint8_t>(sound);
+    return sendCanFrame(CAN_ID_AUDIO, &payload, 1);
+}
+
+bool ModuleState::playAudio(const uint8_t* soundCodes, uint8_t len) {
+    if (soundCodes == nullptr || len == 0 || len > MAX_CAN_PAYLOAD) {
+        return false;
+    }
+    return sendCanFrame(CAN_ID_AUDIO, soundCodes, len);
+}
+
+bool ModuleState::sendTelemetry(uint8_t telemetryType, const uint8_t* payload, uint8_t len) {
+    if (len > (MAX_CAN_PAYLOAD - 2)) {
+        return false;
+    }
+    
+    uint8_t buffer[MAX_CAN_PAYLOAD];
+    buffer[0] = MODULE_STATUS;
+    buffer[1] = MODULE_TELEMETRY_FLAG | (telemetryType & 0x7F);
+    
+    if (len > 0) {
+        if (payload == nullptr) {
+            return false;
+        }
+        memcpy(&buffer[2], payload, len);
+    }
+    
+    return sendCanFrame(CAN_ID_TIMER, buffer, len + 2);
 }
 
 // ============================================================================

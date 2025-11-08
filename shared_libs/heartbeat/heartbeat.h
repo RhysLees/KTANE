@@ -1,19 +1,11 @@
 #pragma once
 
 #include <stdint.h>
+#include <can_bus.h>
 
 // Simplified heartbeat intervals - only two modes
 #define HEARTBEAT_INTERVAL_DISCOVERY 1000   // 1 second for fast module discovery
 #define HEARTBEAT_INTERVAL_GAME 5000        // 5 seconds during game play
-
-// Module status flags for enhanced heartbeats
-enum ModuleStatus : uint8_t {
-    MODULE_STATUS_IDLE = 0x00,
-    MODULE_STATUS_ACTIVE = 0x01,
-    MODULE_STATUS_SOLVED = 0x02,
-    MODULE_STATUS_ARMED = 0x03,      // For needy modules
-    MODULE_STATUS_ERROR = 0xFF
-};
 
 // Game state for timing control
 enum GameRunningState : uint8_t {

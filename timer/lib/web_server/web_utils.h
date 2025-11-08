@@ -9,6 +9,7 @@ void sendResponse(WiFiClient& client, int code, const String& contentType, const
 
 // Helper function to format game state
 String formatGameState(GameState state);
+String formatModuleStatus(ModuleStatus status);
 
 // Parse HTTP request
 bool parseRequest(WiFiClient& client, String& method, String& path);

@@ -14,3 +14,4 @@
 #include "sound_headers/simon_blue.h"
 #include "sound_headers/simon_green.h"
 #include "sound_headers/simon_yellow.h"
+#include "sound_headers/title.h"

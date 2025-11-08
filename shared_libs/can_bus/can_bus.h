@@ -42,6 +42,9 @@
 #define CAN_TYPE_DEBUGGER 0x40
 #define CAN_TYPE_DEBUGGER_SENDER 0x41
 
+// Telemetry helpers (MODULE_STATUS payloads with high-bit flag)
+#define MODULE_TELEMETRY_FLAG 0x80
+
 // Build unique CAN ID
 #define CAN_INSTANCE_ID(moduleType, instanceId) \
   (((moduleType & 0x3F) << 5) | (instanceId & 0x1F))
@@ -61,6 +64,7 @@
 
 // Audio sound identifiers
 enum CanAudioSound : uint8_t {
+  AUDIO_TITLE               = 0x00,
   AUDIO_BEEP_NORMAL         = 0x01,
   AUDIO_BEEP_FAST           = 0x02,
   AUDIO_BEEP_HIGH           = 0x03,
@@ -106,7 +110,25 @@ enum ModuleToTimerMessage : uint8_t {
   MODULE_SOLVED = 0x21,           // Module was solved
   MODULE_STRIKE = 0x22,           // Module caused a strike  
   MODULE_STATUS = 0x23,           // Status update
-  MODULE_HEARTBEAT = 0x24         // Periodic heartbeat
+  MODULE_HEARTBEAT = 0x24,        // Periodic heartbeat
+  MODULE_TELEMETRY = 0x25         // Telemetry payload
+};
+
+
+// Shared module status flags for enhanced heartbeats and telemetry
+enum ModuleStatus : uint8_t {
+  MODULE_STATUS_IDLE = 0x00,
+  MODULE_STATUS_ACTIVE = 0x01,
+  MODULE_STATUS_SOLVED = 0x02,
+  MODULE_STATUS_ARMED = 0x03,      // For needy modules
+  MODULE_STATUS_ERROR = 0xFF
+};
+
+enum ModuleTelemetryType : uint8_t {
+  MODULE_TELEMETRY_GENERAL = 0x40,   // Standard status/progress update
+  MODULE_TELEMETRY_CUSTOM0 = 0x41,   // Reserved for module-specific data
+  MODULE_TELEMETRY_CUSTOM1 = 0x42,   // Reserved for module-specific data
+  MODULE_TELEMETRY_CUSTOM2 = 0x43    // Reserved for module-specific data
 };
 
 // ID negotiation system

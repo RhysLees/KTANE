@@ -188,11 +188,19 @@ struct Module
     uint16_t canId;
     ModuleType type;
     ModuleCategory category;
+    ModuleStatus status = MODULE_STATUS_IDLE;
+    uint8_t progress = 0;
     bool isSolved = false;
-    bool isActive = false;
+    bool isActive = false;  // Indicates module has been seen recently
     unsigned long lastSeen = 0;
+    unsigned long lastStatusUpdate = 0;
     unsigned long activationTime = 0;
     unsigned long intervalMs = 0;  // For needy modules
+    bool hasTelemetry = false;
+    uint8_t telemetryType = 0;
+    uint8_t telemetryData[4] = {0};
+    uint8_t telemetryLen = 0;
+    unsigned long lastTelemetryUpdate = 0;
     
     Module(uint16_t id, ModuleType t, ModuleCategory c) 
         : canId(id), type(t), category(c) {}
@@ -266,6 +274,7 @@ private:
     bool isNeedyModule(ModuleType type) const;
     bool isIgnoredModule(ModuleType type) const;
     unsigned long getNeedyModuleInterval(ModuleType type);
+    void ingestModuleStatus(uint16_t canId, const uint8_t* data, uint8_t len, bool sendDiscoveryAck);
     
 public:
     // ========================================================================

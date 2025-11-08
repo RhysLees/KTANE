@@ -20,6 +20,8 @@ The `module_state` library provides a unified interface for all KTANE modules (e
 - **Game State Management**: Handles `TIMER_GAME_START`/`TIMER_GAME_STOP` messages
 - **Bomb State Storage**: Stores serial number, edgework, strike count
 - **Callbacks**: Optional callbacks for game state changes, strikes, serial number
+- **CAN Helpers**: Convenience wrappers for sending CAN messages and triggering shared audio
+- **Status Telemetry**: Automatically reports status/progress/solved state changes back to the timer
 - **Simple API**: Easy integration with minimal code
 
 ## Quick Start
@@ -79,6 +81,11 @@ void loop() {
     // Update module state
     setModuleStateStatus(MODULE_STATUS_ACTIVE);
     setModuleStateProgress(60);
+
+    // Play a Simon tone through the shared audio module
+    if (shouldPlayRedTone) {
+        globalModuleState->playAudio(AUDIO_SIMON_RED);
+    }
     
     if (moduleSolved) {
         setModuleStateSolved(true);
@@ -179,6 +186,17 @@ void loop() {
 - `void setStrikeCount(uint8_t strikeCount)` - Manually set strike count
 - `void setSerialNumber(const String& serial)` - Manually set serial number
 - `void setEdgework(const Edgework& edgework)` - Manually set full edgework data
+
+### CAN Integration
+
+- `uint16_t getModuleId() const` - Returns the module's current CAN ID (after negotiation)
+- `uint8_t getModuleInstanceId() const` - Returns the negotiated instance ID
+- `bool sendMessage(uint16_t receiverId, const uint8_t* data, uint8_t len)` - Send a CAN payload to any module (max 6 bytes)
+- `bool sendTimerMessage(const uint8_t* data, uint8_t len)` - Convenience wrapper for messages to the timer
+- `bool sendBroadcastMessage(const uint8_t* data, uint8_t len)` - Send a broadcast CAN message
+- `bool playAudio(CanAudioSound sound)` - Trigger a single shared audio sound (e.g., `AUDIO_SIMON_RED`)
+- `bool playAudio(const uint8_t* soundCodes, uint8_t len)` - Trigger up to 6 queued sounds in a single CAN frame
+- `bool sendTelemetry(uint8_t telemetryType, const uint8_t* payload, uint8_t len)` - Send module-specific telemetry (packs into a `MODULE_STATUS` frame)
 
 ### LED Control
 

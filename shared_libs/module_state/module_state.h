@@ -21,15 +21,6 @@
 #define MODULE_STATE_STRIKE_FLASH_DURATION 1000         // 1000ms (1 second) flash on strike
 #define MODULE_STATE_REGISTER_INTERVAL 1000              // 1 second between registration attempts
 
-// Module status flags
-enum ModuleStatus : uint8_t {
-    MODULE_STATUS_IDLE = 0x00,
-    MODULE_STATUS_ACTIVE = 0x01,
-    MODULE_STATUS_SOLVED = 0x02,
-    MODULE_STATUS_ARMED = 0x03,      // For needy modules
-    MODULE_STATUS_ERROR = 0xFF
-};
-
 // Edgework data structures (matching game_state.h)
 enum class IndicatorType : uint8_t {
     SND = 0, CLR = 1, CAR = 2, IND = 3, FRQ = 4,
@@ -130,6 +121,8 @@ typedef void (*DiscoveredCallback)();  // Called when module is discovered
 // Main class
 class ModuleState {
 private:
+    static const uint8_t MAX_CAN_PAYLOAD = 6;
+
     // Discovery state
     bool isDiscovered;
     bool isRegistered;
@@ -142,8 +135,10 @@ private:
     ModuleStatus currentStatus;
     uint8_t progress;
     bool solved;
+    uint16_t moduleId;
     bool enabled;
     bool communicationsEnabled;
+    bool statusDirty;
     
     // Status LED
     int statusLedPin;
@@ -178,6 +173,9 @@ private:
     void sendRegister();
     void sendHeartbeat();
     unsigned long getCurrentHeartbeatInterval() const;
+    void refreshModuleId();
+    bool sendCanFrame(uint16_t receiverId, const uint8_t* data, uint8_t len);
+    bool sendStatusUpdate(bool force = false);
     
 public:
     ModuleState();
@@ -230,6 +228,7 @@ public:
     
     // Communication control
     void setCommunicationEnabled(bool enabled);
+    bool isCommunicationEnabled() const { return communicationsEnabled; }
     
     // Manual state overrides (for modules without CAN connectivity)
     void setDiscovered(bool discovered = true);
@@ -237,6 +236,16 @@ public:
     void setStrikeCount(uint8_t strikeCount);
     void setSerialNumber(const String& serial);
     void setEdgework(const Edgework& edgeworkData);
+
+    // CAN integration helpers
+    uint16_t getModuleId() const;
+    uint8_t getModuleInstanceId() const;
+    bool sendMessage(uint16_t receiverId, const uint8_t* data, uint8_t len);
+    bool sendTimerMessage(const uint8_t* data, uint8_t len);
+    bool sendBroadcastMessage(const uint8_t* data, uint8_t len);
+    bool playAudio(CanAudioSound sound);
+    bool playAudio(const uint8_t* soundCodes, uint8_t len);
+    bool sendTelemetry(uint8_t telemetryType, const uint8_t* payload, uint8_t len);
 };
 
 // Global convenience functions (singleton pattern)

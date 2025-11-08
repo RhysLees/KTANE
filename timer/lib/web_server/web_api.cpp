@@ -197,6 +197,8 @@ void handleModules(WiFiClient& client) {
     const std::vector<Module>& allModules = gameStatePtr->getAllModules();
     JsonArray modulesArray = doc.createNestedArray("modules");
     
+    unsigned long now = millis();
+    
     for (const auto& module : allModules) {
         // Skip system modules (AUDIO and SERIAL_DISPLAY) - they're shown separately
         if (module.type == ModuleType::AUDIO || module.type == ModuleType::SERIAL_DISPLAY) {
@@ -214,12 +216,15 @@ void handleModules(WiFiClient& client) {
         moduleObj["isRegistered"] = true;  // All modules in game_state are registered
         moduleObj["isActive"] = module.isActive;
         moduleObj["isSolved"] = module.isSolved;
+        moduleObj["statusCode"] = static_cast<uint8_t>(module.status);
+        moduleObj["statusLabel"] = formatModuleStatus(module.status);
+        moduleObj["progress"] = module.progress;
+        moduleObj["statusAge"] = (module.lastStatusUpdate == 0) ? -1 : (now - module.lastStatusUpdate) / 1000;
         // If lastSeen is 0, send 0 (never seen). Otherwise send seconds ago
-        moduleObj["lastSeen"] = (module.lastSeen == 0) ? 0 : (millis() - module.lastSeen) / 1000;
+        moduleObj["lastSeen"] = (module.lastSeen == 0) ? -1 : (now - module.lastSeen) / 1000;
         // For activationTime: if it's a needy module with interval, send time until next activation (or 0 if passed)
         // For regular modules, activationTime is 0
         if (module.intervalMs > 0 && module.activationTime > 0) {
-            unsigned long now = millis();
             if (module.activationTime > now) {
                 moduleObj["activationTime"] = (module.activationTime - now) / 1000; // seconds until activation
             } else {
@@ -229,6 +234,16 @@ void handleModules(WiFiClient& client) {
             moduleObj["activationTime"] = 0; // Not a needy module or not scheduled
         }
         moduleObj["intervalMs"] = module.intervalMs;
+        
+        moduleObj["hasTelemetry"] = module.hasTelemetry;
+        moduleObj["telemetryType"] = module.hasTelemetry ? module.telemetryType : -1;
+        moduleObj["telemetryAge"] = (module.hasTelemetry && module.lastTelemetryUpdate != 0) ? (now - module.lastTelemetryUpdate) / 1000 : -1;
+        if (module.hasTelemetry && module.telemetryLen > 0) {
+            JsonArray telemetryArray = moduleObj.createNestedArray("telemetryPayload");
+            for (uint8_t i = 0; i < module.telemetryLen; ++i) {
+                telemetryArray.add(module.telemetryData[i]);
+            }
+        }
     }
     
     doc["totalModules"] = allModules.size();
@@ -322,6 +337,8 @@ void handleAll(WiFiClient& client) {
     const std::vector<Module>& allModules = gameStatePtr->getAllModules();
     JsonArray modulesArray = doc.createNestedArray("modules");
     
+    unsigned long now = millis();
+    
     for (const auto& module : allModules) {
         // Skip system modules (AUDIO and SERIAL_DISPLAY) - they're shown separately
         if (module.type == ModuleType::AUDIO || module.type == ModuleType::SERIAL_DISPLAY) {
@@ -339,12 +356,15 @@ void handleAll(WiFiClient& client) {
         moduleObj["isRegistered"] = true;  // All modules in game_state are registered
         moduleObj["isActive"] = module.isActive;
         moduleObj["isSolved"] = module.isSolved;
+        moduleObj["statusCode"] = static_cast<uint8_t>(module.status);
+        moduleObj["statusLabel"] = formatModuleStatus(module.status);
+        moduleObj["progress"] = module.progress;
+        moduleObj["statusAge"] = (module.lastStatusUpdate == 0) ? -1 : (now - module.lastStatusUpdate) / 1000;
         // If lastSeen is 0, send 0 (never seen). Otherwise send seconds ago
-        moduleObj["lastSeen"] = (module.lastSeen == 0) ? 0 : (millis() - module.lastSeen) / 1000;
+        moduleObj["lastSeen"] = (module.lastSeen == 0) ? -1 : (now - module.lastSeen) / 1000;
         // For activationTime: if it's a needy module with interval, send time until next activation (or 0 if passed)
         // For regular modules, activationTime is 0
         if (module.intervalMs > 0 && module.activationTime > 0) {
-            unsigned long now = millis();
             if (module.activationTime > now) {
                 moduleObj["activationTime"] = (module.activationTime - now) / 1000; // seconds until activation
             } else {
@@ -354,6 +374,16 @@ void handleAll(WiFiClient& client) {
             moduleObj["activationTime"] = 0; // Not a needy module or not scheduled
         }
         moduleObj["intervalMs"] = module.intervalMs;
+        
+        moduleObj["hasTelemetry"] = module.hasTelemetry;
+        moduleObj["telemetryType"] = module.hasTelemetry ? module.telemetryType : -1;
+        moduleObj["telemetryAge"] = (module.hasTelemetry && module.lastTelemetryUpdate != 0) ? (now - module.lastTelemetryUpdate) / 1000 : -1;
+        if (module.hasTelemetry && module.telemetryLen > 0) {
+            JsonArray telemetryArray = moduleObj.createNestedArray("telemetryPayload");
+            for (uint8_t i = 0; i < module.telemetryLen; ++i) {
+                telemetryArray.add(module.telemetryData[i]);
+            }
+        }
     }
     
     doc["modulesMeta"]["totalModules"] = allModules.size();

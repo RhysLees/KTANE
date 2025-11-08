@@ -457,6 +457,52 @@ unsigned long GameStateManager::getNeedyModuleInterval(ModuleType type) {
     }
 }
 
+void GameStateManager::ingestModuleStatus(uint16_t canId, const uint8_t* data, uint8_t len, bool sendDiscoveryAck) {
+    Module* module = getModule(canId);
+    bool newlyRegistered = false;
+    
+    if (!module) {
+        uint8_t moduleType = (canId >> 5) & 0x3F;
+        registerModule(canId, static_cast<ModuleType>(moduleType));
+        module = getModule(canId);
+        newlyRegistered = (module != nullptr);
+        
+        if (newlyRegistered && sendDiscoveryAck) {
+            uint8_t discoveryAck[1] = {TIMER_MODULE_DISCOVERED};
+            sendCanMessage(canId, discoveryAck, 1);
+            broadcastGameState(canId);
+        }
+    }
+    
+    if (!module) {
+        return;
+    }
+    
+    updateModuleSeen(canId);
+    unsigned long now = millis();
+    
+    if (len >= 2 && (data[1] & MODULE_TELEMETRY_FLAG)) {
+        module->hasTelemetry = true;
+        module->telemetryType = data[1] & 0x7F;
+        module->telemetryLen = min<uint8_t>(len - 2, (uint8_t)sizeof(module->telemetryData));
+        if (module->telemetryLen > 0) {
+            memcpy(module->telemetryData, &data[2], module->telemetryLen);
+        }
+        module->lastTelemetryUpdate = now;
+        return;
+    }
+    
+    if (len >= 4) {
+        module->status = static_cast<ModuleStatus>(data[1]);
+        bool solvedFlag = (data[2] != 0);
+        module->progress = min<uint8_t>(data[3], (uint8_t)100);
+        module->lastStatusUpdate = now;
+        if (solvedFlag) {
+            module->isSolved = true;
+        }
+    }
+}
+
 void GameStateManager::unregisterModule(uint16_t canId) {
     auto it = moduleMap.find(canId);
     if (it != moduleMap.end()) {
@@ -931,11 +977,12 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             if (senderId == CAN_ID_AUDIO) {
                 updateAudioModuleSeen(senderId);
                 // Handle additional status data if available
-                if (len >= 5) {
+                if (len >= 2 && (data[1] & MODULE_TELEMETRY_FLAG)) {
+                    // Reserved for future audio telemetry handling
+                } else if (len >= 4) {
                     uint8_t moduleStatus = data[1];
                     bool moduleSolved = (data[2] != 0);
                     uint8_t moduleProgress = data[3];
-                    uint8_t strikes = data[4];
                     AudioModule* audioModule = getAudioModule(senderId);
                     if (audioModule) {
                         audioModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
@@ -944,32 +991,19 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
                 updateSerialModuleSeen(senderId);
                 // Handle additional status data if available
-                if (len >= 5) {
+                if (len >= 2 && (data[1] & MODULE_TELEMETRY_FLAG)) {
+                    // Reserved for future serial telemetry handling
+                } else if (len >= 4) {
                     uint8_t moduleStatus = data[1];
                     bool moduleSolved = (data[2] != 0);
                     uint8_t moduleProgress = data[3];
-                    uint8_t strikes = data[4];
                     SerialModule* serialModule = getSerialModule(senderId);
                     if (serialModule) {
                         serialModule->updateStatus(moduleStatus, moduleProgress, moduleSolved);
                     }
                 }
             } else {
-                updateModuleSeen(senderId);
-                
-                // Handle additional status data if available
-                if (len >= 5) {
-                    uint8_t moduleState = data[1];
-                    bool isSolved = (data[2] != 0);
-                    uint8_t progress = data[3];
-                    uint8_t strikes = data[4];
-                    
-                    // Update module solved status if changed
-                    Module* module = moduleMap[senderId];
-                    if (module && module->isSolved != isSolved) {
-                        module->isSolved = isSolved;
-                    }
-                }
+                ingestModuleStatus(senderId, data, len, true);
             }
             break;
             
@@ -978,7 +1012,9 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             if (senderId == CAN_ID_AUDIO) {
                 updateAudioModuleSeen(senderId);
                 // Process enhanced heartbeat data if available
-                if (len >= 4) {
+                if (len >= 2 && (data[1] & MODULE_TELEMETRY_FLAG)) {
+                    // Reserved for future audio telemetry via heartbeat
+                } else if (len >= 4) {
                     uint8_t moduleStatus = data[1];
                     bool moduleSolved = (data[2] != 0);
                     uint8_t moduleProgress = data[3];
@@ -990,7 +1026,9 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
             } else if (senderId == CAN_ID_SERIAL_DISPLAY) {
                 updateSerialModuleSeen(senderId);
                 // Process enhanced heartbeat data if available
-                if (len >= 4) {
+                if (len >= 2 && (data[1] & MODULE_TELEMETRY_FLAG)) {
+                    // Reserved for future serial telemetry via heartbeat
+                } else if (len >= 4) {
                     uint8_t moduleStatus = data[1];
                     bool moduleSolved = (data[2] != 0);
                     uint8_t moduleProgress = data[3];
@@ -1018,21 +1056,7 @@ void GameStateManager::handleCanMessage(uint16_t id, uint16_t senderId, const ui
                     broadcastGameState(senderId);
                 }
                 
-                // Update last seen time
-                updateModuleSeen(senderId);
-                
-                // Process enhanced heartbeat data if available
-                if (len >= 4) {
-                    uint8_t moduleState = data[1];
-                    bool isSolved = (data[2] != 0);
-                    uint8_t progress = data[3];
-                    
-                    // Update module solved status if changed
-                    Module* module = moduleMap[senderId];
-                    if (module && module->isSolved != isSolved) {
-                        module->isSolved = isSolved;
-                    }
-                }
+                ingestModuleStatus(senderId, data, len, false);
             }
             break;
             

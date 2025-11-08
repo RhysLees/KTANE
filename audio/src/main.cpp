@@ -62,6 +62,9 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t l
       case AUDIO_SIMON_YELLOW:
         playSound(simon_yellow, simon_yellow_len / 2);
         break;
+      case AUDIO_TITLE:
+        playSound(title, title_len / 2);
+        break;
       default:
         break;
     }

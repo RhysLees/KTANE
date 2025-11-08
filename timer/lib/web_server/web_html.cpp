@@ -447,7 +447,7 @@ const char* html_page = R"rawliteral(
                         if (status.batteries && status.batteries > 0) {
                             const batteryDiv = document.createElement('div');
                             batteryDiv.className = 'flex justify-between items-center';
-                            batteryDiv.innerHTML = `<span class="text-gray-400">Total Batteries:</span><span class="font-semibold">${status.batteries} battery${status.batteries !== 1 ? 'ies' : ''}</span>`;
+                            batteryDiv.innerHTML = `<span class="text-gray-400">Total Batteries:</span><span class="font-semibold">${status.batteries} batter${status.batteries !== 1 ? 'ies' : 'y'}</span>`;
                             batteryDetails.appendChild(batteryDiv);
                         } else {
                             batteryDetails.innerHTML = '<div class="text-gray-500">None</div>';
@@ -548,27 +548,41 @@ const char* html_page = R"rawliteral(
                                 const categoryNames = {0: 'Regular', 1: 'Needy', 2: 'Ignored'};
                                 const category = categoryNames[module.category] || 'Unknown';
                                 
-                                // Format times
+                                // Format helpers
                                 const formatTime = (ms) => {
-                                    if (ms === 0) return 'Never';
+                                    if (ms === 0) return 'Now';
                                     const seconds = Math.floor(ms / 1000);
-                                    if (seconds < 60) return seconds + 's';
+                                    if (seconds < 60) return `${seconds}s`;
                                     const minutes = Math.floor(seconds / 60);
                                     const secs = seconds % 60;
-                                    return minutes + 'm ' + secs + 's';
+                                    return `${minutes}m ${secs}s`;
+                                };
+                                const formatRecency = (seconds, neverText = 'No data', zeroText = 'Just now') => {
+                                    if (seconds === undefined || seconds === null) return neverText;
+                                    if (seconds === -1) return neverText;
+                                    if (seconds === 0) return zeroText;
+                                    if (seconds < 60) return `${seconds}s ago`;
+                                    const minutes = Math.floor(seconds / 60);
+                                    const secs = seconds % 60;
+                                    return `${minutes}m ${secs}s ago`;
                                 };
                                 
-                                // Format last seen
-                                const lastSeenSec = module.lastSeen;
-                                let lastSeenText;
-                                if (lastSeenSec === 0) {
-                                    lastSeenText = 'Never';
-                                } else if (lastSeenSec < 60) {
-                                    lastSeenText = lastSeenSec + 's ago';
-                                } else {
-                                    const minutes = Math.floor(lastSeenSec / 60);
-                                    const seconds = lastSeenSec % 60;
-                                    lastSeenText = minutes + 'm ' + seconds + 's ago';
+                                const lastSeenText = formatRecency(module.lastSeen, 'Never', 'Now');
+                                const statusCode = module.statusCode ?? 0;
+                                const statusLabel = module.statusLabel || (isSolved ? 'Solved' : 'Unknown');
+                                const statusProgress = module.progress ?? 0;
+                                const statusText = `${isSolved ? '✅' : (statusCode === 0xFF ? '⚠️' : (isConnected ? '🔵' : '❌'))} ${statusLabel}`;
+                                const statusAgeText = formatRecency(module.statusAge, 'No status', 'Just now');
+                                const progressText = `${statusProgress}%`;
+                                const telemetryPayload = module.telemetryPayload || [];
+                                const telemetryAgeText = formatRecency(module.telemetryAge, 'No telemetry', 'Just now');
+                                let telemetryRow = '';
+                                if (module.hasTelemetry && module.telemetryAge !== -1) {
+                                    const payloadText = telemetryPayload.length > 0 ? `[${telemetryPayload.join(', ')}]` : 'No payload';
+                                    telemetryRow = `<div class="flex justify-between">
+                                        <span class="text-gray-400">Telemetry:</span>
+                                        <span class="font-mono text-xs">Type ${module.telemetryType} • ${payloadText} • ${telemetryAgeText}</span>
+                                    </div>`;
                                 }
                                 
                                 // Connection status text
@@ -577,8 +591,13 @@ const char* html_page = R"rawliteral(
                                     connectionStatus = 'Solved';
                                     connectionStatusClass = 'text-green-400';
                                 } else if (!isConnected) {
-                                    connectionStatus = 'Disconnected';
-                                    connectionStatusClass = 'text-red-400';
+                                    if (module.lastSeen === -1) {
+                                        connectionStatus = 'Awaiting';
+                                        connectionStatusClass = 'text-yellow-400';
+                                    } else {
+                                        connectionStatus = 'Disconnected';
+                                        connectionStatusClass = 'text-red-400';
+                                    }
                                 } else {
                                     connectionStatus = 'Connected';
                                     connectionStatusClass = 'text-blue-400';
@@ -620,8 +639,16 @@ const char* html_page = R"rawliteral(
                                         <span>${category}</span>
                                     </div>
                                     <div class="flex justify-between">
-                                        <span class="text-gray-400">Status:</span>
-                                        <span>${isSolved ? '✅ Solved' : (isConnected ? '🔵 Active' : '❌ Offline')}</span>
+                                        <span class="text-gray-400">Module Status:</span>
+                                        <span>${statusText}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Progress:</span>
+                                        <span>${progressText}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Status Age:</span>
+                                        <span class="font-mono">${statusAgeText}</span>
                                     </div>
                                     <div class="flex justify-between">
                                         <span class="text-gray-400">Last Seen:</span>
@@ -636,6 +663,7 @@ const char* html_page = R"rawliteral(
                                         <span class="text-gray-400">Interval:</span>
                                         <span>${formatTime(module.intervalMs)}</span>
                                     </div>` : ''}
+                                    ${telemetryRow}
                                 `;
                                 
                                 card.appendChild(header);
@@ -765,7 +793,7 @@ const char* html_page = R"rawliteral(
         }
 
         // Auto-refresh every 5 seconds using combined endpoint
-        setInterval(updateAll, 5000);
+        setInterval(updateAll, 1000);
         
         // Initial update
         updateAll();
@@ -990,7 +1018,7 @@ const char* wifi_config_page = R"rawliteral(
 
         // Update status on page load and periodically
         updateStatus();
-        setInterval(updateStatus, 5000);
+        setInterval(updateStatus, 1000);
     </script>
 </body>
 </html>
