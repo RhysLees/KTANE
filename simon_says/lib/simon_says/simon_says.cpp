@@ -263,7 +263,6 @@ void SimonSays::enterInputPhase() {
 void SimonSays::enterStrikeFlashPhase() {
     currentPhase = Phase::StrikeFlash;
     lastPhaseTransition = millis();
-    setAllLeds(true);
 }
 
 void SimonSays::enterSolvedPhase() {
