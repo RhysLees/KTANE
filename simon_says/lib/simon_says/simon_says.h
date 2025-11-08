@@ -66,6 +66,8 @@ private:
     static constexpr uint16_t BUTTON_DEBOUNCE_MS = 30;
     static constexpr uint8_t SIMON_INITIAL_SEQUENCE = 1;
     static constexpr uint8_t SIMON_MAX_SEQUENCE_LENGTH = 5;
+    static constexpr uint8_t SIMON_STAGE_COUNT =
+        static_cast<uint8_t>((SIMON_MAX_SEQUENCE_LENGTH - SIMON_INITIAL_SEQUENCE) + 1);
 
     static constexpr uint8_t BUTTON_PIN_RED = 2;
     static constexpr uint8_t BUTTON_PIN_GREEN = 3;
@@ -127,6 +129,7 @@ private:
     static SimonColor indexToColor(uint8_t index);
     static bool serialNumberHasVowel(const String& serial);
 
+    void initializeHardware();
     void generateFullSequence();
     void enterIdlePhase();
     void enterDisplayPhase();
@@ -147,6 +150,11 @@ private:
     void sendAudio(CanAudioSound sound);
     void registerStrike();
     void updateProgress();
+    void resetButtonStates();
+    void clearPlayerFeedback();
+    void activatePlayerFeedback(SimonColor color, unsigned long now);
+    void logEvent(const __FlashStringHelper* message) const;
+    void logColorEvent(const __FlashStringHelper* prefix, SimonColor color) const;
 
     bool hardwareInitialized;
     bool gameRunning;

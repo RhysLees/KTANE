@@ -74,15 +74,7 @@ SimonSays::SimonSays()
 }
 
 void SimonSays::begin() {
-    if (!hardwareInitialized) {
-        for (uint8_t i = 0; i < COLOR_COUNT; ++i) {
-            pinMode(LED_PINS[i], OUTPUT);
-            digitalWrite(LED_PINS[i], HIGH);
-            pinMode(BUTTON_PINS[i], INPUT_PULLUP);
-        }
-        hardwareInitialized = true;
-    }
-
+    initializeHardware();
     randomSeed(rp2040.hwrand32());
     reset();
 }
@@ -93,17 +85,12 @@ void SimonSays::reset() {
     inputIndex = 0;
     displayIndex = 0;
     displayLedOn = false;
-    playerFeedbackActive = false;
-    playerFeedbackColor = SimonColor::None;
-    playerFeedbackEndTime = 0;
+    clearPlayerFeedback();
     solved = false;
     strikePending = false;
     currentPhase = Phase::Idle;
 
-    for (auto& button : buttons) {
-        button.held = false;
-        button.lastChange = millis();
-    }
+    resetButtonStates();
 
     lastPhaseTransition = millis();
     lastDisplayToggle = lastPhaseTransition;
@@ -220,6 +207,18 @@ const __FlashStringHelper* SimonSays::colorToString(SimonColor color) {
     }
 }
 
+void SimonSays::initializeHardware() {
+    if (hardwareInitialized) {
+        return;
+    }
+    for (uint8_t i = 0; i < COLOR_COUNT; ++i) {
+        pinMode(LED_PINS[i], OUTPUT);
+        digitalWrite(LED_PINS[i], HIGH);
+        pinMode(BUTTON_PINS[i], INPUT_PULLUP);
+    }
+    hardwareInitialized = true;
+}
+
 // -----------------------------------------------------------------------------
 // Phase Control
 // -----------------------------------------------------------------------------
@@ -233,9 +232,7 @@ void SimonSays::generateFullSequence() {
 void SimonSays::enterIdlePhase() {
     setAllLeds(false);
     displayLedOn = false;
-    playerFeedbackActive = false;
-    playerFeedbackColor = SimonColor::None;
-    playerFeedbackEndTime = 0;
+    clearPlayerFeedback();
     currentPhase = Phase::Idle;
 }
 
@@ -243,9 +240,7 @@ void SimonSays::enterDisplayPhase() {
     currentPhase = Phase::Displaying;
     displayIndex = 0;
     displayLedOn = false;
-    lightColor(playerFeedbackColor, false);
-    playerFeedbackActive = false;
-    playerFeedbackColor = SimonColor::None;
+    clearPlayerFeedback();
     lastDisplayToggle = millis();
     lastPhaseTransition = lastDisplayToggle;
     setAllLeds(false);
@@ -255,8 +250,7 @@ void SimonSays::enterInputPhase() {
     currentPhase = Phase::Input;
     inputIndex = 0;
     lastButtonActivity = millis();
-    playerFeedbackActive = false;
-    playerFeedbackColor = SimonColor::None;
+    clearPlayerFeedback();
     setAllLeds(false);
 }
 
@@ -294,15 +288,9 @@ void SimonSays::handleDisplayPhase() {
     if (!displayLedOn) {
         if (now - lastDisplayToggle >= SIMON_PAUSE_TIME_MS) {
             SimonColor current = sequence[displayIndex];
-            Serial.print('[');
-            Serial.print(millis());
-            Serial.print(F("] [Simon] Flashing "));
-            Serial.println(colorToString(current));
+            logColorEvent(F("Flashing "), current);
             SimonColor expected = mapFlashToPress(current);
-            Serial.print('[');
-            Serial.print(millis());
-            Serial.print(F("] [Simon] Expect Press "));
-            Serial.println(colorToString(expected));
+            logColorEvent(F("Expect Press "), expected);
             lightColor(current, true);
             playDisplaySound(current);
             displayLedOn = true;
@@ -320,9 +308,7 @@ void SimonSays::handleInputPhase() {
     const unsigned long now = millis();
 
     if (now - lastButtonActivity >= SIMON_INPUT_TIMEOUT_MS) {
-        Serial.print('[');
-        Serial.print(millis());
-        Serial.println(F("] [Simon] Input timeout -> replay sequence"));
+        logEvent(F("Input timeout -> replay sequence"));
         enterDisplayPhase();
         return;
     }
@@ -347,11 +333,7 @@ void SimonSays::handlePlayerFeedback() {
     }
     const unsigned long now = millis();
     if (now >= playerFeedbackEndTime) {
-        if (playerFeedbackColor != SimonColor::None) {
-            lightColor(playerFeedbackColor, false);
-        }
-        playerFeedbackActive = false;
-        playerFeedbackColor = SimonColor::None;
+        clearPlayerFeedback();
     }
 }
 
@@ -360,17 +342,8 @@ void SimonSays::processPlayerInput(SimonColor pressed) {
     lastButtonActivity = now;
 
     if (pressed != SimonColor::None) {
-        Serial.print('[');
-        Serial.print(now);
-        Serial.print(F("] [Simon] Button "));
-        Serial.print(colorToString(pressed));
-        if (playerFeedbackActive && playerFeedbackColor != SimonColor::None) {
-            lightColor(playerFeedbackColor, false);
-        }
-        playerFeedbackColor = pressed;
-        playerFeedbackActive = true;
-        playerFeedbackEndTime = now + SIMON_DISPLAY_TIME_MS;
-        lightColor(pressed, true);
+        logColorEvent(F("Button "), pressed);
+        activatePlayerFeedback(pressed, now);
         playPressSound(pressed);
     }
 
@@ -380,20 +353,14 @@ void SimonSays::processPlayerInput(SimonColor pressed) {
 
     SimonColor expected = mapFlashToPress(sequence[inputIndex]);
     if (pressed == expected) {
-        Serial.print('[');
-        Serial.print(now);
-        Serial.println(F("] [Simon] -> Correct"));
+        logEvent(F("-> Correct"));
         ++inputIndex;
         if (inputIndex >= stageLength) {
             if (stageLength >= SIMON_MAX_SEQUENCE_LENGTH) {
-                Serial.print('[');
-                Serial.print(now);
-                Serial.println(F("] [Simon] Stage complete -> solved"));
+                logEvent(F("Stage complete -> solved"));
                 enterSolvedPhase();
             } else {
-                Serial.print('[');
-                Serial.print(now);
-                Serial.println(F("] [Simon] Stage complete -> extending sequence"));
+                logEvent(F("Stage complete -> extending sequence"));
                 ++stageLength;
                 lastButtonActivity = now;
                 updateProgress();
@@ -424,10 +391,7 @@ SimonColor SimonSays::pollButtonPress() {
                 if (pressed) {
                     lastButtonActivity = now;
                     SimonColor color = indexToColor(i);
-                    Serial.print('[');
-                    Serial.print(now);
-                    Serial.print(F("] [Simon] Detected press "));
-                    Serial.println(colorToString(color));
+                    logColorEvent(F("Detected press "), color);
                     return color;
                 }
             }
@@ -486,17 +450,59 @@ void SimonSays::registerStrike() {
 }
 
 void SimonSays::updateProgress() {
-    uint8_t completed = 0;
-    if (stageLength > SIMON_INITIAL_SEQUENCE) {
-        completed = static_cast<uint8_t>(stageLength - SIMON_INITIAL_SEQUENCE);
-    }
-
-    const uint8_t totalStages = static_cast<uint8_t>((SIMON_MAX_SEQUENCE_LENGTH - SIMON_INITIAL_SEQUENCE) + 1);
-    uint8_t progress = static_cast<uint8_t>((completed * 100) / totalStages);
+    const uint8_t completed = stageLength > SIMON_INITIAL_SEQUENCE
+                                  ? static_cast<uint8_t>(stageLength - SIMON_INITIAL_SEQUENCE)
+                                  : 0;
+    uint8_t progress = static_cast<uint8_t>((completed * 100) / SIMON_STAGE_COUNT);
     if (progress > 100) {
         progress = 100;
     }
     currentProgress = progress;
+}
+
+void SimonSays::resetButtonStates() {
+    const unsigned long now = millis();
+    for (auto& button : buttons) {
+        button.held = false;
+        button.lastChange = now;
+    }
+}
+
+void SimonSays::clearPlayerFeedback() {
+    if (playerFeedbackActive && playerFeedbackColor != SimonColor::None) {
+        lightColor(playerFeedbackColor, false);
+    }
+    playerFeedbackActive = false;
+    playerFeedbackColor = SimonColor::None;
+    playerFeedbackEndTime = 0;
+}
+
+void SimonSays::activatePlayerFeedback(SimonColor color, unsigned long now) {
+    if (color == SimonColor::None) {
+        return;
+    }
+    if (playerFeedbackActive && playerFeedbackColor != SimonColor::None) {
+        lightColor(playerFeedbackColor, false);
+    }
+    playerFeedbackColor = color;
+    playerFeedbackActive = true;
+    playerFeedbackEndTime = now + SIMON_DISPLAY_TIME_MS;
+    lightColor(color, true);
+}
+
+void SimonSays::logEvent(const __FlashStringHelper* message) const {
+    Serial.print('[');
+    Serial.print(millis());
+    Serial.print(F("] [Simon] "));
+    Serial.println(message);
+}
+
+void SimonSays::logColorEvent(const __FlashStringHelper* prefix, SimonColor color) const {
+    Serial.print('[');
+    Serial.print(millis());
+    Serial.print(F("] [Simon] "));
+    Serial.print(prefix);
+    Serial.println(colorToString(color));
 }
 
 
