@@ -15,8 +15,8 @@
 #endif
 
 // Heartbeat timing constants
-#define MODULE_STATE_HEARTBEAT_INTERVAL_DISCOVERY 1000   // 1 second for fast discovery
-#define MODULE_STATE_HEARTBEAT_INTERVAL_GAME 5000        // 5 seconds during game
+#define MODULE_STATE_HEARTBEAT_INTERVAL_DISCOVERY 3000   // 3 second for discovery
+#define MODULE_STATE_HEARTBEAT_INTERVAL_GAME 1000        // 1 seconds during game
 #define MODULE_STATE_DISCOVERY_LED_INTERVAL 500          // 500ms on/off for discovery
 #define MODULE_STATE_STRIKE_FLASH_DURATION 1000         // 1000ms (1 second) flash on strike
 #define MODULE_STATE_REGISTER_INTERVAL 1000              // 1 second between registration attempts

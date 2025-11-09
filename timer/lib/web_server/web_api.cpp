@@ -244,6 +244,18 @@ void handleModules(WiFiClient& client) {
                 telemetryArray.add(module.telemetryData[i]);
             }
         }
+        if (module.hasTelemetry && module.telemetryType == MODULE_TELEMETRY_GENERAL) {
+            if (module.telemetryLen >= 1) {
+                moduleObj["telemetryStatusCode"] = module.telemetryData[0];
+                moduleObj["telemetryStatusLabel"] = formatModuleStatus(static_cast<ModuleStatus>(module.telemetryData[0]));
+            }
+            if (module.telemetryLen >= 2) {
+                moduleObj["telemetrySolved"] = module.telemetryData[1] != 0;
+            }
+            if (module.telemetryLen >= 3) {
+                moduleObj["telemetryProgress"] = min<uint8_t>(module.telemetryData[2], (uint8_t)100);
+            }
+        }
     }
     
     doc["totalModules"] = allModules.size();
@@ -382,6 +394,18 @@ void handleAll(WiFiClient& client) {
             JsonArray telemetryArray = moduleObj.createNestedArray("telemetryPayload");
             for (uint8_t i = 0; i < module.telemetryLen; ++i) {
                 telemetryArray.add(module.telemetryData[i]);
+            }
+        }
+        if (module.hasTelemetry && module.telemetryType == MODULE_TELEMETRY_GENERAL) {
+            if (module.telemetryLen >= 1) {
+                moduleObj["telemetryStatusCode"] = module.telemetryData[0];
+                moduleObj["telemetryStatusLabel"] = formatModuleStatus(static_cast<ModuleStatus>(module.telemetryData[0]));
+            }
+            if (module.telemetryLen >= 2) {
+                moduleObj["telemetrySolved"] = module.telemetryData[1] != 0;
+            }
+            if (module.telemetryLen >= 3) {
+                moduleObj["telemetryProgress"] = min<uint8_t>(module.telemetryData[2], (uint8_t)100);
             }
         }
     }

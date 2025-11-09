@@ -27,26 +27,29 @@ void loop() {
 }
 ```
 
-### 💓 [Heartbeat](heartbeat/) - Connection Management
-**Purpose**: Provides standardized heartbeat functionality for module health monitoring  
+### ⚙️ [Module State](module_state/) - State & Heartbeat Management
+**Purpose**: Combines heartbeat, registration, and per-module state management  
 **Used by**: All modules except timer  
 **Key Features**:
-- Automatic heartbeat timing
-- Status and progress reporting
-- Connection detection support
-- Configurable intervals per module type
+- Automatic registration and heartbeats
+- Status, progress, and solved reporting
+- Centralised timer message handling
+- Optional status LED management
 
 **Quick Start**:
 ```cpp
-#include <heartbeat.h>
+#include <module_state.h>
+
+void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    moduleStateHandleCanMessage(id, senderId, data, len);
+}
 
 void setup() {
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
+    initModuleState(MODULE_STATE_NO_LED);
 }
 
 void loop() {
-    updateHeartbeat();
-    setHeartbeatStatus(MODULE_STATUS_ACTIVE);
+    updateModuleState();
 }
 ```
 
@@ -54,10 +57,10 @@ void loop() {
 
 ### Inter-Library Dependencies
 ```
-┌─────────────┐
-│  Heartbeat  │──┐
-└─────────────┘  │
-                 ▼
+┌──────────────┐
+│ Module State │──┐
+└──────────────┘  │
+                  ▼
 ┌─────────────┐
 │   CAN Bus   │
 └─────────────┘
@@ -71,7 +74,7 @@ void loop() {
 ```cpp
 void setup() {
     initCanBus(CAN_ID_AUDIO);                    // Fixed ID
-    initHeartbeat(HEARTBEAT_INTERVAL_AUDIO);     // 2 second heartbeat
+    initModuleState(MODULE_STATE_NO_LED);        // Audio module has no LED
 }
 ```
 
@@ -80,7 +83,7 @@ void setup() {
 void setup() {
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));  // Temporary ID
     assignUniqueId(CAN_TYPE_SIMON);                      // Negotiate unique ID
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);            // 5 second heartbeat
+    initModuleState(STATUS_LED_PIN);                     // Handles status + heartbeat
 }
 ```
 
@@ -88,7 +91,7 @@ void setup() {
 ```cpp
 void setup() {
     initCanBus(CAN_ID_TIMER);                    // Fixed timer ID
-    // Note: Timer does NOT use heartbeat library
+    // Note: Timer does NOT use module_state
 }
 ```
 
@@ -101,15 +104,15 @@ Add to your module's `platformio.ini`:
 [env:your_module]
 lib_deps = 
     ../shared_libs/can_bus
-    ../shared_libs/heartbeat
+    ../shared_libs/module_state
 ```
 
 ### Include Order
-Always include CAN bus before other communication libraries:
+Always include CAN bus before module-level helpers:
 ```cpp
 #include <Arduino.h>
 #include <can_bus.h>        // Always first
-#include <heartbeat.h>      // After CAN bus
+#include <module_state.h>   // Uses CAN helpers
 // ... other includes
 ```
 
@@ -117,10 +120,11 @@ Always include CAN bus before other communication libraries:
 ```cpp
 #include <Arduino.h>
 #include <can_bus.h>
-#include <heartbeat.h>
+#include <module_state.h>
 
-void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    // Handle incoming CAN messages
+void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    moduleStateHandleCanMessage(id, senderId, data, len);
+    // Handle additional module-specific messages here
 }
 
 void setup() {
@@ -133,17 +137,13 @@ void setup() {
     // For dynamic modules only
     assignUniqueId(CAN_TYPE_YOUR_MODULE);
     
-    // Initialize heartbeat
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
-    
-    // Register with timer
-    uint8_t registerData[1] = {MODULE_REGISTER};
-    sendCanMessage(CAN_ID_TIMER, registerData, 1);
+    // Initialize module state (handles registration + heartbeat)
+    initModuleState(STATUS_LED_PIN);
 }
 
 void loop() {
     handleCanMessages();    // Process CAN messages
-    updateHeartbeat();      // Send heartbeats
+    updateModuleState();    // Registration, heartbeats, LED, etc.
     
     // Your module logic here
 }
@@ -201,9 +201,9 @@ Available in timer module serial console:
 
 #### Module Not Detected
 1. Check CAN wiring and termination
-2. Verify module sends heartbeats: `initHeartbeat()` called
+2. Verify module initializes state manager: `initModuleState()` called
 3. Check for ID conflicts in serial output
-4. Ensure `updateHeartbeat()` called in loop
+4. Ensure `updateModuleState()` called in loop
 
 #### Message Not Received  
 1. Verify correct CAN ID usage
@@ -219,7 +219,7 @@ Available in timer module serial console:
 ### Debug Output Examples
 ```
 // Successful heartbeat
-Heartbeat: Initialized with 5000ms interval
+ModuleState: Heartbeat interval set to 5000ms
 Audio module connected (heartbeat)
 
 // ID negotiation
@@ -233,10 +233,12 @@ Audio module disconnected
 ## 📈 Performance Considerations
 
 ### Heartbeat Intervals
-- **Audio**: 2s (frequent due to real-time audio needs)
-- **Serial Display**: 3s (moderate update frequency)  
+- **Audio**: 2s (frequent due to real-time audio needs)*
+- **Serial Display**: 3s (moderate update frequency)*  
 - **Game Modules**: 5s (standard for gameplay modules)
 - **Needy Modules**: 1s (high frequency for urgent modules)
+
+`*` Modules using `module_state` default to discovery (1s) until the game starts, then 5s.
 
 ### CAN Bus Load
 - **Standard Game**: ~10-15 messages/second
@@ -245,17 +247,17 @@ Audio module disconnected
 
 ### Memory Usage
 - **CAN Bus Library**: ~2KB flash, ~200 bytes RAM
-- **Heartbeat Library**: ~1KB flash, ~50 bytes RAM
-- **Combined Overhead**: <1% of typical microcontroller resources
+- **Module State Library**: ~3KB flash, ~200 bytes RAM
+- **Combined Overhead**: <2% of typical microcontroller resources
 
 ## 🚀 Best Practices
 
 ### Module Development
 1. **Always include CAN bus first** in includes
-2. **Use heartbeat library** instead of custom implementations
+2. **Use module_state** instead of custom heartbeat implementations
 3. **Follow standard setup pattern** for consistency
 4. **Handle all expected message types** in CAN callback
-5. **Update heartbeat status** to reflect module state
+5. **Keep module_state status flags** in sync with gameplay
 
 ### Error Handling
 ```cpp
@@ -280,12 +282,12 @@ void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
 ```cpp
 // Update status based on module activity
 if (processing) {
-    setHeartbeatStatus(MODULE_STATUS_ACTIVE);
-    setHeartbeatProgress(calculateProgress());
+    setModuleStateStatus(MODULE_STATUS_ACTIVE);
+    setModuleStateProgress(calculateProgress());
 } else if (solved) {
-    setHeartbeatSolved(true);
+    setModuleStateSolved(true);
 } else {
-    setHeartbeatStatus(MODULE_STATUS_IDLE);
+    setModuleStateStatus(MODULE_STATUS_IDLE);
 }
 ```
 
@@ -311,7 +313,6 @@ shared_libs/your_library/
 ## 🔗 See Also
 
 - [CAN Bus Library Documentation](can_bus/)
-- [Heartbeat Library Documentation](heartbeat/)
 - [Main Project README](../README.md)
 - [Build Instructions](../BUILD_README.md)
 

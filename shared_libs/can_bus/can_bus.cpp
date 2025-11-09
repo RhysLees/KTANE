@@ -199,6 +199,9 @@ const char* getMessageTypeName(uint8_t msgType) {
     case MODULE_STATUS: return "STATUS";
     case MODULE_HEARTBEAT: return "HEARTBEAT";
     case MODULE_TELEMETRY: return "TELEMETRY";
+    case SERIAL_DISPLAY_SET_SERIAL: return "SERIAL_DISPLAY_SET_SERIAL";
+    case SERIAL_DISPLAY_CLEAR: return "SERIAL_DISPLAY_CLEAR";
+    case SERIAL_DISPLAY_SHOW_CREDIT: return "SERIAL_DISPLAY_SHOW_CREDIT";
     case AUDIO_TITLE: return "AUDIO_TITLE";
     case AUDIO_BEEP_NORMAL: return "AUDIO_BEEP_NORMAL";
     case AUDIO_BEEP_FAST: return "AUDIO_BEEP_FAST";

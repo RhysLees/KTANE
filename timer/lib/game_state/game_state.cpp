@@ -489,6 +489,22 @@ void GameStateManager::ingestModuleStatus(uint16_t canId, const uint8_t* data, u
             memcpy(module->telemetryData, &data[2], module->telemetryLen);
         }
         module->lastTelemetryUpdate = now;
+
+        if (module->telemetryType == MODULE_TELEMETRY_GENERAL) {
+            if (module->telemetryLen >= 1) {
+                module->status = static_cast<ModuleStatus>(module->telemetryData[0]);
+            }
+            if (module->telemetryLen >= 2) {
+                bool solvedFlag = module->telemetryData[1] != 0;
+                if (solvedFlag) {
+                    module->isSolved = true;
+                }
+            }
+            if (module->telemetryLen >= 3) {
+                module->progress = min<uint8_t>(module->telemetryData[2], (uint8_t)100);
+            }
+            module->lastStatusUpdate = now;
+        }
         return;
     }
     
@@ -842,7 +858,7 @@ void GameStateManager::checkGameEndConditions() {
 
 void GameStateManager::handleModuleTimeout() {
     unsigned long now = millis();
-    unsigned long timeout = 5000; // 5 second timeout
+    unsigned long timeout = GAME_STATE_MODULE_INACTIVE_TIMEOUT_MS;
     
     for (auto& module : modules) {
         if (module.lastSeen > 0 && (now - module.lastSeen) > timeout) {
@@ -1131,17 +1147,10 @@ void GameStateManager::startGame() {
 void GameStateManager::updateModuleConnections() {
     unsigned long now = millis();
     
-    // Calculate timeout based on 2 missed heartbeats
-    // Discovery: 1s heartbeat -> 2s timeout
-    // Game: 5s heartbeat -> 10s timeout
-    // Use the longer timeout to be safe
-    const unsigned long MODULE_TIMEOUT_MS = 10000;  // 2 * 5s = 10 seconds (2 missed heartbeats)
-    const unsigned long DISCOVERY_TIMEOUT_MS = 2000;  // 2 * 1s = 2 seconds (2 missed heartbeats)
-    
-    // Determine timeout based on game state
+    // Determine timeout based on game state (two missed heartbeats by default)
     unsigned long timeout = (currentState == GameState::RUNNING || currentState == GameState::PAUSED) 
-        ? MODULE_TIMEOUT_MS 
-        : DISCOVERY_TIMEOUT_MS;
+        ? GAME_STATE_HEARTBEAT_GAME_TIMEOUT_MS 
+        : GAME_STATE_HEARTBEAT_DISCOVERY_TIMEOUT_MS;
     
     // Check audio modules
     for (auto& audioModule : audioModules) {
@@ -1202,7 +1211,7 @@ bool GameStateManager::isModuleConnected(uint16_t canId) const {
         const Module* module = it->second;
         if (module && module->lastSeen > 0) {
             unsigned long timeSince = millis() - module->lastSeen;
-            return timeSince <= 5000;  // 5 second timeout
+            return timeSince <= GAME_STATE_MODULE_INACTIVE_TIMEOUT_MS;
         }
     }
     

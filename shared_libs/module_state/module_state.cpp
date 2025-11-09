@@ -532,18 +532,10 @@ void ModuleState::refreshModuleId() {
 }
 
 bool ModuleState::sendCanFrame(uint16_t receiverId, const uint8_t* data, uint8_t len) {
-    if (!enabled || !communicationsEnabled) {
+    if (!enabled || !communicationsEnabled || data == nullptr) {
         return false;
     }
-    
-    if (receiverId == 0 || len == 0 || len > MAX_CAN_PAYLOAD) {
-        return false;
-    }
-    
-    if (data == nullptr) {
-        return false;
-    }
-    
+
     refreshModuleId();
     sendCanMessage(receiverId, data, len);
     return true;

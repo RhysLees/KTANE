@@ -557,9 +557,9 @@ const char* html_page = R"rawliteral(
                                     const secs = seconds % 60;
                                     return `${minutes}m ${secs}s`;
                                 };
-                                const formatRecency = (seconds, neverText = 'No data', zeroText = 'Just now') => {
-                                    if (seconds === undefined || seconds === null) return neverText;
-                                    if (seconds === -1) return neverText;
+                                const formatRecency = (seconds, nowText = 'Now', zeroText = 'Just now') => {
+                                    if (seconds === undefined || seconds === null) return nowText;
+                                    if (seconds === -1) return nowText;
                                     if (seconds === 0) return zeroText;
                                     if (seconds < 60) return `${seconds}s ago`;
                                     const minutes = Math.floor(seconds / 60);
@@ -567,22 +567,54 @@ const char* html_page = R"rawliteral(
                                     return `${minutes}m ${secs}s ago`;
                                 };
                                 
-                                const lastSeenText = formatRecency(module.lastSeen, 'Never', 'Now');
+                                const toNumberOrFallback = (value, fallback = -1) => {
+                                    if (typeof value === 'number') {
+                                        return Number.isFinite(value) ? value : fallback;
+                                    }
+                                    if (typeof value === 'string') {
+                                        const parsed = Number(value);
+                                        return Number.isFinite(parsed) ? parsed : fallback;
+                                    }
+                                    return fallback;
+                                };
+                                const lastSeenSeconds = toNumberOrFallback(module.lastSeen);
+                                const lastSeenText = formatRecency(lastSeenSeconds, 'Now', 'Now');
                                 const statusCode = module.statusCode ?? 0;
                                 const statusLabel = module.statusLabel || (isSolved ? 'Solved' : 'Unknown');
                                 const statusProgress = module.progress ?? 0;
                                 const statusText = `${isSolved ? '✅' : (statusCode === 0xFF ? '⚠️' : (isConnected ? '🔵' : '❌'))} ${statusLabel}`;
                                 const statusAgeText = formatRecency(module.statusAge, 'No status', 'Just now');
                                 const progressText = `${statusProgress}%`;
-                                const telemetryPayload = module.telemetryPayload || [];
+                                const telemetryPayload = Array.isArray(module.telemetryPayload) ? module.telemetryPayload : [];
                                 const telemetryAgeText = formatRecency(module.telemetryAge, 'No telemetry', 'Just now');
+                                const telemetryTypeValue = typeof module.telemetryType === 'number' ? module.telemetryType : '?';
+                                const telemetryStatusCode = typeof module.telemetryStatusCode === 'number' ? module.telemetryStatusCode : null;
+                                const telemetryStatusLabel = typeof module.telemetryStatusLabel === 'string' ? module.telemetryStatusLabel : '';
+                                const telemetrySolved = typeof module.telemetrySolved === 'boolean' ? module.telemetrySolved : null;
+                                const telemetryProgressValue = typeof module.telemetryProgress === 'number' ? module.telemetryProgress : null;
                                 let telemetryRow = '';
                                 if (module.hasTelemetry && module.telemetryAge !== -1) {
-                                    const payloadText = telemetryPayload.length > 0 ? `[${telemetryPayload.join(', ')}]` : 'No payload';
-                                    telemetryRow = `<div class="flex justify-between">
-                                        <span class="text-gray-400">Telemetry:</span>
-                                        <span class="font-mono text-xs">Type ${module.telemetryType} • ${payloadText} • ${telemetryAgeText}</span>
-                                    </div>`;
+                                    if (telemetryStatusLabel) {
+                                        const solvedIcon = telemetrySolved === true ? '✅' : (telemetryStatusCode === 0xFF ? '⚠️' : '🔵');
+                                        const summaryParts = [`Type ${telemetryTypeValue}`, `${solvedIcon} ${telemetryStatusLabel}`];
+                                        if (telemetryProgressValue !== null && telemetryProgressValue >= 0) {
+                                            summaryParts.push(`${telemetryProgressValue}%`);
+                                        }
+                                        summaryParts.push(telemetryAgeText);
+                                        const consumedBytes = Math.min(telemetryPayload.length, 3);
+                                        const extraPayload = telemetryPayload.slice(consumedBytes);
+                                        const payloadSuffix = extraPayload.length > 0 ? ` • Extra [${extraPayload.join(', ')}]` : '';
+                                        telemetryRow = `<div class="flex justify-between">
+                                            <span class="text-gray-400">Telemetry:</span>
+                                            <span class="font-mono text-xs">${summaryParts.join(' • ')}${payloadSuffix}</span>
+                                        </div>`;
+                                    } else {
+                                        const payloadText = telemetryPayload.length > 0 ? `[${telemetryPayload.join(', ')}]` : 'No payload';
+                                        telemetryRow = `<div class="flex justify-between">
+                                            <span class="text-gray-400">Telemetry:</span>
+                                            <span class="font-mono text-xs">Type ${telemetryTypeValue} • ${payloadText} • ${telemetryAgeText}</span>
+                                        </div>`;
+                                    }
                                 }
                                 
                                 // Connection status text
@@ -591,7 +623,7 @@ const char* html_page = R"rawliteral(
                                     connectionStatus = 'Solved';
                                     connectionStatusClass = 'text-green-400';
                                 } else if (!isConnected) {
-                                    if (module.lastSeen === -1) {
+                                    if (lastSeenSeconds === -1) {
                                         connectionStatus = 'Awaiting';
                                         connectionStatusClass = 'text-yellow-400';
                                     } else {
@@ -714,7 +746,7 @@ const char* html_page = R"rawliteral(
                 
                 const lastSeenSec = audio.lastSeen;
                 if (lastSeenSec === 0) {
-                    audioLastSeen.textContent = 'Never';
+                    audioLastSeen.textContent = 'Now';
                 } else if (lastSeenSec < 60) {
                     audioLastSeen.textContent = lastSeenSec + 's ago';
                 } else {
@@ -755,7 +787,7 @@ const char* html_page = R"rawliteral(
                 
                 const lastSeenSec = serial.lastSeen;
                 if (lastSeenSec === 0) {
-                    serialLastSeen.textContent = 'Never';
+                    serialLastSeen.textContent = 'Now';
                 } else if (lastSeenSec < 60) {
                     serialLastSeen.textContent = lastSeenSec + 's ago';
                 } else {

@@ -8,6 +8,24 @@
 #include <functional>
 
 // ============================================================================
+// CONFIGURABLE TIMING CONSTANTS
+// ============================================================================
+
+// Module heartbeat timeouts (milliseconds)
+#ifndef GAME_STATE_HEARTBEAT_DISCOVERY_TIMEOUT_MS
+#define GAME_STATE_HEARTBEAT_DISCOVERY_TIMEOUT_MS 6000UL   // 2 missed 3s heartbeats
+#endif
+
+#ifndef GAME_STATE_HEARTBEAT_GAME_TIMEOUT_MS
+#define GAME_STATE_HEARTBEAT_GAME_TIMEOUT_MS 2000UL       // 2 missed 1s heartbeats
+#endif
+
+// Module inactivity threshold (milliseconds)
+#ifndef GAME_STATE_MODULE_INACTIVE_TIMEOUT_MS
+#define GAME_STATE_MODULE_INACTIVE_TIMEOUT_MS 5000UL
+#endif
+
+// ============================================================================
 // GAME CONSTANTS & ENUMS
 // ============================================================================
 

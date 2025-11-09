@@ -62,33 +62,37 @@
 // Broadcast ID for messages to all modules
 #define CAN_ID_BROADCAST CAN_INSTANCE_ID(CAN_TYPE_BROADCAST, 0x00)
 
-// Audio sound identifiers
-enum CanAudioSound : uint8_t {
-  AUDIO_TITLE               = 0x00,
-  AUDIO_BEEP_NORMAL         = 0x01,
-  AUDIO_BEEP_FAST           = 0x02,
-  AUDIO_BEEP_HIGH           = 0x03,
-  AUDIO_STRIKE              = 0x04,
-  AUDIO_DEFUSED             = 0x05,
-  AUDIO_EXPLODED            = 0x06,
-  AUDIO_CORRECT_TIME        = 0x07,
-  AUDIO_GAME_OVER_FANFARE   = 0x08,
-  AUDIO_ALARM_CLOCK_BEEP    = 0x09,
-  AUDIO_ALARM_CLOCK_SNOOZE  = 0x0A,
-  AUDIO_ALARM_EMERGENCY     = 0x0B,
-  // Simon Says tone frequencies
-  AUDIO_SIMON_RED           = 0x0C,
-  AUDIO_SIMON_GREEN         = 0x0D,
-  AUDIO_SIMON_YELLOW        = 0x0E,
-  AUDIO_SIMON_BLUE          = 0x0F,
-};
+// ID negotiation configuration
+#define ID_PROBE_TIMEOUT_MS 500
+#define ID_MAX_INSTANCE 0x1F
 
 // Commands for Serial Display module
 enum CanSerialDisplayCommand : uint8_t
 {
-  SERIAL_DISPLAY_SET_SERIAL = 0x01,
-  SERIAL_DISPLAY_CLEAR = 0x02,
-  SERIAL_DISPLAY_SHOW_CREDIT = 0x03
+  SERIAL_DISPLAY_SET_SERIAL = 0x30,
+  SERIAL_DISPLAY_CLEAR = 0x31,
+  SERIAL_DISPLAY_SHOW_CREDIT = 0x32
+};
+
+// Audio sound identifiers
+enum CanAudioSound : uint8_t {
+  AUDIO_TITLE               = 0x40,
+  AUDIO_BEEP_NORMAL         = 0x41,
+  AUDIO_BEEP_FAST           = 0x42,
+  AUDIO_BEEP_HIGH           = 0x43,
+  AUDIO_STRIKE              = 0x44,
+  AUDIO_DEFUSED             = 0x45,
+  AUDIO_EXPLODED            = 0x46,
+  AUDIO_CORRECT_TIME        = 0x47,
+  AUDIO_GAME_OVER_FANFARE   = 0x48,
+  AUDIO_ALARM_CLOCK_BEEP    = 0x49,
+  AUDIO_ALARM_CLOCK_SNOOZE  = 0x4A,
+  AUDIO_ALARM_EMERGENCY     = 0x4B,
+  // Simon Says tone frequencies
+  AUDIO_SIMON_RED           = 0x4C,
+  AUDIO_SIMON_GREEN         = 0x4D,
+  AUDIO_SIMON_YELLOW        = 0x4E,
+  AUDIO_SIMON_BLUE          = 0x4F,
 };
 
 // Timer to Module messages
@@ -136,10 +140,6 @@ enum IdMessage : uint8_t {
   ID_PROBE = 0x01,        // "Anyone using this ID?"
   ID_TAKEN = 0x02         // "Yes, I'm using this ID"
 };
-
-// ID negotiation configuration
-#define ID_PROBE_TIMEOUT_MS 500
-#define ID_MAX_INSTANCE 0x1F
 
 // Function declarations
 typedef void (*CanMessageCallback)(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);

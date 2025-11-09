@@ -49,10 +49,10 @@ The project uses a sophisticated shared library system for code reuse and consis
 - Connection detection and timeout handling
 - Standardized message formats
 
-### 💓 **[Heartbeat Library](shared_libs/heartbeat/)**  
-- Standardized health monitoring for all modules
-- Automatic status and progress reporting
-- Configurable intervals per module type
+### ⚙️ **[Module State Library](shared_libs/module_state/)**  
+- Unified heartbeat, registration, and status management
+- Automatic status, progress, and solved reporting
+- Optional status LED handling per module
 - Built on CAN bus for reliable communication
 
 **[📖 Complete Shared Libraries Documentation](shared_libs/)**
@@ -98,17 +98,18 @@ pio project init --board your_board
 [env:your_board]
 lib_deps = 
     ../shared_libs/can_bus
-    ../shared_libs/heartbeat
+    ../shared_libs/module_state
 ```
 
 3. **Follow Integration Pattern**:
 ```cpp
 #include <Arduino.h>
 #include <can_bus.h>
-#include <heartbeat.h>
+#include <module_state.h>
 
-void onCanMessage(uint16_t id, const uint8_t* data, uint8_t len) {
-    // Handle CAN messages
+void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
+    moduleStateHandleCanMessage(id, senderId, data, len);
+    // Handle CAN messages specific to your module
 }
 
 void setup() {
@@ -119,17 +120,13 @@ void setup() {
     registerCanCallback(onCanMessage);
     assignUniqueId(CAN_TYPE_YOUR_MODULE);
     
-    // Initialize heartbeat
-    initHeartbeat(HEARTBEAT_INTERVAL_MODULE);
-    
-    // Register with timer
-    uint8_t registerData[1] = {MODULE_REGISTER};
-    sendCanMessage(CAN_ID_TIMER, registerData, 1);
+    // Initialize module state manager (handles registration + heartbeat)
+    initModuleState(STATUS_LED_PIN);
 }
 
 void loop() {
     handleCanMessages();
-    updateHeartbeat();
+    updateModuleState();
     // Your module logic here
 }
 ```
