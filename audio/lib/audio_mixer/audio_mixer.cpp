@@ -1,7 +1,7 @@
 #include <audio_mixer.h>
 #include <hardware/sync.h>
 
-#define SAMPLE_RATE 8000
+#define SAMPLE_RATE 22050
 #define MAX_SOUNDS 4
 #define BUFFER_SAMPLES 128
 

@@ -49,63 +49,63 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t l
     switch (messageId) {
       case AUDIO_BEEP_NORMAL:
         soundData = double_beep;
-        soundLength = double_beep_len / 2;
+        soundLength = DOUBLE_BEEP_SAMPLES;
         break;
       case AUDIO_BEEP_FAST:
         soundData = double_beep_125;
-        soundLength = double_beep_125_len / 2;
+        soundLength = DOUBLE_BEEP_125_SAMPLES;
         break;
       case AUDIO_BEEP_HIGH:
         soundData = time_beep_high;
-        soundLength = time_beep_high_len / 2;
+        soundLength = TIME_BEEP_HIGH_SAMPLES;
         break;
       case AUDIO_STRIKE:
         soundData = strike;
-        soundLength = strike_len / 2;
+        soundLength = STRIKE_SAMPLES;
         break;
       case AUDIO_DEFUSED:
         soundData = bomb_defused;
-        soundLength = bomb_defused_len / 2;
+        soundLength = BOMB_DEFUSED_SAMPLES;
         break;
       case AUDIO_EXPLODED:
         soundData = explosion;
-        soundLength = explosion_len / 2;
+        soundLength = EXPLOSION_SAMPLES;
         break;
       case AUDIO_GAME_OVER_FANFARE:
         soundData = game_over_fanfare;
-        soundLength = game_over_fanfare_len / 2;
+        soundLength = GAME_OVER_FANFARE_SAMPLES;
         break;
       case AUDIO_ALARM_CLOCK_BEEP:
         soundData = alarm_clock_beep;
-        soundLength = alarm_clock_beep_len / 2;
+        soundLength = ALARM_CLOCK_BEEP_SAMPLES;
         break;
       case AUDIO_ALARM_CLOCK_SNOOZE:
         soundData = alarm_clock_snooze;
-        soundLength = alarm_clock_snooze_len / 2;
+        soundLength = ALARM_CLOCK_SNOOZE_SAMPLES;
         break;
       case AUDIO_ALARM_EMERGENCY:
         soundData = alarm_emergency;
-        soundLength = alarm_emergency_len / 2;
+        soundLength = ALARM_EMERGENCY_SAMPLES;
         break;
       case AUDIO_SIMON_RED:
         soundData = simon_red;
-        soundLength = simon_red_len / 2;
+        soundLength = SIMON_RED_SAMPLES;
         break;
       case AUDIO_SIMON_BLUE:
         soundData = simon_blue;
-        soundLength = simon_blue_len / 2;
+        soundLength = SIMON_BLUE_SAMPLES;
         break;
       case AUDIO_SIMON_GREEN:
         soundData = simon_green;
-        soundLength = simon_green_len / 2;
+        soundLength = SIMON_GREEN_SAMPLES;
         break;
       case AUDIO_SIMON_YELLOW:
         soundData = simon_yellow;
-        soundLength = simon_yellow_len / 2;
+        soundLength = SIMON_YELLOW_SAMPLES;
         break;
       case AUDIO_TITLE:
         soundData = title;
-        soundLength = title_len / 2;
+        soundLength = TITLE_SAMPLES;
         break;
       default:
         Serial.print(F("[Audio] [CAN] Unknown message id: 0x"));
@@ -158,72 +158,72 @@ static void handleSerialInput() {
     switch (command) {
       case '1':
         soundData = double_beep;
-        soundLength = double_beep_len / 2;
+        soundLength = DOUBLE_BEEP_SAMPLES;
         soundLabel = F("Normal beep");
         break;
       case '2':
         soundData = double_beep_125;
-        soundLength = double_beep_125_len / 2;
+        soundLength = DOUBLE_BEEP_125_SAMPLES;
         soundLabel = F("Fast beep");
         break;
       case '3':
         soundData = time_beep_high;
-        soundLength = time_beep_high_len / 2;
+        soundLength = TIME_BEEP_HIGH_SAMPLES;
         soundLabel = F("High beep");
         break;
       case 's':
         soundData = strike;
-        soundLength = strike_len / 2;
+        soundLength = STRIKE_SAMPLES;
         soundLabel = F("Strike");
         break;
       case 'd':
         soundData = bomb_defused;
-        soundLength = bomb_defused_len / 2;
+        soundLength = BOMB_DEFUSED_SAMPLES;
         soundLabel = F("Defused");
         break;
       case 'e':
         soundData = explosion;
-        soundLength = explosion_len / 2;
+        soundLength = EXPLOSION_SAMPLES;
         soundLabel = F("Explosion");
         break;
       case 'f':
         soundData = game_over_fanfare;
-        soundLength = game_over_fanfare_len / 2;
+        soundLength = GAME_OVER_FANFARE_SAMPLES;
         soundLabel = F("Game over fanfare");
         break;
       case 'a':
         soundData = alarm_clock_beep;
-        soundLength = alarm_clock_beep_len / 2;
+        soundLength = ALARM_CLOCK_BEEP_SAMPLES;
         soundLabel = F("Alarm clock beep");
         break;
       case 'A':
         soundData = alarm_emergency;
-        soundLength = alarm_emergency_len / 2;
+        soundLength = ALARM_EMERGENCY_SAMPLES;
         soundLabel = F("Alarm emergency");
         break;
       case 'r':
         soundData = simon_red;
-        soundLength = simon_red_len / 2;
+        soundLength = SIMON_RED_SAMPLES;
         soundLabel = F("Simon red");
         break;
       case 'b':
         soundData = simon_blue;
-        soundLength = simon_blue_len / 2;
+        soundLength = SIMON_BLUE_SAMPLES;
         soundLabel = F("Simon blue");
         break;
       case 'g':
         soundData = simon_green;
-        soundLength = simon_green_len / 2;
+        soundLength = SIMON_GREEN_SAMPLES;
         soundLabel = F("Simon green");
         break;
       case 'y':
         soundData = simon_yellow;
-        soundLength = simon_yellow_len / 2;
+        soundLength = SIMON_YELLOW_SAMPLES;
         soundLabel = F("Simon yellow");
         break;
       case 't':
         soundData = title;
-        soundLength = title_len / 2;
+        soundLength = TITLE_SAMPLES;
         soundLabel = F("Title theme");
         break;
       case 'h':
