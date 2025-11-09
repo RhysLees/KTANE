@@ -60,8 +60,6 @@ void setup() {
   Wire.setSCL(1);
   Wire.begin();
 
-  epaperInit();
-
   initCanBus(CAN_ID_SERIAL_DISPLAY);
   registerCanCallback(onCanMessage);
 
@@ -85,4 +83,12 @@ void setup() {
 void loop() {
   handleCanMessages();
   updateModuleState();
+}
+
+void setup1() {
+  epaperTaskSetup();
+}
+
+void loop1() {
+  epaperTaskLoop();
 }

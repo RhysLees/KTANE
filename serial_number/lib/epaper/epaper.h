@@ -12,9 +12,8 @@
 #define EPD_RST 7
 #define EPD_BUSY 8
 
-extern GxEPD2_3C<GxEPD2_266c, GxEPD2_266c::HEIGHT> epaper;
-
-void epaperInit();
+void epaperTaskSetup();
+void epaperTaskLoop();
 void epaperDrawTag(const String &serial);
 void epaperDrawCredit();
 void epaperClear();
