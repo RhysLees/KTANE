@@ -39,10 +39,25 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t l
   // Handle audio-specific messages
   if (id == CAN_ID_AUDIO && len >= 1) {
     uint8_t messageId = data[0];
-    
+
+    // Handle audio control commands
+    if (messageId == AUDIO_CMD_SET_VOLUME) {
+      if (len >= 2) {
+        uint8_t volume = data[1];
+        setAudioMixerVolume(volume);
+        Serial.print(F("[Audio] [CAN] Volume set to "));
+        Serial.print(getAudioMixerVolume());
+        Serial.println(F("%"));
+      } else {
+        Serial.println(F("[Audio] [CAN] Volume command missing payload."));
+      }
+      setModuleStateStatus(MODULE_STATUS_IDLE);
+      return;
+    }
+
     // Set module state to active when processing audio
     setModuleStateStatus(MODULE_STATUS_ACTIVE);
-    
+
     const int16_t* soundData = nullptr;
     unsigned int soundLength = 0;
 
@@ -143,6 +158,8 @@ static void printSerialHelp() {
   Serial.println(F("  g - Simon green"));
   Serial.println(F("  y - Simon yellow"));
   Serial.println(F("  t - Title theme"));
+  Serial.println(F("  + / - - Volume up/down (5%)"));
+  Serial.println(F("  = - Show current volume"));
   Serial.println(F("  h or ? - Show this help"));
   Serial.println();
 }
@@ -226,6 +243,29 @@ static void handleSerialInput() {
         soundLength = TITLE_SAMPLES;
         soundLabel = F("Title theme");
         break;
+      case '+': {
+        uint8_t current = getAudioMixerVolume();
+        uint8_t next = current >= 95 ? 100 : current + 5;
+        setAudioMixerVolume(next);
+        Serial.print(F("[Audio] Volume set to "));
+        Serial.print(next);
+        Serial.println(F("%"));
+        break;
+      }
+      case '-': {
+        uint8_t current = getAudioMixerVolume();
+        uint8_t next = current <= 5 ? 0 : current - 5;
+        setAudioMixerVolume(next);
+        Serial.print(F("[Audio] Volume set to "));
+        Serial.print(next);
+        Serial.println(F("%"));
+        break;
+      }
+      case '=':
+        Serial.print(F("[Audio] Volume "));
+        Serial.print(getAudioMixerVolume());
+        Serial.println(F("%"));
+        break;
       case 'h':
       case '?':
         printSerialHelp();
@@ -271,6 +311,9 @@ void setup() {
     delay(1);
   }
   Serial.println(F("[Audio] Mixer ready"));
+  Serial.print(F("[Audio] Initial volume "));
+  Serial.print(getAudioMixerVolume());
+  Serial.println(F("%"));
 
   Serial.println(F("[Audio] Ready. Type 'h' for help."));
 }

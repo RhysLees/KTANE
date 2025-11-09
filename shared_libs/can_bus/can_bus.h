@@ -95,6 +95,11 @@ enum CanAudioSound : uint8_t {
   AUDIO_SIMON_BLUE          = 0x4F,
 };
 
+// Audio control commands
+enum CanAudioCommand : uint8_t {
+  AUDIO_CMD_SET_VOLUME      = 0x20  // data[1] = volume percent (0-100)
+};
+
 // Timer to Module messages
 enum TimerToModuleMessage : uint8_t {
   TIMER_GAME_START = 0x10,        // Game started

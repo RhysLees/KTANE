@@ -3,22 +3,43 @@
 
 #define SAMPLE_RATE 22050
 #define MAX_SOUNDS 4
-#define BUFFER_SAMPLES 128
+#define BUFFER_SAMPLES 256
 
-struct SoundInstance {
-  const int16_t* data;
-  unsigned int length;
-  unsigned int index;
+struct MixerVoice {
+  MemoryStream stream;
   bool active;
+  int mixerIndex;
+  uint8_t baseWeight;
 };
 
-static SoundInstance sounds[MAX_SOUNDS];
+static MixerVoice voices[MAX_SOUNDS];
+static InputMixer<int16_t> mixer;
+static StreamCopy copier;
 static I2SStream i2s;
 static I2SConfig i2sConfig;
+static AudioInfo audioInfo;
 static volatile bool initialized = false;
 static bool loggerInitialized = false;
 static bool lockInitialized = false;
 static critical_section_t mixerLock;
+static uint8_t masterVolumePercent = 100;
+
+static uint8_t clampVolume(uint8_t percent) {
+  return percent > 100 ? 100 : percent;
+}
+
+static void applyVoiceWeightUnlocked(int index) {
+  if (index < 0 || index >= MAX_SOUNDS) return;
+  const MixerVoice& voice = voices[index];
+  if (!voice.active) {
+    mixer.setWeight(voice.mixerIndex, 0);
+    return;
+  }
+
+  uint16_t scaled = static_cast<uint16_t>(voice.baseWeight) * masterVolumePercent;
+  uint8_t weight = static_cast<uint8_t>((scaled + 50) / 100); // round nearest
+  mixer.setWeight(voice.mixerIndex, weight);
+}
 
 bool audioMixerReady() {
   return initialized;
@@ -37,9 +58,10 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
     loggerInitialized = true;
   }
 
-  AudioInfo info(SAMPLE_RATE, 1, 16);
+  audioInfo = AudioInfo(SAMPLE_RATE, 1, 16);
+
   i2sConfig = i2s.defaultConfig(TX_MODE);
-  i2sConfig.copyFrom(info);
+  i2sConfig.copyFrom(audioInfo);
   i2sConfig.pin_bck = bckPin;
   i2sConfig.pin_ws = wsPin;
   i2sConfig.pin_data = dataPin;
@@ -47,14 +69,21 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
   i2sConfig.buffer_count = 4;
   i2s.begin(i2sConfig);
 
-  critical_section_enter_blocking(&mixerLock);
+  mixer.begin(audioInfo);
+  mixer.setLimitToAvailableData(false);
+
   for (int i = 0; i < MAX_SOUNDS; ++i) {
-    sounds[i].data = nullptr;
-    sounds[i].length = 0;
-    sounds[i].index = 0;
-    sounds[i].active = false;
+    voices[i].stream.setAudioInfo(audioInfo);
+    voices[i].stream.setValue(nullptr, 0);
+    voices[i].stream.begin();
+    voices[i].mixerIndex = mixer.add(voices[i].stream, 0);
+    voices[i].active = false;
+    voices[i].baseWeight = 100;
   }
-  critical_section_exit(&mixerLock);
+
+  copier.begin(i2s, mixer);
+
+  setAudioMixerVolume(masterVolumePercent);
 
   initialized = true;
 }
@@ -62,15 +91,17 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
 bool playSound(const int16_t* data, unsigned int length) {
   if (!initialized || data == nullptr || length == 0) return false;
 
+  const size_t byteLength = length * sizeof(int16_t);
   bool queued = false;
 
   critical_section_enter_blocking(&mixerLock);
   for (int i = 0; i < MAX_SOUNDS; ++i) {
-    if (!sounds[i].active) {
-      sounds[i].data = data;
-      sounds[i].length = length;
-      sounds[i].index = 0;
-      sounds[i].active = true;
+    if (!voices[i].active) {
+      voices[i].stream.setValue(reinterpret_cast<const uint8_t*>(data), byteLength);
+      voices[i].stream.begin();
+      voices[i].baseWeight = 100;
+      voices[i].active = true;
+      applyVoiceWeightUnlocked(i);
       queued = true;
       break;
     }
@@ -82,33 +113,35 @@ bool playSound(const int16_t* data, unsigned int length) {
 
 void updateAudioMixer() {
   if (!initialized) return;
-  if (i2s.availableForWrite() < BUFFER_SAMPLES * sizeof(int16_t)) return;
-
-  int16_t buffer[BUFFER_SAMPLES] = {0};
 
   critical_section_enter_blocking(&mixerLock);
-
-  for (int i = 0; i < BUFFER_SAMPLES; ++i) {
-    int32_t mixed = 0;
-    int activeCount = 0;
-
-    for (int s = 0; s < MAX_SOUNDS; ++s) {
-      if (!sounds[s].active) continue;
-
-      mixed += sounds[s].data[sounds[s].index++];
-      activeCount++;
-
-      if (sounds[s].index >= sounds[s].length) {
-        sounds[s].active = false;
-      }
+  for (int i = 0; i < MAX_SOUNDS; ++i) {
+    if (voices[i].active && voices[i].stream.available() <= 0) {
+      mixer.setWeight(voices[i].mixerIndex, 0);
+      voices[i].stream.setValue(nullptr, 0);
+      voices[i].stream.begin();
+      voices[i].active = false;
     }
-
-    if (activeCount > 0) mixed /= activeCount;
-    buffer[i] = constrain(mixed, -32768, 32767);
   }
-
   critical_section_exit(&mixerLock);
 
-  i2s.write(reinterpret_cast<const uint8_t*>(buffer), BUFFER_SAMPLES * sizeof(int16_t));
+  copier.copy();
+}
+
+void setAudioMixerVolume(uint8_t volumePercent) {
+  uint8_t newVolume = clampVolume(volumePercent);
+  masterVolumePercent = newVolume;
+
+  if (!initialized || !lockInitialized) return;
+
+  critical_section_enter_blocking(&mixerLock);
+  for (int i = 0; i < MAX_SOUNDS; ++i) {
+    applyVoiceWeightUnlocked(i);
+  }
+  critical_section_exit(&mixerLock);
+}
+
+uint8_t getAudioMixerVolume() {
+  return masterVolumePercent;
 }
 

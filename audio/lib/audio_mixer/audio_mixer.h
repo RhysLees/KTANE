@@ -12,3 +12,5 @@ void initAudioMixer(uint8_t bckPin = AUDIO_MIXER_PIN_BCK,
 void updateAudioMixer(); // Call in loop()
 bool playSound(const int16_t* data, unsigned int length); // length in samples (not bytes)
 bool audioMixerReady();
+void setAudioMixerVolume(uint8_t volumePercent); // 0-100
+uint8_t getAudioMixerVolume();
