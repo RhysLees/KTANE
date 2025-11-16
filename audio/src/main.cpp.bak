@@ -1,11 +1,9 @@
 #include <Arduino.h>
-#include <can_bus.h>
+#include <can_bus.h>  // Needed for audio constants only, CAN bus disabled
 #include <audio_mixer.h>
-#include <module_state.h>
+// #include <module_state.h>  // Module state disabled
 #include <sd_card.h>
 #include <sound_bank.h>
-#include <sd_test.h>
-#include <amp.h>
 
 static void processSerialCommand(char command);
 
@@ -37,72 +35,64 @@ static void logSoundQueued(const __FlashStringHelper* source, const __FlashStrin
   Serial.println(sound);
 }
 
-void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
-  // Let module_state handle timer messages first
-  moduleStateHandleCanMessage(id, senderId, data, len);
-  
-  // Handle audio-specific messages
-  if (id == CAN_ID_AUDIO && len >= 1) {
-    uint8_t messageId = data[0];
-
-    // Handle audio control commands
-    if (messageId == AUDIO_SET_VOLUME) {
-      if (len >= 2) {
-        uint8_t volume = data[1];
-        setAudioMixerVolume(volume);
-        Serial.print(F("[Audio] [CAN] Volume set to "));
-        Serial.print(getAudioMixerVolume());
-        Serial.println(F("%"));
-      } else {
-        Serial.println(F("[Audio] [CAN] Volume command missing payload."));
-      }
-      setModuleStateStatus(MODULE_STATUS_IDLE);
-      return;
-    }
-
-    // Set module state to active when processing audio
-    setModuleStateStatus(MODULE_STATUS_ACTIVE);
-
-    const int16_t* soundData = nullptr;
-    size_t soundLength = 0;
-    SoundBankStatus bankStatus = getSoundFromBank(messageId, &soundData, &soundLength);
-
-    if (bankStatus == SoundBankStatus::Success) {
-      if (playSound(soundData, static_cast<unsigned int>(soundLength))) {
-        logSoundQueued(F("[CAN]"), getSoundName(messageId));
-      } else {
-        Serial.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
-      }
-    } else if (bankStatus == SoundBankStatus::FileTooLarge) {
-      // Stream large files instead of loading into RAM
-      const char* path = getSoundFilePath(messageId);
-      if (path && playSoundFromFile(path)) {
-        logSoundQueued(F("[CAN] [Stream]"), getSoundName(messageId));
-      } else {
-        Serial.print(F("[Audio] [CAN] Failed to stream sound '"));
-        Serial.println(getSoundName(messageId));
-      }
-    } else if (bankStatus == SoundBankStatus::SoundNotRegistered) {
-      Serial.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
-      Serial.println(messageId, HEX);
-    } else {
-      Serial.print(F("[Audio] [CAN] Failed to load sound"));
-      Serial.print(getSoundName(messageId));
-      Serial.print(F(" ("));
-      const char* path = getSoundFilePath(messageId);
-      if (path) {
-        Serial.print(path);
-      } else {
-        Serial.print(F("unmapped"));
-      }
-      Serial.print(F("): "));
-      Serial.println(soundBankStatusToString(bankStatus));
-    }
-    
-    // Return to idle status after processing
-    setModuleStateStatus(MODULE_STATUS_IDLE);
-  }
-}
+// CAN bus disabled
+// void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t len) {
+//   // Let module_state handle timer messages first
+//   moduleStateHandleCanMessage(id, senderId, data, len);
+//   
+//   // Handle audio-specific messages
+//   if (id == CAN_ID_AUDIO && len >= 1) {
+//     uint8_t messageId = data[0];
+//
+//     // Handle audio control commands
+//     if (messageId == AUDIO_SET_VOLUME) {
+//       if (len >= 2) {
+//         uint8_t volume = data[1];
+//         setAudioMixerVolume(volume);
+//         Serial.print(F("[Audio] [CAN] Volume set to "));
+//         Serial.print(getAudioMixerVolume());
+//         Serial.println(F("%"));
+//       } else {
+//         Serial.println(F("[Audio] [CAN] Volume command missing payload."));
+//       }
+//       setModuleStateStatus(MODULE_STATUS_IDLE);
+//       return;
+//     }
+//
+//     // Set module state to active when processing audio
+//     setModuleStateStatus(MODULE_STATUS_ACTIVE);
+//
+//     const int16_t* soundData = nullptr;
+//     size_t soundLength = 0;
+//     SoundBankStatus bankStatus = getSoundFromBank(messageId, &soundData, &soundLength);
+//
+//     if (bankStatus == SoundBankStatus::Success) {
+//       if (playSound(soundData, static_cast<unsigned int>(soundLength))) {
+//         logSoundQueued(F("[CAN]"), getSoundName(messageId));
+//       } else {
+//         Serial.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
+//       }
+//     } else if (bankStatus == SoundBankStatus::SoundNotRegistered) {
+//       Serial.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
+//       Serial.println(messageId, HEX);
+//     } else {
+//       Serial.print(F("[Audio] [CAN] Failed to load sound"));
+//       Serial.print(getSoundName(messageId));
+//       Serial.print(F(" ("));
+//       const char* path = getSoundFilePath(messageId);
+//       if (path) {
+//         Serial.print(path);
+//       } else {
+//         Serial.print(F("unmapped"));
+//       }
+//       Serial.print(F("): "));
+//       Serial.println(soundBankStatusToString(bankStatus));
+//     }
+//     
+//     // Return to idle status after processing
+//     setModuleStateStatus(MODULE_STATUS_IDLE);
+//   }
+// }
 
 static void printSerialHelp() {
   Serial.println();
@@ -125,21 +115,10 @@ static void printSerialHelp() {
   Serial.println(F("  Volume control:"));
   Serial.println(F("    + / - - Volume up/down (5%)"));
   Serial.println(F("    = - Show current volume"));
-  Serial.println(F("  Amp control:"));
-  Serial.println(F("    m - Print amp status"));
-  Serial.println(F("    M - Reset amp"));
-  Serial.println(F("    [ / ] - Headphone volume L/R down/up (0-63)"));
-  Serial.println(F("    { / } - Headphone volume both down/up (0-63)"));
-  Serial.println(F("    k / K - Disable/enable speaker"));
   Serial.println(F("  Storage:"));
   Serial.println(F("    F - Show SD card info"));
   Serial.println(F("    L - List SD root directory"));
   Serial.println(F("    R - Reload sound files from SD"));
-  Serial.println(F("  SD Card Tests:"));
-  Serial.println(F("    T - Run full SD card test"));
-  Serial.println(F("    B - Run basic SD card test"));
-  Serial.println(F("    I - Print SD card details"));
-  Serial.println(F("    W - Test SD card read/write"));
   Serial.println(F("  Help:"));
   Serial.println(F("    h or ? - Show this help"));
   Serial.println();
@@ -214,8 +193,6 @@ static void processSerialCommand(char command) {
         requestSoundPlayback = true;
         break;
       case 't':
-        // Check if this is a test command (basic test) or sound playback
-        // For now, prioritize sound playback - use 'B' for basic test instead
         soundMessageId = AUDIO_PLAY_TITLE;
         requestSoundPlayback = true;
         break;
@@ -242,48 +219,6 @@ static void processSerialCommand(char command) {
         Serial.print(getAudioMixerVolume());
         Serial.println(F("%"));
         break;
-      case 'm':
-        printAmpStatus();
-        break;
-      case 'M':
-        resetAmp();
-        break;
-      case '[': {
-        // Headphone volume L down
-        uint8_t current = getAmpHeadphoneVolume(false);
-        uint8_t next = current > 0 ? current - 1 : 0;
-        setAmpHeadphoneVolume(false, next);
-        break;
-      }
-      case ']': {
-        // Headphone volume L up
-        uint8_t current = getAmpHeadphoneVolume(false);
-        uint8_t next = current < 63 ? current + 1 : 63;
-        setAmpHeadphoneVolume(false, next);
-        break;
-      }
-      case '{': {
-        // Headphone volume both down
-        uint8_t current = getAmpHeadphoneVolume(false);
-        uint8_t next = current > 0 ? current - 1 : 0;
-        setAmpHeadphoneVolume(false, next);
-        setAmpHeadphoneVolume(true, next);
-        break;
-      }
-      case '}': {
-        // Headphone volume both up
-        uint8_t current = getAmpHeadphoneVolume(false);
-        uint8_t next = current < 63 ? current + 1 : 63;
-        setAmpHeadphoneVolume(false, next);
-        setAmpHeadphoneVolume(true, next);
-        break;
-      }
-      case 'k':
-        setAmpSpeakerEnabled(false);
-        break;
-      case 'K':
-        setAmpSpeakerEnabled(true);
-        break;
       case 'h':
       case '?':
         printSerialHelp();
@@ -307,18 +242,6 @@ static void processSerialCommand(char command) {
       case 'R':
         soundBankResetCache();
         break;
-      case 'T':
-        runSdCardFullTest();
-        break;
-      case 'B':
-        runSdCardBasicTest();
-        break;
-      case 'I':
-        printSdCardDetails();
-        break;
-      case 'W':
-        testSdCardReadWrite();
-        break;
       case '\r':
       case '\n':
         break;
@@ -339,16 +262,6 @@ static void processSerialCommand(char command) {
           logSoundQueued(F("[Serial]"), soundLabel);
         } else {
           Serial.println(F("[Audio] [Serial] Mixer busy, could not queue sound."));
-        }
-      } else if (status == SoundBankStatus::FileTooLarge) {
-        // Stream large files instead of loading into RAM
-        const char* path = getSoundFilePath(soundMessageId);
-        if (path && playSoundFromFile(path)) {
-          logSoundQueued(F("[Serial] [Stream]"), soundLabel);
-        } else {
-          Serial.print(F("[Audio] [Serial] Failed to stream sound '"));
-          Serial.print(soundLabel);
-          Serial.println(F("'"));
         }
       } else {
         Serial.print(F("[Audio] [Serial] Failed to load sound '"));
@@ -377,18 +290,19 @@ void setup() {
 
   Serial.println(F("[Audio] Using TLV320DAC3100 I2S DAC (BCK=GP6, LRCK=GP7, DIN=GP8)"));
 
-  Serial.println(F("[Audio] Initializing CAN bus..."));
-  initCanBus(CAN_ID_AUDIO);
-  registerCanCallback(onCanMessage);
-  Serial.println(F("[Audio] CAN bus ready (ID=C0)"));
+  // CAN bus disabled
+  // Serial.println(F("[Audio] Initializing CAN bus..."));
+  // initCanBus(CAN_ID_AUDIO);
+  // registerCanCallback(onCanMessage);
+  // Serial.println(F("[Audio] CAN bus ready (ID=C0)"));
   
+  // Module state disabled
   // Initialize module_state system (starts in discovery mode)
-  initModuleState(MODULE_STATE_NO_LED);  // Audio module doesn't have a status LED
-  Serial.println(F("[Audio] Module state initialized"));
+  // initModuleState(MODULE_STATE_NO_LED);  // Audio module doesn't have a status LED
+  // Serial.println(F("[Audio] Module state initialized"));
 
   Serial.println(F("[Audio] Starting mixer core..."));
-  // Initialize with correct pins: BCK=GP6, WS=GP7, DIN=GP8
-  initAudioMixer(6, 7, 8);
+  initAudioMixer();
   while (!audioMixerReady()) {
     delay(1);
   }
@@ -411,15 +325,17 @@ void setup() {
 }
 
 void loop() {
-  handleCanMessages();
-  updateModuleState();
+  // CAN bus disabled
+  // handleCanMessages();
+  // Module state disabled
+  // updateModuleState();
   handleSerialInput();
 }
 
 void setup1() {
-  // Mixer is initialized in setup() on core 0
-  // Core 1 just runs the update loop
-  Serial.println(F("[Audio] Core1 mixer loop starting..."));
+  Serial.println(F("[Audio] Core1 initializing mixer..."));
+  initAudioMixer();
+  Serial.println(F("[Audio] Core1 mixer setup complete."));
 }
 
 void loop1() {

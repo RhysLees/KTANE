@@ -500,7 +500,7 @@ void ModuleState::setSolved(bool solved) {
             sendCanFrame(CAN_ID_TIMER, solvedData, 1);
             
             // Play solved sound
-            playAudio(AUDIO_DEFUSED);
+            playAudio(AUDIO_PLAY_DEFUSED);
             
             // Update status
             currentStatus = MODULE_STATUS_SOLVED;
@@ -590,7 +590,7 @@ bool ModuleState::sendBroadcastMessage(const uint8_t* data, uint8_t len) {
     return sendCanFrame(CAN_ID_BROADCAST, data, len);
 }
 
-bool ModuleState::playAudio(CanAudioSound sound) {
+bool ModuleState::playAudio(AudioMessage sound) {
     uint8_t payload = static_cast<uint8_t>(sound);
     return sendCanFrame(CAN_ID_AUDIO, &payload, 1);
 }

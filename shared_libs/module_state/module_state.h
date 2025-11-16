@@ -243,7 +243,7 @@ public:
     bool sendMessage(uint16_t receiverId, const uint8_t* data, uint8_t len);
     bool sendTimerMessage(const uint8_t* data, uint8_t len);
     bool sendBroadcastMessage(const uint8_t* data, uint8_t len);
-    bool playAudio(CanAudioSound sound);
+    bool playAudio(AudioMessage sound);
     bool playAudio(const uint8_t* soundCodes, uint8_t len);
     bool sendTelemetry(uint8_t telemetryType, const uint8_t* payload, uint8_t len);
 };

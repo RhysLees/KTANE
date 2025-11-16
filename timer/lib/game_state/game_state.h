@@ -161,6 +161,7 @@ struct AudioModule
     
     // Helper methods
     void sendSound(uint8_t soundType);
+    void setVolume(uint8_t volumePercent);
     void markSeen();
     void markDisconnected();
     void updateStatus(uint8_t moduleStatus, uint8_t moduleProgress, bool moduleSolved);
@@ -270,6 +271,7 @@ private:
     
     // Game Configuration
     GameConfig config;
+    uint8_t audioVolume = 100;
     
     // Edgework
     Edgework edgework;
@@ -387,6 +389,8 @@ public:
     
     // Get all audio modules (for iteration)
     const std::vector<AudioModule>& getAllAudioModules() const { return audioModules; }
+    void setAudioVolume(uint8_t volumePercent);
+    uint8_t getAudioVolume() const { return audioVolume; }
     
     // ========================================================================
     // SERIAL MODULE MANAGEMENT

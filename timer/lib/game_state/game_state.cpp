@@ -58,6 +58,12 @@ void AudioModule::sendSound(uint8_t soundType) {
     sendCanMessage(canId, soundData, 1);
 }
 
+void AudioModule::setVolume(uint8_t volumePercent) {
+    uint8_t clamped = volumePercent > 100 ? 100 : volumePercent;
+    uint8_t payload[2] = {AUDIO_SET_VOLUME, clamped};
+    sendCanMessage(canId, payload, 2);
+}
+
 void AudioModule::markSeen() {
     connected = true;
     lastSeen = millis();
@@ -341,6 +347,8 @@ void GameStateManager::registerAudioModule(uint16_t canId) {
     audioModules.emplace_back(canId);
     AudioModule* newModule = &audioModules.back();
     audioModuleMap[canId] = newModule;
+    
+    newModule->setVolume(audioVolume);
 }
 
 void GameStateManager::unregisterAudioModule(uint16_t canId) {
@@ -378,6 +386,22 @@ void GameStateManager::updateAudioModuleSeen(uint16_t canId) {
     AudioModule* module = getAudioModule(canId);
     if (module) {
         module->markSeen();
+    }
+}
+
+void GameStateManager::setAudioVolume(uint8_t volumePercent) {
+    uint8_t clamped = volumePercent > 100 ? 100 : volumePercent;
+    audioVolume = clamped;
+
+    bool sentToRegistered = false;
+    for (auto& module : audioModules) {
+        module.setVolume(clamped);
+        sentToRegistered = true;
+    }
+
+    if (!sentToRegistered) {
+        uint8_t payload[2] = {AUDIO_SET_VOLUME, clamped};
+        sendCanMessage(CAN_ID_AUDIO, payload, 2);
     }
 }
 

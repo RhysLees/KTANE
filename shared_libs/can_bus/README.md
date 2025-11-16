@@ -217,7 +217,7 @@ Byte 3-7: Message Data (payload, varies by message type)
 // Data: [0x13, 0x02, 0x21] = [SIMON, instance 2, SOLVED]
 
 // Audio plays strike sound (sent to audio ID 0x20)
-// Data: [0x00, 0x00, 0x04] = [TIMER, instance 0, AUDIO_STRIKE]
+// Data: [0x00, 0x00, 0x04] = [TIMER, instance 0, AUDIO_PLAY_STRIKE]
 ```
 
 ## Module Types
@@ -228,7 +228,19 @@ These modules have predetermined IDs:
 #define CAN_ID_TIMER          0x00   // Timer module
 #define CAN_ID_AUDIO          0x20   // Audio system  
 #define CAN_ID_SERIAL_DISPLAY 0x400  // Serial number display
+#define CAN_ID_DEBUGGER       0x780  // Diagnostics interface
+#define CAN_ID_DEBUGGER_SENDER 0x7A0 // Diagnostics sender relay
 #define CAN_ID_BROADCAST      0x7E0  // Broadcast to all modules
+```
+
+### Module Type Allocation Map
+```
+0x00–0x0F : Core infrastructure (Timer, Audio, reserved growth)
+0x10–0x1F : Classic gameplay modules (Wires, Button, Keypad, …)
+0x20–0x2F : Side modules / bomb casing elements (Serial display, etc.)
+0x30–0x3B : Needy modules
+0x3C–0x3E : Diagnostics & tooling
+0x3F      : Broadcast (reserved)
 ```
 
 ### Dynamic ID Modules  
@@ -263,10 +275,10 @@ These modules negotiate unique IDs:
 - `ID_TAKEN` (0x02) - Respond that ID is in use
 
 ### Audio Messages
-- `AUDIO_BEEP_NORMAL` (0x01) - Normal beep sound
-- `AUDIO_STRIKE` (0x04) - Strike sound
-- `AUDIO_DEFUSED` (0x05) - Bomb defused sound
-- `AUDIO_SIMON_RED` (0x0C) - Simon Says red tone
+- `AUDIO_PLAY_BEEP_NORMAL` (0x01) - Normal beep sound
+- `AUDIO_PLAY_STRIKE` (0x04) - Strike sound
+- `AUDIO_PLAY_DEFUSED` (0x05) - Bomb defused sound
+- `AUDIO_PLAY_SIMON_RED` (0x0C) - Simon Says red tone
 - ... see can_bus.h for complete list
 
 ## Advanced Usage

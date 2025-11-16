@@ -110,17 +110,17 @@ private:
         {SimonColor::Yellow, SimonColor::Green, SimonColor::Blue, SimonColor::Red},
     }};
 
-    static constexpr std::array<CanAudioSound, COLOR_COUNT> DISPLAY_SOUNDS = {
-        AUDIO_SIMON_RED,
-        AUDIO_SIMON_BLUE,
-        AUDIO_SIMON_GREEN,
-        AUDIO_SIMON_YELLOW};
+    static constexpr std::array<AudioMessage, COLOR_COUNT> DISPLAY_SOUNDS = {
+        AUDIO_PLAY_SIMON_RED,
+        AUDIO_PLAY_SIMON_BLUE,
+        AUDIO_PLAY_SIMON_GREEN,
+        AUDIO_PLAY_SIMON_YELLOW};
 
-    static constexpr std::array<CanAudioSound, COLOR_COUNT> PRESS_SOUNDS = {
-        AUDIO_BEEP_NORMAL,
-        AUDIO_CORRECT_TIME,
-        AUDIO_BEEP_HIGH,
-        AUDIO_BEEP_FAST};
+    static constexpr std::array<AudioMessage, COLOR_COUNT> PRESS_SOUNDS = {
+        AUDIO_PLAY_BEEP_NORMAL,
+        AUDIO_PLAY_CORRECT_TIME,
+        AUDIO_PLAY_BEEP_HIGH,
+        AUDIO_PLAY_BEEP_FAST};
 
     // ---------------------------------------------------------------------
     // Internal helpers
@@ -147,7 +147,7 @@ private:
     bool readButton(uint8_t index) const;
     void playDisplaySound(SimonColor color);
     void playPressSound(SimonColor color);
-    void sendAudio(CanAudioSound sound);
+    void sendAudio(AudioMessage sound);
     void registerStrike();
     void updateProgress();
     void resetButtonStates();

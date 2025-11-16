@@ -29,6 +29,7 @@ void handleStatus(WiFiClient& client) {
     const Edgework& edge = gameStatePtr->getEdgework();
     doc["indicators"] = edge.indicators.size();
     doc["ports"] = edge.ports.size();
+    doc["audioVolume"] = gameStatePtr->getAudioVolume();
     
     // Include detailed edgework
     JsonArray indicatorsArray = doc.createNestedArray("indicatorDetails");
@@ -267,6 +268,82 @@ void handleModules(WiFiClient& client) {
     sendResponse(client, 200, "application/json", response);
 }
 
+void handleGetAudio(WiFiClient& client) {
+    if (!gameStatePtr) {
+        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Game state not initialized\"}");
+        return;
+    }
+
+    DynamicJsonDocument doc(256);
+    doc["success"] = true;
+    doc["volume"] = gameStatePtr->getAudioVolume();
+
+    const AudioModule* module = gameStatePtr->getAudioModule();
+    bool connected = module && module->isConnected();
+    doc["connected"] = connected;
+    if (module) {
+        doc["lastSeenMs"] = module->getTimeSinceLastSeen();
+    } else {
+        doc["lastSeenMs"] = 0;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    sendResponse(client, 200, "application/json", response);
+}
+
+void handleSetAudio(WiFiClient& client, String body) {
+    if (!gameStatePtr) {
+        sendResponse(client, 500, "application/json", "{\"success\":false,\"error\":\"Game state not initialized\"}");
+        return;
+    }
+
+    if (body.length() == 0) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"Missing request body\"}");
+        return;
+    }
+
+    DynamicJsonDocument doc(256);
+    DeserializationError error = deserializeJson(doc, body);
+    if (error) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    JsonVariant volumeVar = doc["volume"];
+    if (volumeVar.isNull()) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"Missing volume\"}");
+        return;
+    }
+
+    if (!volumeVar.is<int>() && !volumeVar.is<unsigned int>() && !volumeVar.is<float>() && !volumeVar.is<double>()) {
+        sendResponse(client, 400, "application/json", "{\"success\":false,\"error\":\"Volume must be a number\"}");
+        return;
+    }
+
+    int volumeValue = static_cast<int>(volumeVar.as<float>());
+    if (volumeValue < 0) volumeValue = 0;
+    if (volumeValue > 100) volumeValue = 100;
+
+    gameStatePtr->setAudioVolume(static_cast<uint8_t>(volumeValue));
+
+    const AudioModule* module = gameStatePtr->getAudioModule();
+
+    DynamicJsonDocument responseDoc(256);
+    responseDoc["success"] = true;
+    responseDoc["volume"] = gameStatePtr->getAudioVolume();
+    responseDoc["connected"] = module && module->isConnected();
+    if (module) {
+        responseDoc["lastSeenMs"] = module->getTimeSinceLastSeen();
+    } else {
+        responseDoc["lastSeenMs"] = 0;
+    }
+
+    String response;
+    serializeJson(responseDoc, response);
+    sendResponse(client, 200, "application/json", response);
+}
+
 // Handle combined "all" API - returns status, modules, and config
 void handleAll(WiFiClient& client) {
     if (!gameStatePtr) {
@@ -291,6 +368,7 @@ void handleAll(WiFiClient& client) {
     const Edgework& edge = gameStatePtr->getEdgework();
     doc["status"]["indicators"] = edge.indicators.size();
     doc["status"]["ports"] = edge.ports.size();
+    doc["status"]["audioVolume"] = gameStatePtr->getAudioVolume();
     
     // Include detailed edgework
     JsonArray indicatorsArray = doc["status"].createNestedArray("indicatorDetails");

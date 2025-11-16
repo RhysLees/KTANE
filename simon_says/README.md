@@ -69,12 +69,12 @@ The module implements the official Simon Says rules based on strikes and serial 
 Audio is handled entirely by the dedicated audio module via CAN bus messages:
 
 - **Button Press Sounds**: Different audio types for each color
-  - Red: `AUDIO_BEEP_NORMAL`
-  - Yellow: `AUDIO_BEEP_FAST`
-  - Green: `AUDIO_BEEP_HIGH`
-  - Blue: `AUDIO_CORRECT_TIME`
-- **Strike Sound**: `AUDIO_STRIKE`
-- **Solved Sound**: `AUDIO_DEFUSED`
+  - Red: `AUDIO_PLAY_BEEP_NORMAL`
+  - Yellow: `AUDIO_PLAY_BEEP_FAST`
+  - Green: `AUDIO_PLAY_BEEP_HIGH`
+  - Blue: `AUDIO_PLAY_CORRECT_TIME`
+- **Strike Sound**: `AUDIO_PLAY_STRIKE`
+- **Solved Sound**: `AUDIO_PLAY_DEFUSED`
 
 ## Game Flow
 

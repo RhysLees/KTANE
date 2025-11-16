@@ -172,6 +172,14 @@ const char* html_page = R"rawliteral(
                             <span class="font-mono" id="audioModuleLastSeen">-</span>
                         </div>
                     </div>
+                    <div class="mt-4">
+                        <label class="flex items-center justify-between text-xs text-gray-300 mb-2">
+                            <span>Volume</span>
+                            <span id="audioVolumeValue" class="font-bold text-white">--%</span>
+                        </label>
+                        <input type="range" id="audioVolumeSlider" min="0" max="100" step="1" value="100" class="w-full accent-orange-500">
+                        <div id="audioVolumeStatus" class="text-xs text-gray-400 mt-2 hidden" data-auto="1"></div>
+                    </div>
                 </div>
                 
                 <!-- Serial Display Module Status -->
@@ -276,6 +284,16 @@ const char* html_page = R"rawliteral(
 
     <script>
         let config = {};
+        let audioVolumePending = false;
+        let audioVolumeFeedbackTimeout = null;
+        const audioVolumeSlider = document.getElementById('audioVolumeSlider');
+        const audioVolumeValue = document.getElementById('audioVolumeValue');
+        const audioVolumeStatus = document.getElementById('audioVolumeStatus');
+
+        if (audioVolumeSlider) {
+            audioVolumeSlider.addEventListener('input', (event) => handleAudioVolumeInput(event.target.value));
+            audioVolumeSlider.addEventListener('change', (event) => handleAudioVolumeCommit(event.target.value));
+        }
 
         function sendCommand(cmd) {
             fetch('/api/command', {
@@ -428,7 +446,7 @@ const char* html_page = R"rawliteral(
                         else strikeCard.classList.add('border-green-500');
 
                         // Update system modules (audio and serial)
-                        updateSystemModules(status.audioModules, status.serialModules);
+                        updateSystemModules(status.audioModules, status.serialModules, status.audioVolume);
                         
                         // Update modules summary
                         document.getElementById('totalModules').textContent = status.totalModules;
@@ -720,13 +738,127 @@ const char* html_page = R"rawliteral(
             updateAll(); // Just call the combined update
         }
 
+        function clampVolumeValue(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) {
+                return null;
+            }
+            const rounded = Math.round(num);
+            if (Number.isNaN(rounded)) {
+                return null;
+            }
+            if (rounded < 0) return 0;
+            if (rounded > 100) return 100;
+            return rounded;
+        }
+
+        function handleAudioVolumeInput(value) {
+            const clamped = clampVolumeValue(value);
+            if (audioVolumeValue) {
+                audioVolumeValue.textContent = clamped === null ? '--%' : `${clamped}%`;
+            }
+            if (!audioVolumePending && audioVolumeStatus && audioVolumeStatus.dataset.auto === '1') {
+                audioVolumeStatus.classList.add('hidden');
+                audioVolumeStatus.textContent = '';
+            }
+        }
+
+        function handleAudioVolumeCommit(value) {
+            const clamped = clampVolumeValue(value);
+            if (clamped === null) {
+                return;
+            }
+
+            if (audioVolumeSlider) {
+                audioVolumeSlider.value = clamped;
+            }
+            if (audioVolumeValue) {
+                audioVolumeValue.textContent = `${clamped}%`;
+            }
+
+            audioVolumePending = true;
+            if (audioVolumeStatus) {
+                audioVolumeStatus.textContent = 'Updating volume...';
+                audioVolumeStatus.classList.remove('hidden');
+                audioVolumeStatus.dataset.auto = '0';
+            }
+            if (audioVolumeFeedbackTimeout) {
+                clearTimeout(audioVolumeFeedbackTimeout);
+                audioVolumeFeedbackTimeout = null;
+            }
+
+            fetch('/api/audio', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({volume: clamped})
+            })
+            .then(r => r.json())
+            .then(data => {
+                const updated = clampVolumeValue(data && data.volume !== undefined ? data.volume : clamped);
+                const finalVolume = updated === null ? clamped : updated;
+
+                if (audioVolumeSlider) {
+                    audioVolumeSlider.value = finalVolume;
+                }
+                if (audioVolumeValue) {
+                    audioVolumeValue.textContent = `${finalVolume}%`;
+                }
+
+                if (data && data.success) {
+                    if (audioVolumeStatus) {
+                        const connected = !!(data && data.connected);
+                        audioVolumeStatus.textContent = connected ? 'Volume updated' : 'Volume saved (module offline)';
+                        audioVolumeStatus.classList.remove('hidden');
+                        audioVolumeStatus.dataset.auto = '0';
+                    }
+                    audioVolumeFeedbackTimeout = setTimeout(() => {
+                        if (audioVolumeStatus && audioVolumeStatus.dataset.auto === '0') {
+                            audioVolumeStatus.classList.add('hidden');
+                        }
+                    }, 1500);
+                } else {
+                    const message = data && data.error ? `Error: ${data.error}` : 'Error updating volume';
+                    if (audioVolumeStatus) {
+                        audioVolumeStatus.textContent = message;
+                        audioVolumeStatus.classList.remove('hidden');
+                        audioVolumeStatus.dataset.auto = '0';
+                    }
+                }
+
+                audioVolumePending = false;
+            })
+            .catch(err => {
+                console.error('Error setting audio volume:', err);
+                if (audioVolumeStatus) {
+                    audioVolumeStatus.textContent = 'Error updating volume';
+                    audioVolumeStatus.classList.remove('hidden');
+                    audioVolumeStatus.dataset.auto = '0';
+                }
+                audioVolumePending = false;
+            });
+        }
+
         // Update system modules display
-        function updateSystemModules(audioModules, serialModules) {
+        function updateSystemModules(audioModules, serialModules, currentVolume) {
             // Audio Module
             const audioModuleCard = document.getElementById('audioModuleCard');
             const audioIndicator = document.getElementById('audioModuleIndicator');
             const audioStatus = document.getElementById('audioModuleStatus');
             const audioLastSeen = document.getElementById('audioModuleLastSeen');
+            const clampedVolume = clampVolumeValue(currentVolume);
+
+            if (!audioVolumePending) {
+                if (clampedVolume !== null) {
+                    if (audioVolumeSlider) {
+                        audioVolumeSlider.value = clampedVolume;
+                    }
+                    if (audioVolumeValue) {
+                        audioVolumeValue.textContent = `${clampedVolume}%`;
+                    }
+                } else if (audioVolumeValue) {
+                    audioVolumeValue.textContent = '--%';
+                }
+            }
             
             if (audioModules && audioModules.length > 0) {
                 const audio = audioModules[0]; // Get first audio module
@@ -754,6 +886,23 @@ const char* html_page = R"rawliteral(
                     const seconds = lastSeenSec % 60;
                     audioLastSeen.textContent = minutes + 'm ' + seconds + 's ago';
                 }
+
+                if (!audioVolumePending && audioVolumeStatus) {
+                    if (audio.connected) {
+                        if (audioVolumeStatus.dataset.auto === '1') {
+                            audioVolumeStatus.classList.add('hidden');
+                            audioVolumeStatus.textContent = '';
+                        }
+                    } else {
+                        audioVolumeStatus.textContent = 'Audio module offline';
+                        audioVolumeStatus.classList.remove('hidden');
+                        audioVolumeStatus.dataset.auto = '1';
+                        if (audioVolumeFeedbackTimeout) {
+                            clearTimeout(audioVolumeFeedbackTimeout);
+                            audioVolumeFeedbackTimeout = null;
+                        }
+                    }
+                }
             } else {
                 audioModuleCard.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
                 audioModuleCard.classList.add('border-gray-600');
@@ -761,6 +910,16 @@ const char* html_page = R"rawliteral(
                 audioStatus.textContent = 'Not Found';
                 audioStatus.className = 'font-bold text-gray-400';
                 audioLastSeen.textContent = '-';
+
+                if (!audioVolumePending && audioVolumeStatus) {
+                    audioVolumeStatus.textContent = 'Audio module not detected';
+                    audioVolumeStatus.classList.remove('hidden');
+                    audioVolumeStatus.dataset.auto = '1';
+                    if (audioVolumeFeedbackTimeout) {
+                        clearTimeout(audioVolumeFeedbackTimeout);
+                        audioVolumeFeedbackTimeout = null;
+                    }
+                }
             }
             
             // Serial Module

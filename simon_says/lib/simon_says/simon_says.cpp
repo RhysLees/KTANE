@@ -264,7 +264,7 @@ void SimonSays::enterSolvedPhase() {
     currentPhase = Phase::Solved;
     setAllLeds(false);
     currentProgress = 100;
-    sendAudio(AUDIO_DEFUSED);
+    sendAudio(AUDIO_PLAY_DEFUSED);
 }
 
 void SimonSays::handleDisplayPhase() {
@@ -438,14 +438,14 @@ void SimonSays::playPressSound(SimonColor color) {
     sendAudio(PRESS_SOUNDS[index]);
 }
 
-void SimonSays::sendAudio(CanAudioSound sound) {
+void SimonSays::sendAudio(AudioMessage sound) {
     uint8_t payload[1] = {static_cast<uint8_t>(sound)};
     sendCanMessage(CAN_ID_AUDIO, payload, 1);
 }
 
 void SimonSays::registerStrike() {
     strikePending = true;
-    sendAudio(AUDIO_STRIKE);
+    sendAudio(AUDIO_PLAY_STRIKE);
     strikeCountValue = std::min<uint8_t>(static_cast<uint8_t>(strikeCountValue + 1), static_cast<uint8_t>(255));
 }
 

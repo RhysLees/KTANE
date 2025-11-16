@@ -99,9 +99,9 @@ void updateCountdownDisplay(GameStateManager& gameState)
 	if (seconds != lastSecondSent)
 	{
 		lastSecondSent = seconds;
-		uint8_t sound = (gameState.getStrikes() == 2) ? AUDIO_BEEP_HIGH
-						: (gameState.getStrikes() == 1) ? AUDIO_BEEP_FAST
-														: AUDIO_BEEP_NORMAL;
+		uint8_t sound = (gameState.getStrikes() == 2) ? AUDIO_PLAY_BEEP_HIGH
+						: (gameState.getStrikes() == 1) ? AUDIO_PLAY_BEEP_FAST
+														: AUDIO_PLAY_BEEP_NORMAL;
 		uint8_t soundData[1] = {sound};
 		sendCanMessage(CAN_ID_AUDIO, soundData, 1);
 	}
@@ -113,7 +113,7 @@ void updateCountdownDisplay(GameStateManager& gameState)
 		if (now - lastEmergencyAlarmSent >= 3000)
 		{
 			lastEmergencyAlarmSent = now;
-			uint8_t emergencySound[1] = {AUDIO_ALARM_EMERGENCY};
+			uint8_t emergencySound[1] = {AUDIO_PLAY_ALARM_EMERGENCY};
 			sendCanMessage(CAN_ID_AUDIO, emergencySound, 1);
 		}
 	}

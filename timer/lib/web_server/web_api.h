@@ -15,6 +15,8 @@ void handleCommand(WiFiClient& client, String body);
 void handleGetConfig(WiFiClient& client);
 void handleSetConfig(WiFiClient& client, String body);
 void handleModules(WiFiClient& client);
+void handleGetAudio(WiFiClient& client);
+void handleSetAudio(WiFiClient& client, String body);
 void handlePing(WiFiClient& client);
 void handleGetWiFi(WiFiClient& client);
 void handleSetWiFi(WiFiClient& client, String body);

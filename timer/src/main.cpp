@@ -15,21 +15,21 @@ void onStateChange(GameState oldState, GameState newState) {
 	switch (newState) {
 		case GameState::EXPLODED:
 		{
-			uint8_t explosionSound[1] = {AUDIO_EXPLODED};
+			uint8_t explosionSound[1] = {AUDIO_PLAY_EXPLODED};
 			sendCanMessage(CAN_ID_AUDIO, explosionSound, 1);
 			break;
 		}
 			
 		case GameState::DEFUSED:
 		{
-			uint8_t defusalSound[1] = {AUDIO_DEFUSED};
+			uint8_t defusalSound[1] = {AUDIO_PLAY_DEFUSED};
 			sendCanMessage(CAN_ID_AUDIO, defusalSound, 1);
 			break;
 		}
 			
 		case GameState::VICTORY:
 		{
-			uint8_t fanfareSound[1] = {AUDIO_GAME_OVER_FANFARE};
+			uint8_t fanfareSound[1] = {AUDIO_PLAY_GAME_OVER_FANFARE};
 			sendCanMessage(CAN_ID_AUDIO, fanfareSound, 1);
 			break;
 		}
@@ -44,7 +44,7 @@ void onStateChange(GameState oldState, GameState newState) {
 
 void onStrikeChange(uint8_t strikes) {
 	if (strikes > 0) {
-		uint8_t strikeSound[1] = {AUDIO_STRIKE};
+		uint8_t strikeSound[1] = {AUDIO_PLAY_STRIKE};
 		sendCanMessage(CAN_ID_AUDIO, strikeSound, 1);
 	}
 	
@@ -53,7 +53,7 @@ void onStrikeChange(uint8_t strikes) {
 }
 
 void onModuleSolved(uint8_t solved, uint8_t total) {
-	uint8_t correctSound[1] = {AUDIO_CORRECT_TIME};
+	uint8_t correctSound[1] = {AUDIO_PLAY_CORRECT_TIME};
 	sendCanMessage(CAN_ID_AUDIO, correctSound, 1);
 }
 

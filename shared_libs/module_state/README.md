@@ -84,7 +84,7 @@ void loop() {
 
     // Play a Simon tone through the shared audio module
     if (shouldPlayRedTone) {
-        globalModuleState->playAudio(AUDIO_SIMON_RED);
+        globalModuleState->playAudio(AUDIO_PLAY_SIMON_RED);
     }
     
     if (moduleSolved) {
@@ -194,7 +194,7 @@ void loop() {
 - `bool sendMessage(uint16_t receiverId, const uint8_t* data, uint8_t len)` - Send a CAN payload to any module (max 6 bytes)
 - `bool sendTimerMessage(const uint8_t* data, uint8_t len)` - Convenience wrapper for messages to the timer
 - `bool sendBroadcastMessage(const uint8_t* data, uint8_t len)` - Send a broadcast CAN message
-- `bool playAudio(CanAudioSound sound)` - Trigger a single shared audio sound (e.g., `AUDIO_SIMON_RED`)
+- `bool playAudio(AudioMessage sound)` - Trigger a single shared audio message (e.g., `AUDIO_PLAY_SIMON_RED`)
 - `bool playAudio(const uint8_t* soundCodes, uint8_t len)` - Trigger up to 6 queued sounds in a single CAN frame
 - `bool sendTelemetry(uint8_t telemetryType, const uint8_t* payload, uint8_t len)` - Send module-specific telemetry (packs into a `MODULE_STATUS` frame)
 

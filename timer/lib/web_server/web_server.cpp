@@ -429,6 +429,8 @@ void updateWebServer() {
                 handleGetConfig(client);
             } else if (method == "GET" && path == "/api/modules") {
                 handleModules(client);
+            } else if (method == "GET" && path == "/api/audio") {
+                handleGetAudio(client);
             } else if (method == "POST" && path == "/api/ping") {
                 handlePing(client);
             } else if (method == "POST" && path == "/api/command") {
@@ -447,6 +449,13 @@ void updateWebServer() {
                     body += (char)client.read();
                 }
                 handleSetConfig(client, body);
+            } else if (method == "POST" && path == "/api/audio") {
+                String body = "";
+                unsigned long bodyStartTime = millis();
+                while (client.available() && (millis() - bodyStartTime < 500)) {
+                    body += (char)client.read();
+                }
+                handleSetAudio(client, body);
             } else if (method == "GET" && path == "/wifi") {
                 // Serve WiFi configuration page
                 sendResponse(client, 200, "text/html", String(wifi_config_page));
