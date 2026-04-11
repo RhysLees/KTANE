@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "ktane_console.h"
+#include <ktane_console.h>
 
 // SD card SPI pin configuration - update if your wiring differs
 constexpr uint8_t SD_MISO = 12;  // GPIO12 (SPI RX / POCI)

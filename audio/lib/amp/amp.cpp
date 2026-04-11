@@ -1,5 +1,5 @@
 #include "amp.h"
-#include "../sd_card/ktane_console.h"
+#include <ktane_console.h>
 #include <Wire.h>
 #include <Adafruit_TLV320DAC3100.h>
 

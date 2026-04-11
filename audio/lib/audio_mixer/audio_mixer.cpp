@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <SdFat.h>
+#include <ktane_console.h>
 #include "sd_card.h"
 
 // Must match TLV320 PLL + NDAC/MDAC (Adafruit example); KTANE_AUDIO WAVs are 44100 Hz.
