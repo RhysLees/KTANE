@@ -56,7 +56,7 @@ void printHelp() {
   KTANE_CONSOLE_OUT.println(F("  ls          - list full tree from root"));
   KTANE_CONSOLE_OUT.println(F("  ls <path>   - list subtree (e.g. ls sounds or ls /sounds)"));
   KTANE_CONSOLE_OUT.println(
-      F("  play <path> - 16-bit PCM WAV, mono/stereo, 44100 Hz only"));
+      F("  play <path> - queue WAV (16-bit PCM, mono/stereo, 44100 Hz); up to 6 at once"));
   KTANE_CONSOLE_OUT.println(F("  v <0-100>   - set mixer volume percent"));
   KTANE_CONSOLE_OUT.println(F("  + / -       - volume up/down by 5%"));
   KTANE_CONSOLE_OUT.println();
@@ -133,7 +133,7 @@ void processLine(char* line) {
       KTANE_CONSOLE_OUT.println(F("[Console] SD init failed."));
       return;
     }
-    KTANE_CONSOLE_OUT.print(F("[Console] Playing: "));
+    KTANE_CONSOLE_OUT.print(F("[Console] Queue play: "));
     KTANE_CONSOLE_OUT.println(arg);
     if (!playSoundFromFile(arg)) {
       KTANE_CONSOLE_OUT.println(F("[Console] Playback failed."));

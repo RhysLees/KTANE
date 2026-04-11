@@ -2,7 +2,6 @@
 #include <hardware/sync.h>
 #include <AudioTools.h>
 #include <algorithm>
-#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <SdFat.h>
@@ -11,6 +10,7 @@
 // Must match TLV320 PLL + NDAC/MDAC (Adafruit example); KTANE_AUDIO WAVs are 44100 Hz.
 #define SAMPLE_RATE 44100
 #define MAX_VOICES 6
+#define MAX_FILE_VOICES 6
 #define BUFFER_SAMPLES 256
 // RP2040 AudioTools: cfg.channels==2 uses int32-packed frames, not int16 L,R.
 // Use channels==1 so writeBytes() uses writeExpandChannel → write16(L,R) per
@@ -25,7 +25,16 @@ struct MixerVoice {
   bool active;
 };
 
+struct MixerFileVoice {
+  FatFile file;
+  uint32_t remaining = 0;
+  unsigned frameBytes = 0;
+  uint16_t numChannels = 0;
+  bool active = false;
+};
+
 static MixerVoice voices[MAX_VOICES];
+static MixerFileVoice fileVoices[MAX_FILE_VOICES];
 static I2SStream i2s;  // AudioTools I2SStream for I2S output
 static I2SConfig i2sConfig;
 static AudioInfo audioInfo;
@@ -39,8 +48,6 @@ static int32_t mixAccumulator[BUFFER_SAMPLES];
 static int16_t outputBuffer[BUFFER_SAMPLES];
 // SD read staging: up to BUFFER_SAMPLES stereo PCM frames from file (4 bytes each).
 static uint8_t fileReadChunk[BUFFER_SAMPLES * 4];
-// Core0 owns I2S: mixer updates and file playback both use i2s.write() on core0.
-static std::atomic<bool> filePlaybackExclusive{false};
 static uint8_t s_i2sBck = 0;
 static uint8_t s_i2sWs = 0;
 static uint8_t s_i2sData = 0;
@@ -156,6 +163,14 @@ static void resetVoice(MixerVoice& voice) {
   voice.active = false;
 }
 
+static void resetFileVoice(MixerFileVoice& v) {
+  v.file.close();
+  v.remaining = 0;
+  v.frameBytes = 0;
+  v.numChannels = 0;
+  v.active = false;
+}
+
 bool audioMixerReady() {
   return initialized;
 }
@@ -200,6 +215,9 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
   critical_section_enter_blocking(&mixerLock);
   for (auto& voice : voices) {
     resetVoice(voice);
+  }
+  for (auto& fv : fileVoices) {
+    resetFileVoice(fv);
   }
   critical_section_exit(&mixerLock);
 
@@ -263,11 +281,70 @@ static void mixActiveVoices(bool& mixedSamples, bool& voicesRemaining) {
   }
 }
 
+static void mixFileVoices(bool& mixedSamples) {
+  for (auto& fv : fileVoices) {
+    if (!fv.active) {
+      continue;
+    }
+
+    const unsigned frameBytes = fv.frameBytes;
+    if (frameBytes == 0 || fv.remaining == 0) {
+      resetFileVoice(fv);
+      continue;
+    }
+
+    size_t chunkBytes =
+        std::min(static_cast<size_t>(fv.remaining),
+                 static_cast<size_t>(BUFFER_SAMPLES) * frameBytes);
+    chunkBytes -= chunkBytes % frameBytes;
+    if (chunkBytes == 0) {
+      continue;
+    }
+
+    size_t totalRead = 0;
+    while (totalRead < chunkBytes) {
+      const int n =
+          fv.file.read(fileReadChunk + totalRead, chunkBytes - totalRead);
+      if (n <= 0) {
+        resetFileVoice(fv);
+        totalRead = 0;
+        break;
+      }
+      totalRead += static_cast<size_t>(n);
+    }
+    totalRead -= totalRead % frameBytes;
+    if (totalRead == 0) {
+      continue;
+    }
+
+    if (fv.numChannels == 1) {
+      const size_t monoSamples = totalRead / sizeof(int16_t);
+      const int16_t* pcm = reinterpret_cast<const int16_t*>(fileReadChunk);
+      for (size_t i = 0; i < monoSamples && i < BUFFER_SAMPLES; ++i) {
+        mixAccumulator[i] += static_cast<int32_t>(pcm[i]);
+      }
+    } else {
+      const size_t frames = totalRead / frameBytes;
+      const int16_t* interleaved =
+          reinterpret_cast<const int16_t*>(fileReadChunk);
+      for (size_t f = 0; f < frames && f < BUFFER_SAMPLES; ++f) {
+        const int32_t L = interleaved[f * 2];
+        const int32_t R = interleaved[f * 2 + 1];
+        mixAccumulator[f] += (L + R) / 2;
+      }
+    }
+
+    fv.remaining -= static_cast<uint32_t>(totalRead);
+    mixedSamples = true;
+
+    if (fv.remaining == 0) {
+      resetFileVoice(fv);
+    }
+  }
+}
+
 void updateAudioMixer() {
   if (!initialized) return;
-  if (filePlaybackExclusive.load(std::memory_order_acquire)) {
-    return;
-  }
 
   const size_t bufferBytes = BUFFER_SAMPLES * sizeof(int16_t);
 
@@ -276,12 +353,17 @@ void updateAudioMixer() {
     return;
   }
 
-  bool mixedSamples = false;
+  bool ramMixed = false;
   bool voicesRemaining = false;
+  bool fileMixed = false;
 
   critical_section_enter_blocking(&mixerLock);
-  mixActiveVoices(mixedSamples, voicesRemaining);
+  mixActiveVoices(ramMixed, voicesRemaining);
+  mixFileVoices(fileMixed);
   critical_section_exit(&mixerLock);
+  (void)voicesRemaining;
+
+  const bool mixedSamples = ramMixed || fileMixed;
 
   if (!mixedSamples) {
     std::memset(outputBuffer, 0, bufferBytes);
@@ -317,9 +399,6 @@ bool playSoundFromFile(const char* filePath) {
     return false;
   }
 
-  KTANE_CONSOLE_OUT.print(F("[Audio] [File] Playing: "));
-  KTANE_CONSOLE_OUT.println(filePath);
-
   const char* relPath = filePath;
   if (relPath[0] == '/') {
     relPath++;
@@ -336,28 +415,49 @@ bool playSoundFromFile(const char* filePath) {
     return false;
   }
 
-  FatFile file;
-  if (!file.open(&volume, volPath, O_RDONLY)) {
+  critical_section_enter_blocking(&mixerLock);
+
+  MixerFileVoice* slot = nullptr;
+  for (auto& fv : fileVoices) {
+    if (!fv.active) {
+      slot = &fv;
+      break;
+    }
+  }
+
+  if (slot == nullptr) {
+    critical_section_exit(&mixerLock);
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] No free file stream (mixer busy)"));
+    return false;
+  }
+
+  resetFileVoice(*slot);
+
+  if (!slot->file.open(&volume, volPath, O_RDONLY)) {
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Failed to open file"));
     return false;
   }
 
   WavInfo wavInfo;
-  if (!parseWavHeader(file, wavInfo)) {
-    file.close();
+  if (!parseWavHeader(slot->file, wavInfo)) {
+    resetFileVoice(*slot);
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.println(
         F("[Audio] [File] Invalid or unsupported WAV (need mono/stereo 16-bit PCM)"));
     return false;
   }
 
-  if (!file.seekSet(wavInfo.dataOffset)) {
-    file.close();
+  if (!slot->file.seekSet(wavInfo.dataOffset)) {
+    resetFileVoice(*slot);
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Seek failed"));
     return false;
   }
 
   if (wavInfo.sampleRate == 0) {
-    file.close();
+    resetFileVoice(*slot);
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Invalid sample rate"));
     return false;
   }
@@ -365,97 +465,29 @@ bool playSoundFromFile(const char* filePath) {
   const unsigned frameBytes =
       static_cast<unsigned>(wavInfo.numChannels) * sizeof(int16_t);
   if (frameBytes == 0 || (wavInfo.dataSize % frameBytes) != 0) {
-    file.close();
+    resetFileVoice(*slot);
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Bad WAV data size"));
     return false;
   }
 
   if (wavInfo.sampleRate != SAMPLE_RATE) {
-    file.close();
+    resetFileVoice(*slot);
+    critical_section_exit(&mixerLock);
     KTANE_CONSOLE_OUT.print(F("[Audio] [File] WAV must be "));
     KTANE_CONSOLE_OUT.print(SAMPLE_RATE);
     KTANE_CONSOLE_OUT.println(F(" Hz (codec PLL fixed for this rate)."));
     return false;
   }
 
-  filePlaybackExclusive.store(true, std::memory_order_release);
+  slot->remaining = wavInfo.dataSize;
+  slot->frameBytes = frameBytes;
+  slot->numChannels = wavInfo.numChannels;
+  slot->active = true;
 
-  uint32_t remaining = wavInfo.dataSize;
-  const unsigned long t0 = millis();
-  const uint32_t totalPcmFrames = wavInfo.dataSize / frameBytes;
-  const unsigned long estMs =
-      1000UL * totalPcmFrames / wavInfo.sampleRate + 5000UL;
-  const unsigned long kMaxMs = std::max(120000UL, estMs * 2);
-  bool timedOut = false;
+  critical_section_exit(&mixerLock);
 
-  while (remaining > 0) {
-    if (millis() - t0 > kMaxMs) {
-      KTANE_CONSOLE_OUT.println(F("[Audio] [File] Playback timeout"));
-      timedOut = true;
-      break;
-    }
-
-    size_t chunkBytes = std::min(static_cast<size_t>(remaining),
-                                 static_cast<size_t>(BUFFER_SAMPLES * frameBytes));
-    chunkBytes -= chunkBytes % frameBytes;
-    if (chunkBytes == 0) {
-      break;
-    }
-
-    size_t totalRead = 0;
-    while (totalRead < chunkBytes) {
-      const int n = file.read(fileReadChunk + totalRead, chunkBytes - totalRead);
-      if (n <= 0) {
-        remaining = 0;
-        break;
-      }
-      totalRead += static_cast<size_t>(n);
-    }
-    totalRead -= totalRead % frameBytes;
-    if (totalRead == 0) {
-      break;
-    }
-
-    if (wavInfo.numChannels == 1) {
-      const size_t monoSamples = totalRead / sizeof(int16_t);
-      const int16_t* pcm = reinterpret_cast<const int16_t*>(fileReadChunk);
-      for (size_t i = 0; i < monoSamples; ++i) {
-        int32_t scaled = (static_cast<int32_t>(pcm[i]) *
-                          static_cast<int32_t>(masterVolumePercent)) /
-                         100;
-        if (scaled > 32767) scaled = 32767;
-        if (scaled < -32768) scaled = -32768;
-        outputBuffer[i] = static_cast<int16_t>(scaled);
-      }
-      i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer),
-                monoSamples * sizeof(int16_t));
-    } else {
-      const size_t frames = totalRead / frameBytes;
-      const int16_t* interleaved =
-          reinterpret_cast<const int16_t*>(fileReadChunk);
-      for (size_t f = 0; f < frames; ++f) {
-        const int32_t L = interleaved[f * 2];
-        const int32_t R = interleaved[f * 2 + 1];
-        const int32_t m = (L + R) / 2;
-        int32_t scaled =
-            (m * static_cast<int32_t>(masterVolumePercent)) / 100;
-        if (scaled > 32767) scaled = 32767;
-        if (scaled < -32768) scaled = -32768;
-        outputBuffer[f] = static_cast<int16_t>(scaled);
-      }
-      i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer),
-                frames * sizeof(int16_t));
-    }
-
-    remaining -= static_cast<uint32_t>(totalRead);
-  }
-
-  filePlaybackExclusive.store(false, std::memory_order_release);
-  file.close();
-
-  if (timedOut) {
-    return false;
-  }
-  KTANE_CONSOLE_OUT.println(F("[Audio] [File] Playback complete"));
+  KTANE_CONSOLE_OUT.print(F("[Audio] [File] Queued: "));
+  KTANE_CONSOLE_OUT.println(filePath);
   return true;
 }
