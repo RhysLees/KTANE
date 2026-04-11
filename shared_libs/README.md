@@ -27,6 +27,15 @@ void loop() {
 }
 ```
 
+### 🖥️ [KTANE Console](ktane_console/) - Default debug `Stream`
+**Purpose**: Single macro `KTANE_CONSOLE_OUT` (`Serial` or `Serial1`) so libraries and helpers can log without hard-coding USB vs UART.  
+**Used by**: Audio stack (`sd_card`, `amp`, `audio_mixer`); any module can include it.  
+**Key features**:
+- Default: `KTANE_CONSOLE_OUT` → `Serial` (USB CDC on typical Pico W builds).
+- With `-DEDGE_AUDIO_CONSOLE` in `build_flags`: → `Serial1` (e.g. Picoprobe on GP0/GP1).
+
+**Quick start**: Add `lib_extra_dirs = ../shared_libs` (if not already), then `#include <ktane_console.h>`.
+
 ### ⚙️ [Module State](module_state/) - State & Heartbeat Management
 **Purpose**: Combines heartbeat, registration, and per-module state management  
 **Used by**: All modules except timer  
