@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "audio_console",
+			"path": "audio_console"
+		},
+		{
+			"name": "audio",
+			"path": "audio"
+		},
+		{
+			"name": "timer",
+			"path": "timer"
+		},
+		{
+			"name": "simon_says",
+			"path": "simon_says"
+		},
+		{
+			"name": "serial_number",
+			"path": "serial_number"
+		}
+	],
+	"settings": {}
+}

@@ -1,1 +1,27 @@
+# PlatformIO
 **/.pio
+.pio
+.pioenvs
+
+# Build artifacts
+build/
+**/build/
+
+# Firmware output
+firmware/*.uf2
+!firmware/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
