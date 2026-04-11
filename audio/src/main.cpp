@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ktane_console.h>
 #include <can_bus.h>
 #include <audio_mixer.h>
 #include <module_state.h>
@@ -27,10 +28,10 @@ static const __FlashStringHelper* getSoundName(uint8_t messageId) {
 }
 
 static void logSoundQueued(const __FlashStringHelper* source, const __FlashStringHelper* sound) {
-  Serial.print(F("[Audio] "));
-  Serial.print(source);
-  Serial.print(F(" queued: "));
-  Serial.println(sound);
+  KTANE_CONSOLE_OUT.print(F("[Audio] "));
+  KTANE_CONSOLE_OUT.print(source);
+  KTANE_CONSOLE_OUT.print(F(" queued: "));
+  KTANE_CONSOLE_OUT.println(sound);
 }
 
 void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
@@ -43,11 +44,11 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
       if (len >= 2) {
         uint8_t volume = data[1];
         setAudioMixerVolume(volume);
-        Serial.print(F("[Audio] [CAN] Volume set to "));
-        Serial.print(getAudioMixerVolume());
-        Serial.println(F("%"));
+        KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Volume set to "));
+        KTANE_CONSOLE_OUT.print(getAudioMixerVolume());
+        KTANE_CONSOLE_OUT.println(F("%"));
       } else {
-        Serial.println(F("[Audio] [CAN] Volume command missing payload."));
+        KTANE_CONSOLE_OUT.println(F("[Audio] [CAN] Volume command missing payload."));
       }
       setModuleStateStatus(MODULE_STATUS_IDLE);
       return;
@@ -63,31 +64,31 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
       if (playSound(soundData, static_cast<unsigned int>(soundLength))) {
         logSoundQueued(F("[CAN]"), getSoundName(messageId));
       } else {
-        Serial.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
+        KTANE_CONSOLE_OUT.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
       }
     } else if (bankStatus == SoundBankStatus::FileTooLarge) {
       const char* path = getSoundFilePath(messageId);
       if (path && playSoundFromFile(path)) {
         logSoundQueued(F("[CAN] [Stream]"), getSoundName(messageId));
       } else {
-        Serial.print(F("[Audio] [CAN] Failed to stream sound '"));
-        Serial.println(getSoundName(messageId));
+        KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to stream sound '"));
+        KTANE_CONSOLE_OUT.println(getSoundName(messageId));
       }
     } else if (bankStatus == SoundBankStatus::SoundNotRegistered) {
-      Serial.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
-      Serial.println(messageId, HEX);
+      KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
+      KTANE_CONSOLE_OUT.println(messageId, HEX);
     } else {
-      Serial.print(F("[Audio] [CAN] Failed to load sound"));
-      Serial.print(getSoundName(messageId));
-      Serial.print(F(" ("));
+      KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to load sound"));
+      KTANE_CONSOLE_OUT.print(getSoundName(messageId));
+      KTANE_CONSOLE_OUT.print(F(" ("));
       const char* path = getSoundFilePath(messageId);
       if (path) {
-        Serial.print(path);
+        KTANE_CONSOLE_OUT.print(path);
       } else {
-        Serial.print(F("unmapped"));
+        KTANE_CONSOLE_OUT.print(F("unmapped"));
       }
-      Serial.print(F("): "));
-      Serial.println(soundBankStatusToString(bankStatus));
+      KTANE_CONSOLE_OUT.print(F("): "));
+      KTANE_CONSOLE_OUT.println(soundBankStatusToString(bankStatus));
     }
 
     setModuleStateStatus(MODULE_STATUS_IDLE);
@@ -95,41 +96,41 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
 }
 
 void setup() {
-  Serial.begin(115200);
+  ktaneConsoleInit(115200);
   delay(500);
 
-  Serial.println();
-  Serial.println(F("[Audio] Booting audio module (CAN control)"));
-  Serial.println(F("[Audio] I2S BCLK=GP3 WSEL=GP4 DIN=GP5; I2C SDA=GP6 SCL=GP7"));
+  KTANE_CONSOLE_OUT.println();
+  KTANE_CONSOLE_OUT.println(F("[Audio] Booting audio module (CAN control)"));
+  KTANE_CONSOLE_OUT.println(F("[Audio] I2S BCLK=GP3 WSEL=GP4 DIN=GP5; I2C SDA=GP6 SCL=GP7"));
 
-  Serial.println(F("[Audio] Initializing CAN bus..."));
+  KTANE_CONSOLE_OUT.println(F("[Audio] Initializing CAN bus..."));
   initCanBus(CAN_ID_AUDIO);
   registerCanCallback(onCanMessage);
-  Serial.println(F("[Audio] CAN bus ready (ID=C0)"));
+  KTANE_CONSOLE_OUT.println(F("[Audio] CAN bus ready (ID=C0)"));
 
   initModuleState(MODULE_STATE_NO_LED);
-  Serial.println(F("[Audio] Module state initialized"));
+  KTANE_CONSOLE_OUT.println(F("[Audio] Module state initialized"));
 
-  Serial.println(F("[Audio] Starting mixer / codec (I2S)..."));
+  KTANE_CONSOLE_OUT.println(F("[Audio] Starting mixer / codec (I2S)..."));
   initAudioMixer();
   while (!audioMixerReady()) {
     delay(1);
   }
-  Serial.print(F("[Audio] Mixer ready, volume "));
-  Serial.print(getAudioMixerVolume());
-  Serial.println(F("%"));
+  KTANE_CONSOLE_OUT.print(F("[Audio] Mixer ready, volume "));
+  KTANE_CONSOLE_OUT.print(getAudioMixerVolume());
+  KTANE_CONSOLE_OUT.println(F("%"));
 
-  Serial.println(F("[Audio] Initializing SD card (SPI)..."));
+  KTANE_CONSOLE_OUT.println(F("[Audio] Initializing SD card (SPI)..."));
   if (initSdCard()) {
-    printSdCardInfo(Serial);
+    printSdCardInfo(KTANE_CONSOLE_OUT);
     if (!initSoundBank()) {
-      Serial.println(F("[Audio] Sound bank init failed; retry when SD contents are fixed."));
+      KTANE_CONSOLE_OUT.println(F("[Audio] Sound bank init failed; retry when SD contents are fixed."));
     }
   } else {
-    Serial.println(F("[Audio] SD not ready; streaming sounds unavailable until a card is present."));
+    KTANE_CONSOLE_OUT.println(F("[Audio] SD not ready; streaming sounds unavailable until a card is present."));
   }
 
-  Serial.println(F("[Audio] Ready."));
+  KTANE_CONSOLE_OUT.println(F("[Audio] Ready."));
 }
 
 void loop() {

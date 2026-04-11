@@ -2,6 +2,7 @@
 // Uses the can_bus library to send registration and heartbeat messages as a SIMON module
 
 #include <Arduino.h>
+#include <ktane_console.h>
 #include <can_bus.h>
 
 // Track registration state
@@ -19,23 +20,23 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
   if (msgType == TIMER_MODULE_DISCOVERED) {
     if (!isRegistered) {
       isRegistered = true;
-      Serial.println("==========================================");
-      Serial.println("Registered with timer!");
-      Serial.println("Switching to heartbeat mode...");
-      Serial.println("==========================================");
+      KTANE_CONSOLE_OUT.println("==========================================");
+      KTANE_CONSOLE_OUT.println("Registered with timer!");
+      KTANE_CONSOLE_OUT.println("Switching to heartbeat mode...");
+      KTANE_CONSOLE_OUT.println("==========================================");
     }
   }
 }
 
 void setup()
 {
-  Serial.begin(115200);
+  ktaneConsoleInit(115200);
   delay(2000);  // Give time for serial monitor to connect
   
-  Serial.println("==========================================");
-  Serial.println("CAN Debug Send Module");
-  Serial.println("Using can_bus library - SIMON type");
-  Serial.println("==========================================");
+  KTANE_CONSOLE_OUT.println("==========================================");
+  KTANE_CONSOLE_OUT.println("CAN Debug Send Module");
+  KTANE_CONSOLE_OUT.println("Using can_bus library - SIMON type");
+  KTANE_CONSOLE_OUT.println("==========================================");
 
   // Initialize CAN bus with SIMON type and negotiate unique ID
   initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
@@ -47,15 +48,15 @@ void setup()
   uint8_t instanceId = getCurrentInstanceId();
   uint16_t finalCanId = getCurrentModuleId();
   
-  Serial.println("CAN bus initialized");
-  Serial.print("Module Type: SIMON");
-  Serial.print(" | Instance ID: ");
-  Serial.print(instanceId);
-  Serial.print(" | CAN ID: 0x");
-  Serial.println(finalCanId, HEX);
-  Serial.println();
-  Serial.println("Sending MODULE_REGISTER every 1 second until timer responds...");
-  Serial.println();
+  KTANE_CONSOLE_OUT.println("CAN bus initialized");
+  KTANE_CONSOLE_OUT.print("Module Type: SIMON");
+  KTANE_CONSOLE_OUT.print(" | Instance ID: ");
+  KTANE_CONSOLE_OUT.print(instanceId);
+  KTANE_CONSOLE_OUT.print(" | CAN ID: 0x");
+  KTANE_CONSOLE_OUT.println(finalCanId, HEX);
+  KTANE_CONSOLE_OUT.println();
+  KTANE_CONSOLE_OUT.println("Sending MODULE_REGISTER every 1 second until timer responds...");
+  KTANE_CONSOLE_OUT.println();
 }
 
 void loop()
@@ -70,24 +71,24 @@ void loop()
     
     if (!isRegistered) {
       // Registration phase - send MODULE_REGISTER
-      Serial.print("[");
-      Serial.print(now / 1000);
-      Serial.print("s] Sending MODULE_REGISTER to TIMER");
+      KTANE_CONSOLE_OUT.print("[");
+      KTANE_CONSOLE_OUT.print(now / 1000);
+      KTANE_CONSOLE_OUT.print("s] Sending MODULE_REGISTER to TIMER");
       
       uint8_t registerData[] = {MODULE_REGISTER};
       sendCanMessage(CAN_ID_TIMER, registerData, 1);
       
-      Serial.println(" - Sent");
+      KTANE_CONSOLE_OUT.println(" - Sent");
     } else {
       // Registered - send MODULE_HEARTBEAT
-      Serial.print("[");
-      Serial.print(now / 1000);
-      Serial.print("s] Sending MODULE_HEARTBEAT to TIMER");
+      KTANE_CONSOLE_OUT.print("[");
+      KTANE_CONSOLE_OUT.print(now / 1000);
+      KTANE_CONSOLE_OUT.print("s] Sending MODULE_HEARTBEAT to TIMER");
       
       uint8_t heartbeatData[] = {MODULE_HEARTBEAT};
       sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
       
-      Serial.println(" - Sent");
+      KTANE_CONSOLE_OUT.println(" - Sent");
     }
   }
   

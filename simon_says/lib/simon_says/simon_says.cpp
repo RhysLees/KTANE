@@ -1,6 +1,7 @@
 #include "simon_says.h"
 
 #include <algorithm>
+#include <ktane_console.h>
 
 // -----------------------------------------------------------------------------
 // Static Helpers
@@ -368,11 +369,11 @@ void SimonSays::processPlayerInput(SimonColor pressed) {
             }
         }
     } else {
-        Serial.print('[');
-        Serial.print(now);
-        Serial.print(F("] [Simon] -> Wrong (expected "));
-        Serial.print(colorToString(expected));
-        Serial.println(F(")"));
+        KTANE_CONSOLE_OUT.print('[');
+        KTANE_CONSOLE_OUT.print(now);
+        KTANE_CONSOLE_OUT.print(F("] [Simon] -> Wrong (expected "));
+        KTANE_CONSOLE_OUT.print(colorToString(expected));
+        KTANE_CONSOLE_OUT.println(F(")"));
         registerStrike();
         enterStrikeFlashPhase();
     }
@@ -491,18 +492,18 @@ void SimonSays::activatePlayerFeedback(SimonColor color, unsigned long now) {
 }
 
 void SimonSays::logEvent(const __FlashStringHelper* message) const {
-    Serial.print('[');
-    Serial.print(millis());
-    Serial.print(F("] [Simon] "));
-    Serial.println(message);
+    KTANE_CONSOLE_OUT.print('[');
+    KTANE_CONSOLE_OUT.print(millis());
+    KTANE_CONSOLE_OUT.print(F("] [Simon] "));
+    KTANE_CONSOLE_OUT.println(message);
 }
 
 void SimonSays::logColorEvent(const __FlashStringHelper* prefix, SimonColor color) const {
-    Serial.print('[');
-    Serial.print(millis());
-    Serial.print(F("] [Simon] "));
-    Serial.print(prefix);
-    Serial.println(colorToString(color));
+    KTANE_CONSOLE_OUT.print('[');
+    KTANE_CONSOLE_OUT.print(millis());
+    KTANE_CONSOLE_OUT.print(F("] [Simon] "));
+    KTANE_CONSOLE_OUT.print(prefix);
+    KTANE_CONSOLE_OUT.println(colorToString(color));
 }
 
 

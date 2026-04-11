@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <ktane_console.h>
 #include "mcp_can.h"
 #include "can_bus.h"
 
@@ -168,15 +169,15 @@ void sendCanMessage(uint16_t receiverId, const uint8_t* data, uint8_t dataLen) {
     
     byte sendStatus = CAN.sendMsgBuf(receiverId, 0, dataLen + 2, (byte*)messageData);
     if (sendStatus != CAN_OK) {
-      Serial.println("Failed to send CAN message");
+      KTANE_CONSOLE_OUT.println("Failed to send CAN message");
       return;
     }
 
     logCanMessage("TX", receiverId, thisModuleId, receiverId, data, dataLen);
   } else {
-    Serial.print("ERROR: Cannot send CAN message with dataLen=");
-    Serial.print(dataLen);
-    Serial.println(" (max 6 bytes supported)");
+    KTANE_CONSOLE_OUT.print("ERROR: Cannot send CAN message with dataLen=");
+    KTANE_CONSOLE_OUT.print(dataLen);
+    KTANE_CONSOLE_OUT.println(" (max 6 bytes supported)");
   }
 }
 
@@ -355,40 +356,40 @@ void logCanMessage(const char* direction, uint16_t receiverId, uint16_t senderId
   decodeCanId(decodeId, &moduleType, &instanceId);
   
   unsigned long ttl = millis();
-  Serial.print("[");
-  Serial.print(ttl / 1000);
-  Serial.print("s] ");
-  Serial.print("CAN ");
-  Serial.print(direction);
-  Serial.print(": ID=0x");
-  Serial.print(receiverId, HEX);
-  Serial.print(" | Sender=0x");
-  Serial.print(senderId, HEX);
-  Serial.print(" | Module=");
-  Serial.print(getModuleTypeName(moduleType));
-  Serial.print(" | Instance=");
-  Serial.print(instanceId);
-  Serial.print(" | Len=");
-  Serial.print(len);
+  KTANE_CONSOLE_OUT.print("[");
+  KTANE_CONSOLE_OUT.print(ttl / 1000);
+  KTANE_CONSOLE_OUT.print("s] ");
+  KTANE_CONSOLE_OUT.print("CAN ");
+  KTANE_CONSOLE_OUT.print(direction);
+  KTANE_CONSOLE_OUT.print(": ID=0x");
+  KTANE_CONSOLE_OUT.print(receiverId, HEX);
+  KTANE_CONSOLE_OUT.print(" | Sender=0x");
+  KTANE_CONSOLE_OUT.print(senderId, HEX);
+  KTANE_CONSOLE_OUT.print(" | Module=");
+  KTANE_CONSOLE_OUT.print(getModuleTypeName(moduleType));
+  KTANE_CONSOLE_OUT.print(" | Instance=");
+  KTANE_CONSOLE_OUT.print(instanceId);
+  KTANE_CONSOLE_OUT.print(" | Len=");
+  KTANE_CONSOLE_OUT.print(len);
   
   // Decode command if data is available
   if (len > 0) {
     const char* commandName = getMessageTypeName(data[0]);
-    Serial.print(" | Command=");
-    Serial.print(commandName);
-    Serial.print(" (0x");
-    if (data[0] < 0x10) Serial.print("0");
-    Serial.print(data[0], HEX);
-    Serial.print(")");
+    KTANE_CONSOLE_OUT.print(" | Command=");
+    KTANE_CONSOLE_OUT.print(commandName);
+    KTANE_CONSOLE_OUT.print(" (0x");
+    if (data[0] < 0x10) KTANE_CONSOLE_OUT.print("0");
+    KTANE_CONSOLE_OUT.print(data[0], HEX);
+    KTANE_CONSOLE_OUT.print(")");
   }
   
-  Serial.print(" | Data=");
+  KTANE_CONSOLE_OUT.print(" | Data=");
   
   for (uint8_t i = 0; i < len; i++) {
-    Serial.print("0x");
-    if (data[i] < 0x10) Serial.print("0");
-    Serial.print(data[i], HEX);
-    if (i < len - 1) Serial.print(" ");
+    KTANE_CONSOLE_OUT.print("0x");
+    if (data[i] < 0x10) KTANE_CONSOLE_OUT.print("0");
+    KTANE_CONSOLE_OUT.print(data[i], HEX);
+    if (i < len - 1) KTANE_CONSOLE_OUT.print(" ");
   }
-  Serial.println();
+  KTANE_CONSOLE_OUT.println();
 }

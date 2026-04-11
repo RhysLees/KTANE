@@ -2,6 +2,7 @@
 #include "web_html.h"
 #include "web_api.h"
 #include "web_utils.h"
+#include <ktane_console.h>
 #include <WiFi.h>
 #include <EEPROM.h>
 #include <string.h>
@@ -98,8 +99,8 @@ bool clearWiFiCredentials() {
 }
 
 bool connectToWiFi(const String& ssid, const String& password) {
-    Serial.print("Connecting to WiFi: ");
-    Serial.println(ssid);
+    KTANE_CONSOLE_OUT.print("Connecting to WiFi: ");
+    KTANE_CONSOLE_OUT.println(ssid);
     
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), password.c_str());
@@ -108,19 +109,19 @@ bool connectToWiFi(const String& ssid, const String& password) {
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         delay(500);
-        Serial.print(".");
+        KTANE_CONSOLE_OUT.print(".");
         attempts++;
     }
-    Serial.println();
+    KTANE_CONSOLE_OUT.println();
     
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.print("WiFi connected! IP address: ");
-        Serial.println(WiFi.localIP());
+        KTANE_CONSOLE_OUT.print("WiFi connected! IP address: ");
+        KTANE_CONSOLE_OUT.println(WiFi.localIP());
         wifiConfigured = true;
         inAPMode = false;
         return true;
     } else {
-        Serial.println("WiFi connection failed!");
+        KTANE_CONSOLE_OUT.println("WiFi connection failed!");
         wifiConfigured = false;
         return false;
     }
@@ -247,25 +248,25 @@ void handleDNS() {
                 dnsServer->write(buffer, ptr - buffer);
                 dnsServer->endPacket();
                 
-                Serial.print("DNS: Responded to query (type=");
-                Serial.print(qtype);
-                Serial.print(") with IP ");
-                Serial.println(apIP);
+                KTANE_CONSOLE_OUT.print("DNS: Responded to query (type=");
+                KTANE_CONSOLE_OUT.print(qtype);
+                KTANE_CONSOLE_OUT.print(") with IP ");
+                KTANE_CONSOLE_OUT.println(apIP);
             }
         }
     }
 }
 
 void startAPMode() {
-    Serial.print("Starting WiFi AP: ");
-    Serial.println(ap_ssid);
+    KTANE_CONSOLE_OUT.print("Starting WiFi AP: ");
+    KTANE_CONSOLE_OUT.println(ap_ssid);
     WiFi.mode(WIFI_AP);
     WiFi.softAP(ap_ssid, ap_password);
     delay(100);
     
     IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP);
+    KTANE_CONSOLE_OUT.print("AP IP address: ");
+    KTANE_CONSOLE_OUT.println(IP);
     inAPMode = true;
     wifiConfigured = false;
     
@@ -275,12 +276,12 @@ void startAPMode() {
         dnsServer = new WiFiUDP();
     }
     if (!dnsServer->begin(53)) {
-        Serial.println("Warning: Failed to start DNS server on port 53");
+        KTANE_CONSOLE_OUT.println("Warning: Failed to start DNS server on port 53");
     } else {
-        Serial.println("DNS server started on port 53 for captive portal");
-        Serial.print("AP IP: ");
-        Serial.println(IP);
-        Serial.println("Connect to WiFi and captive portal should open automatically");
+        KTANE_CONSOLE_OUT.println("DNS server started on port 53 for captive portal");
+        KTANE_CONSOLE_OUT.print("AP IP: ");
+        KTANE_CONSOLE_OUT.println(IP);
+        KTANE_CONSOLE_OUT.println("Connect to WiFi and captive portal should open automatically");
     }
 }
 
@@ -291,22 +292,22 @@ void initWebServer(GameStateManager* gsm) {
     // Try to load stored WiFi credentials
     String ssid, password;
     if (loadWiFiCredentials(ssid, password)) {
-        Serial.println("Found stored WiFi credentials, attempting to connect...");
+        KTANE_CONSOLE_OUT.println("Found stored WiFi credentials, attempting to connect...");
         if (connectToWiFi(ssid, password)) {
-            Serial.println("Successfully connected to WiFi!");
+            KTANE_CONSOLE_OUT.println("Successfully connected to WiFi!");
         } else {
-            Serial.println("Failed to connect to WiFi, starting AP mode for configuration");
+            KTANE_CONSOLE_OUT.println("Failed to connect to WiFi, starting AP mode for configuration");
             startAPMode();
         }
     } else {
-        Serial.println("No WiFi credentials found, starting AP mode for configuration");
+        KTANE_CONSOLE_OUT.println("No WiFi credentials found, starting AP mode for configuration");
         startAPMode();
     }
 
     // Create web server
     server = new WiFiServer(80);
     server->begin();
-    Serial.println("Web server started on port 80");
+    KTANE_CONSOLE_OUT.println("Web server started on port 80");
 }
 
 // Check if path is a captive portal detection endpoint

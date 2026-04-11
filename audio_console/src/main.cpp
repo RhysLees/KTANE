@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ktane_console.h>
 #include <audio_mixer.h>
 #include <cctype>
 #include <cstring>
@@ -164,13 +165,10 @@ void processLine(char* line) {
 }  // namespace
 
 void setup() {
-  // Picoprobe UART on GP0 (TX) / GP1 (RX), physical pins 1 & 2.
-  Serial1.setTX(0);
-  Serial1.setRX(1);
-  Serial1.begin(115200);
+  ktaneConsoleInit(115200);
   delay(500);
   KTANE_CONSOLE_OUT.println();
-  KTANE_CONSOLE_OUT.println(F("[Console] Audio SD console (EDGE_AUDIO_CONSOLE)"));
+  KTANE_CONSOLE_OUT.println(F("[Console] Audio SD console (KTANE_PICOPROBE_UART)"));
   KTANE_CONSOLE_OUT.println(F("[Console] I2S BCLK=GP3 WSEL=GP4 DIN=GP5; I2C SDA=GP6 SCL=GP7"));
 
   initAudioMixer();

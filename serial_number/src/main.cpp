@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ktane_console.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <can_bus.h>
@@ -55,9 +56,10 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t *data, uint8_t l
 }
 
 void setup() {
-  Serial.begin(115200);
-  Wire.setSDA(0);
-  Wire.setSCL(1);
+  ktaneConsoleInit(115200);
+  // E-paper I2C on GP8/GP9 — GP0/GP1 reserved for Picoprobe UART / SWD.
+  Wire.setSDA(8);
+  Wire.setSCL(9);
   Wire.begin();
 
   initCanBus(CAN_ID_SERIAL_DISPLAY);

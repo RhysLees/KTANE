@@ -3,10 +3,14 @@
 #include <Arduino.h>
 
 // Default Stream for firmware log / debug output. Most modules use USB CDC Serial.
-// Audio console test build sets -DEDGE_AUDIO_CONSOLE and routes logs to Serial1 (e.g. Picoprobe UART).
+// With -DKTANE_PICOPROBE_UART, logs go to Serial1 on GP0 (TX) / GP1 (RX) — Pico Probe UART
+// bridge — so USB CDC stays free for other use.
 
-#if defined(EDGE_AUDIO_CONSOLE)
+#if defined(KTANE_PICOPROBE_UART)
 #define KTANE_CONSOLE_OUT Serial1
 #else
 #define KTANE_CONSOLE_OUT Serial
 #endif
+
+// Call once from setup() before logging on KTANE_CONSOLE_OUT.
+void ktaneConsoleInit(unsigned long baud = 115200);

@@ -32,7 +32,7 @@ void loop() {
 **Used by**: Audio stack (`sd_card`, `amp`, `audio_mixer`); any module can include it.  
 **Key features**:
 - Default: `KTANE_CONSOLE_OUT` → `Serial` (USB CDC on typical Pico W builds).
-- With `-DEDGE_AUDIO_CONSOLE` in `build_flags`: → `Serial1` (e.g. Picoprobe on GP0/GP1).
+- With `-DKTANE_PICOPROBE_UART` in `build_flags`: → `Serial1` on GP0/GP1 (Pico Probe UART).
 
 **Quick start**: Add `lib_extra_dirs = ../shared_libs` (if not already), then `#include <ktane_console.h>`.
 

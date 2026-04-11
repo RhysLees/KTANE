@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ktane_console.h>
 #include <can_bus.h>
 #include <module_state.h>
 #include <simon_says.h>
@@ -57,7 +58,7 @@ ModuleStatus phaseToModuleStatus(SimonSays::Phase phase) {
 }  // namespace
 
 void setup() {
-    Serial.begin(115200);
+    ktaneConsoleInit(115200);
 
     initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
     assignUniqueId(CAN_TYPE_SIMON);

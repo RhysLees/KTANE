@@ -1,11 +1,10 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <ktane_console.h>
 #include <can_bus.h>
 #include <countdown.h>
 #include <strikes.h>
 #include <game_state.h>
-#include <debug.h>
-#include <lcd1602.h>
 #include <web_server.h>
 #include <web_api.h>
 
@@ -114,15 +113,10 @@ void setupHardware() {
 	delay(50);
 	randomSeed(rp2040.hwrand32());
 
-	Wire.setSDA(0);
-	Wire.setSCL(1);
+	// I2C0: HT16K33 countdown (0x70) + strike display (0x74). GP0/GP1 free for SWD (Pico Probe).
+	Wire.setSDA(8);
+	Wire.setSCL(9);
 	Wire.begin();
-
-	Wire1.setSDA(6);
-	Wire1.setSCL(7);
-	Wire1.begin();
-
-	initLcd1602(16, 2, Wire1);
 }
 
 void setupGameConfig() {
@@ -147,7 +141,7 @@ void setupCallbacks() {
 }
 
 void setup() {
-	Serial.begin(115200);
+	ktaneConsoleInit(115200);
 	delay(2000);
 	
 	setupHardware();
@@ -155,7 +149,6 @@ void setup() {
 	registerCanCallback(onTimerCanMessage);
 	initStrikeDisplay();
 	initCountdownDisplay();
-	initDebugInterface();
 	setupGameConfig();
 	setupCallbacks();
 	gameState.initialize();
@@ -168,7 +161,6 @@ void loop() {
 	updateCountdownDisplay(gameState);
 	updateStrikeCount(gameState);
 	handleCanMessages();
-	
-	updateDebugInterface(gameState);
+
 	updateWebServer();
 }

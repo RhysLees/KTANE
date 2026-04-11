@@ -1,6 +1,8 @@
 // CAN Receive Example
 // Based on: https://github.com/coryjfowler/MCP_CAN_lib/blob/master/examples/CAN_receive/CAN_receive.ino
 
+#include <Arduino.h>
+#include <ktane_console.h>
 #include <mcp_can.h>
 #include <SPI.h>
 
@@ -16,13 +18,13 @@ MCP_CAN CAN0(CAN0_CS);                           // Set CS to pin 17
 
 void setup()
 {
-  Serial.begin(115200);
+  ktaneConsoleInit(115200);
   delay(2000);  // Give time for serial monitor to connect
   
-  Serial.println("==========================================");
-  Serial.println("CAN Test Receive Module");
-  Serial.println("Based on MCP_CAN library example");
-  Serial.println("==========================================");
+  KTANE_CONSOLE_OUT.println("==========================================");
+  KTANE_CONSOLE_OUT.println("CAN Test Receive Module");
+  KTANE_CONSOLE_OUT.println("Based on MCP_CAN library example");
+  KTANE_CONSOLE_OUT.println("==========================================");
 
   // Initialize SPI before initializing CAN controller
   SPI.begin();
@@ -30,9 +32,9 @@ void setup()
   // Initialize MCP2515 running at 8MHz with a baudrate of 500kb/s and the masks and filters disabled.
   // NOTE: Change MCP_8MHZ to MCP_16MHZ if your module uses a 16MHz crystal
   if(CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
-    Serial.println("MCP2515 Initialized Successfully!");
+    KTANE_CONSOLE_OUT.println("MCP2515 Initialized Successfully!");
   } else {
-    Serial.println("Error Initializing MCP2515...");
+    KTANE_CONSOLE_OUT.println("Error Initializing MCP2515...");
     while(1);  // Stop here if initialization failed
   }
   
@@ -40,17 +42,17 @@ void setup()
 
   pinMode(CAN0_INT, INPUT_PULLUP);                     // Configuring pin for /INT input with pullup
   
-  Serial.println("MCP2515 Library Receive Example...");
-  Serial.println("Waiting for messages...");
-  Serial.println();
-  Serial.println("=== DIAGNOSTICS ===");
-  Serial.print("Interrupt pin (");
-  Serial.print(CAN0_INT);
-  Serial.print(") state: ");
-  Serial.println(digitalRead(CAN0_INT) ? "HIGH (idle, no messages)" : "LOW (interrupt active)");
-  Serial.println("Expected: HIGH when idle, LOW when message received");
-  Serial.println("==========================================");
-  Serial.println();
+  KTANE_CONSOLE_OUT.println("MCP2515 Library Receive Example...");
+  KTANE_CONSOLE_OUT.println("Waiting for messages...");
+  KTANE_CONSOLE_OUT.println();
+  KTANE_CONSOLE_OUT.println("=== DIAGNOSTICS ===");
+  KTANE_CONSOLE_OUT.print("Interrupt pin (");
+  KTANE_CONSOLE_OUT.print(CAN0_INT);
+  KTANE_CONSOLE_OUT.print(") state: ");
+  KTANE_CONSOLE_OUT.println(digitalRead(CAN0_INT) ? "HIGH (idle, no messages)" : "LOW (interrupt active)");
+  KTANE_CONSOLE_OUT.println("Expected: HIGH when idle, LOW when message received");
+  KTANE_CONSOLE_OUT.println("==========================================");
+  KTANE_CONSOLE_OUT.println();
 }
 
 void loop()
@@ -61,43 +63,43 @@ void loop()
   // Print diagnostics every 2 seconds
   if(now - lastDiagnostic >= 2000) {
     lastDiagnostic = now;
-    Serial.print("[DIAG] INT pin: ");
-    Serial.print(digitalRead(CAN0_INT) ? "HIGH" : "LOW");
-    Serial.print(" | CheckReceive: ");
+    KTANE_CONSOLE_OUT.print("[DIAG] INT pin: ");
+    KTANE_CONSOLE_OUT.print(digitalRead(CAN0_INT) ? "HIGH" : "LOW");
+    KTANE_CONSOLE_OUT.print(" | CheckReceive: ");
     byte checkStatus = CAN0.checkReceive();
-    Serial.print(checkStatus);
-    Serial.print(" - ");
+    KTANE_CONSOLE_OUT.print(checkStatus);
+    KTANE_CONSOLE_OUT.print(" - ");
     switch(checkStatus) {
-      case 0: Serial.print("CAN_NOMSG (no message)");
+      case 0: KTANE_CONSOLE_OUT.print("CAN_NOMSG (no message)");
         break;
-      case 1: Serial.print("CAN_MSGAVAIL (message available)");
+      case 1: KTANE_CONSOLE_OUT.print("CAN_MSGAVAIL (message available)");
         break;
-      case 2: Serial.print("CAN_FAIL (check failed)");
+      case 2: KTANE_CONSOLE_OUT.print("CAN_FAIL (check failed)");
         break;
-      case 3: Serial.print("CAN_MSGAVAIL (message available)");
+      case 3: KTANE_CONSOLE_OUT.print("CAN_MSGAVAIL (message available)");
         break;
-      case 4: Serial.print("ERROR STATE (checkReceive failed)");
+      case 4: KTANE_CONSOLE_OUT.print("ERROR STATE (checkReceive failed)");
         break;
-      default: Serial.print("UNKNOWN");
+      default: KTANE_CONSOLE_OUT.print("UNKNOWN");
         break;
     }
-    Serial.println();
+    KTANE_CONSOLE_OUT.println();
     
     // Also check error status
     byte error = CAN0.getError();
-    Serial.print("[DIAG] Error Status: 0x");
-    Serial.print(error, HEX);
-    Serial.print(" | TX Errors: ");
-    Serial.print(CAN0.errorCountTX());
-    Serial.print(" | RX Errors: ");
-    Serial.println(CAN0.errorCountRX());
-    Serial.println();
+    KTANE_CONSOLE_OUT.print("[DIAG] Error Status: 0x");
+    KTANE_CONSOLE_OUT.print(error, HEX);
+    KTANE_CONSOLE_OUT.print(" | TX Errors: ");
+    KTANE_CONSOLE_OUT.print(CAN0.errorCountTX());
+    KTANE_CONSOLE_OUT.print(" | RX Errors: ");
+    KTANE_CONSOLE_OUT.println(CAN0.errorCountRX());
+    KTANE_CONSOLE_OUT.println();
   }
   
   // Method 1: Check interrupt pin (active-low interrupt)
   if(!digitalRead(CAN0_INT))                         // If CAN0_INT pin is low, read receive buffer
   {
-    Serial.println("[INTERRUPT] INT pin went LOW - message detected!");
+    KTANE_CONSOLE_OUT.println("[INTERRUPT] INT pin went LOW - message detected!");
     CAN0.readMsgBuf(&rxId, &len, rxBuf);      // Read data: len = data length, buf = data byte(s)
     
     if((rxId & 0x80000000) == 0x80000000)     // Determine if ID is standard (11 bits) or extended (29 bits)
@@ -105,24 +107,24 @@ void loop()
     else
       sprintf(msgString, "Standard ID: 0x%.3lX       DLC: %1d  Data:", rxId, len);
   
-    Serial.print(msgString);
+    KTANE_CONSOLE_OUT.print(msgString);
   
     if((rxId & 0x40000000) == 0x40000000){    // Determine if message is a remote request frame.
       sprintf(msgString, " REMOTE REQUEST FRAME");
-      Serial.print(msgString);
+      KTANE_CONSOLE_OUT.print(msgString);
     } else {
       for(byte i = 0; i<len; i++){
         sprintf(msgString, " 0x%.2X", rxBuf[i]);
-        Serial.print(msgString);
+        KTANE_CONSOLE_OUT.print(msgString);
       }
     }
         
-    Serial.println();
+    KTANE_CONSOLE_OUT.println();
   }
   
   // Method 2: Also check checkReceive() in case interrupt isn't working
   if(CAN0.checkReceive() == CAN_MSGAVAIL) {
-    Serial.println("[CHECK] Message available via checkReceive()!");
+    KTANE_CONSOLE_OUT.println("[CHECK] Message available via checkReceive()!");
     CAN0.readMsgBuf(&rxId, &len, rxBuf);
     
     if((rxId & 0x80000000) == 0x80000000)
@@ -130,19 +132,19 @@ void loop()
     else
       sprintf(msgString, "Standard ID: 0x%.3lX       DLC: %1d  Data:", rxId, len);
   
-    Serial.print(msgString);
+    KTANE_CONSOLE_OUT.print(msgString);
   
     if((rxId & 0x40000000) == 0x40000000){
       sprintf(msgString, " REMOTE REQUEST FRAME");
-      Serial.print(msgString);
+      KTANE_CONSOLE_OUT.print(msgString);
     } else {
       for(byte i = 0; i<len; i++){
         sprintf(msgString, " 0x%.2X", rxBuf[i]);
-        Serial.print(msgString);
+        KTANE_CONSOLE_OUT.print(msgString);
       }
     }
         
-    Serial.println();
+    KTANE_CONSOLE_OUT.println();
   }
 }
 
