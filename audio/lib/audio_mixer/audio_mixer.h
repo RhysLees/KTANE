@@ -3,10 +3,10 @@
 #include <AudioTools.h>
 #include <amp.h>
 
-// I2S pins feeding the TLV320DAC3100
-constexpr uint8_t AUDIO_MIXER_PIN_BCK = 3;   // GP6 -> BCK
-constexpr uint8_t AUDIO_MIXER_PIN_WS  = 4;   // GP7 -> WSEL/LRCLK
-constexpr uint8_t AUDIO_MIXER_PIN_DOUT = 5;  // GP8 -> DIN
+// I2S pins feeding the TLV320DAC3100 (separate from I2C SDA/SCL on GP6/GP7)
+constexpr uint8_t AUDIO_MIXER_PIN_BCK = 3;   // GP3 -> BCLK
+constexpr uint8_t AUDIO_MIXER_PIN_WS  = 4;   // GP4 -> WSEL / LRCK
+constexpr uint8_t AUDIO_MIXER_PIN_DOUT = 5;  // GP5 -> DIN
 
 
 void initAudioMixer(uint8_t bckPin = AUDIO_MIXER_PIN_BCK,

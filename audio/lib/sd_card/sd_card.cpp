@@ -82,23 +82,23 @@ bool initSdCard() {
       return true;  // Still working
     }
     // Card became unavailable - reset state and retry
-    Serial.println(F("[SD] Card became unavailable, reinitializing..."));
+    KTANE_CONSOLE_OUT.println(F("[SD] Card became unavailable, reinitializing..."));
     g_sdReady = false;
     delay(100);
   }
 
-  Serial.print(F("[SD] Initializing SD card (CS=GP"));
-  Serial.print(SD_CS);
-  Serial.println(F(", SPI1)..."));
-  Serial.print(F("[SD] Pins: MISO=GP"));
-  Serial.print(SD_MISO);
-  Serial.print(F(", MOSI=GP"));
-  Serial.print(SD_MOSI);
-  Serial.print(F(", SCK=GP"));
-  Serial.println(SD_SCK);
+  KTANE_CONSOLE_OUT.print(F("[SD] Initializing SD card (CS=GP"));
+  KTANE_CONSOLE_OUT.print(SD_CS);
+  KTANE_CONSOLE_OUT.println(F(", SPI1)..."));
+  KTANE_CONSOLE_OUT.print(F("[SD] Pins: MISO=GP"));
+  KTANE_CONSOLE_OUT.print(SD_MISO);
+  KTANE_CONSOLE_OUT.print(F(", MOSI=GP"));
+  KTANE_CONSOLE_OUT.print(SD_MOSI);
+  KTANE_CONSOLE_OUT.print(F(", SCK=GP"));
+  KTANE_CONSOLE_OUT.println(SD_SCK);
 
   // Configure SPI1 pins for SD card (exact order from working sdtest.cpp)
-  Serial.println(F("[SD] Configuring SPI1..."));
+  KTANE_CONSOLE_OUT.println(F("[SD] Configuring SPI1..."));
   SPI1.setRX(SD_MISO);  // MISO
   SPI1.setTX(SD_MOSI);  // MOSI
   SPI1.setSCK(SD_SCK);  // SCK
@@ -110,51 +110,58 @@ bool initSdCard() {
   digitalWrite(SD_CS, HIGH);
   delay(10);
 
-  Serial.print(F("[SD] Initializing SD card..."));
-  Serial.flush();
+  KTANE_CONSOLE_OUT.print(F("[SD] Initializing SD card..."));
+  KTANE_CONSOLE_OUT.flush();
 
   // Configure SPI for SdFat (exact pattern from working sdtest.cpp)
   SdSpiConfig config(SD_CS, SHARED_SPI, SD_SCK_MHZ(10), &SPI1);
   
   // Try to initialize the card (exact pattern from working sdtest.cpp)
   if (!card.begin(config)) {
-    Serial.println(F("initialization failed. Things to check:"));
-    Serial.println(F("* is a card inserted?"));
-    Serial.println(F("* Is your wiring correct?"));
-    Serial.println(F("* did you change the chipSelect pin to match your shield or module?"));
-    Serial.println();
-    Serial.println(F("Trying with slower speed..."));
+    KTANE_CONSOLE_OUT.println(F("initialization failed. Things to check:"));
+    KTANE_CONSOLE_OUT.println(F("* is a card inserted?"));
+    KTANE_CONSOLE_OUT.println(F("* Is your wiring correct?"));
+    KTANE_CONSOLE_OUT.println(F("* did you change the chipSelect pin to match your shield or module?"));
+    KTANE_CONSOLE_OUT.println();
+    KTANE_CONSOLE_OUT.println(F("Trying with slower speed..."));
     delay(500);
     
     // Try with slower speed (1MHz) - exact pattern from working sdtest.cpp
     SdSpiConfig configSlow(SD_CS, SHARED_SPI, SD_SCK_MHZ(1), &SPI1);
     if (!card.begin(configSlow)) {
-      Serial.println(F("Still failed with slower speed."));
-      Serial.println(F("Please check:"));
-      Serial.println(F("  - Card is inserted"));
-      Serial.println(F("  - Wiring is correct"));
-      Serial.println(F("  - Card is formatted as FAT16/FAT32"));
-      Serial.println(F("  - Power is connected (5V for your board)"));
+      KTANE_CONSOLE_OUT.println(F("Still failed with slower speed."));
+      KTANE_CONSOLE_OUT.println(F("Please check:"));
+      KTANE_CONSOLE_OUT.println(F("  - Card is inserted"));
+      KTANE_CONSOLE_OUT.println(F("  - Wiring is correct"));
+      KTANE_CONSOLE_OUT.println(F("  - Card is formatted as FAT16/FAT32"));
+      KTANE_CONSOLE_OUT.println(F("  - Power is connected (5V for your board)"));
       return false;
     } else {
-      Serial.println(F("SUCCESS with slower speed!"));
+      KTANE_CONSOLE_OUT.println(F("SUCCESS with slower speed!"));
     }
   } else {
-    Serial.println(F("Wiring is correct and a card is present."));
+    KTANE_CONSOLE_OUT.println(F("Wiring is correct and a card is present."));
   }
 
   // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
   // (exact pattern from working sdtest.cpp)
-  Serial.print(F("\n[SD] Initializing FAT volume..."));
+  KTANE_CONSOLE_OUT.print(F("\n[SD] Initializing FAT volume..."));
   if (!volume.init(&card)) {
-    Serial.println(F("Could not find FAT16/FAT32 partition."));
-    Serial.println(F("Make sure you've formatted the card"));
+    KTANE_CONSOLE_OUT.println(F("Could not find FAT16/FAT32 partition."));
+    KTANE_CONSOLE_OUT.println(F("Make sure you've formatted the card"));
     return false;
   }
-  Serial.println(F("SUCCESS"));
+  KTANE_CONSOLE_OUT.println(F("SUCCESS"));
+
+  // open(&volume, path) resolves relative to vwd(); init() does not set it — only
+  // begin() does. chdir() opens the volume root as cwd so listSdCardPath/play paths work.
+  if (!volume.chdir()) {
+    KTANE_CONSOLE_OUT.println(F("[SD] Failed to open volume root (chdir)."));
+    return false;
+  }
 
   g_sdReady = true;
-  Serial.println(F("[SD] Card ready on SPI1."));
+  KTANE_CONSOLE_OUT.println(F("[SD] Card ready on SPI1."));
   return true;
 }
 
@@ -198,4 +205,41 @@ void listSdCardRoot(Stream& output) {
   output.flush();
 }
 
+void listSdCardPath(const char* path, Stream& output) {
+  if (!sdCardReady()) {
+    output.println(F("[SD] Card not initialized."));
+    return;
+  }
+  if (path == nullptr || path[0] == '\0') {
+    output.println(F("[SD] listSdCardPath: empty path."));
+    return;
+  }
+  if (path[0] == '/' && path[1] == '\0') {
+    listSdCardRoot(output);
+    return;
+  }
 
+  const char* rel = path;
+  if (rel[0] == '/') {
+    rel++;
+  }
+
+  FatFile dir;
+  if (!dir.open(&volume, rel, O_RDONLY)) {
+    output.print(F("[SD] Cannot open: "));
+    output.println(path);
+    return;
+  }
+  if (!dir.isDir()) {
+    output.println(F("[SD] Path is not a directory."));
+    dir.close();
+    return;
+  }
+  output.print(F("[SD] Listing "));
+  output.println(path);
+  output.flush();
+  listDirectory(dir, output, 0);
+  dir.close();
+  output.println(F("[SD] Directory listing complete."));
+  output.flush();
+}

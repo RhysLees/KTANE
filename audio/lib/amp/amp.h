@@ -6,7 +6,11 @@ constexpr uint8_t AUDIO_I2C_SDA_PIN = 6;   // GP6 -> SDA (I2C1)
 constexpr uint8_t AUDIO_I2C_SCL_PIN = 7;   // GP7 -> SCL (I2C1)
 constexpr int TLV320_RESET_PIN = 8;        // GP8 wired to TLV320 RST (active low)
 
-// Initialize the TLV320DAC3100 codec. Returns true on success.
+// TLV320 PLL uses BCLK: program dividers first, run I2S, then finish (TI order).
+bool initAmpPhaseBeforeI2s();
+bool initAmpPhaseAfterI2s();
+
+// Full init in one call (only safe if I2S already outputs BCLK, e.g. after reset).
 bool initAmp();
 
 // Returns true if the amp/codec has been successfully initialized.

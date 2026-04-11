@@ -375,7 +375,7 @@ void setup() {
   Serial.println(F("[Audio] Waiting 5 seconds before initialization..."));
   
 
-  Serial.println(F("[Audio] Using TLV320DAC3100 I2S DAC (BCK=GP6, LRCK=GP7, DIN=GP8)"));
+  Serial.println(F("[Audio] TLV320: I2S BCLK=GP3 WSEL=GP4 DIN=GP5; I2C SDA=GP6 SCL=GP7"));
 
   Serial.println(F("[Audio] Initializing CAN bus..."));
   initCanBus(CAN_ID_AUDIO);
@@ -387,8 +387,7 @@ void setup() {
   Serial.println(F("[Audio] Module state initialized"));
 
   Serial.println(F("[Audio] Starting mixer core..."));
-  // Initialize with correct pins: BCK=GP6, WS=GP7, DIN=GP8
-  initAudioMixer(6, 7, 8);
+  initAudioMixer();
   while (!audioMixerReady()) {
     delay(1);
   }

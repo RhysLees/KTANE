@@ -1,17 +1,22 @@
 #include <audio_mixer.h>
 #include <hardware/sync.h>
 #include <AudioTools.h>
-#include <AudioTools/Disk/AudioSourceSDFAT.h>
-#include <AudioTools/AudioCodecs/CodecWAV.h>
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
 #include <cstring>
-#include <vector>
 #include <SdFat.h>
 #include "sd_card.h"
 
-#define SAMPLE_RATE 22050
+// Must match TLV320 PLL + NDAC/MDAC (Adafruit example); KTANE_AUDIO WAVs are 44100 Hz.
+#define SAMPLE_RATE 44100
 #define MAX_VOICES 6
 #define BUFFER_SAMPLES 256
+// RP2040 AudioTools: cfg.channels==2 uses int32-packed frames, not int16 L,R.
+// Use channels==1 so writeBytes() uses writeExpandChannel → write16(L,R) per
+// sample (correct for TLV320 I2S stereo slots). Software stays mono; driver
+// duplicates to both slots.
+constexpr int kI2sLogicalChannels = 1;
 
 struct MixerVoice {
   const int16_t* data;
@@ -30,7 +35,115 @@ static critical_section_t mixerLock;
 static uint8_t masterVolumePercent = 20;
 
 static int32_t mixAccumulator[BUFFER_SAMPLES];
+// Mono PCM fed to I2SStream; driver expands each sample to L+R on the wire.
 static int16_t outputBuffer[BUFFER_SAMPLES];
+// SD read staging: up to BUFFER_SAMPLES stereo PCM frames from file (4 bytes each).
+static uint8_t fileReadChunk[BUFFER_SAMPLES * 4];
+// Core0 owns I2S: mixer updates and file playback both use i2s.write() on core0.
+static std::atomic<bool> filePlaybackExclusive{false};
+static uint8_t s_i2sBck = 0;
+static uint8_t s_i2sWs = 0;
+static uint8_t s_i2sData = 0;
+
+extern FatVolume volume;
+
+namespace {
+
+struct WavInfo {
+  uint32_t dataOffset = 0;
+  uint32_t dataSize = 0;
+  uint16_t numChannels = 0;
+  uint32_t sampleRate = 0;
+  uint16_t bitsPerSample = 0;
+};
+
+bool readBytesExactly(FatFile& file, void* buffer, size_t len) {
+  return file.read(reinterpret_cast<uint8_t*>(buffer), len) ==
+         static_cast<int>(len);
+}
+
+uint32_t readLE32(const uint8_t* data) {
+  return static_cast<uint32_t>(data[0]) |
+         (static_cast<uint32_t>(data[1]) << 8) |
+         (static_cast<uint32_t>(data[2]) << 16) |
+         (static_cast<uint32_t>(data[3]) << 24);
+}
+
+uint16_t readLE16(const uint8_t* data) {
+  return static_cast<uint16_t>(data[0]) |
+         (static_cast<uint16_t>(data[1]) << 8);
+}
+
+bool parseWavHeader(FatFile& file, WavInfo& info) {
+  if (!file.seekSet(0)) {
+    return false;
+  }
+  uint8_t header[12];
+  if (!readBytesExactly(file, header, sizeof(header))) {
+    return false;
+  }
+  if (memcmp(header, "RIFF", 4) != 0 || memcmp(header + 8, "WAVE", 4) != 0) {
+    return false;
+  }
+
+  bool foundFmt = false;
+  bool foundData = false;
+
+  while (file.available32() > 0) {
+    uint8_t chunkHeader[8];
+    if (!readBytesExactly(file, chunkHeader, sizeof(chunkHeader))) {
+      return false;
+    }
+
+    const uint32_t chunkSize = readLE32(chunkHeader + 4);
+    const bool oddSize = chunkSize & 1;
+    // First byte of chunk payload — nextChunkPos must not include bytes already
+    // consumed reading fmt (fixes alignment after fmt for all standard WAVs).
+    const uint32_t chunkPayloadStart = file.curPosition();
+    const uint32_t nextChunkPos = chunkPayloadStart + chunkSize + (oddSize ? 1 : 0);
+
+    if (memcmp(chunkHeader, "fmt ", 4) == 0) {
+      if (chunkSize < 16) {
+        return false;
+      }
+      uint8_t fmt[16];
+      if (!readBytesExactly(file, fmt, sizeof(fmt))) {
+        return false;
+      }
+      const uint16_t audioFormat = readLE16(fmt + 0);
+      info.numChannels = readLE16(fmt + 2);
+      info.sampleRate = readLE32(fmt + 4);
+      info.bitsPerSample = readLE16(fmt + 14);
+      if (audioFormat != 1) {
+        return false;
+      }
+      foundFmt = true;
+    } else if (memcmp(chunkHeader, "data", 4) == 0) {
+      info.dataOffset = file.curPosition();
+      info.dataSize = chunkSize;
+      foundData = true;
+    }
+
+    if (!foundFmt || !foundData) {
+      if (!file.seekSet(nextChunkPos)) {
+        return false;
+      }
+    } else {
+      break;
+    }
+  }
+
+  if (!foundFmt || !foundData || info.dataSize == 0) {
+    return false;
+  }
+  if ((info.numChannels != 1 && info.numChannels != 2) ||
+      info.bitsPerSample != 16) {
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 static uint8_t clampVolume(uint8_t percent) {
   return percent > 100 ? 100 : percent;
@@ -50,18 +163,24 @@ bool audioMixerReady() {
 void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
   if (initialized) return;
 
-  if (!initAmp()) {
-    Serial.println(F("[Audio] Codec init failed. Continuing without I2S output."));
-  }
+  s_i2sBck = bckPin;
+  s_i2sWs = wsPin;
+  s_i2sData = dataPin;
 
   if (!lockInitialized) {
     critical_section_init(&mixerLock);
     lockInitialized = true;
   }
 
-  audioInfo = AudioInfo(SAMPLE_RATE, 1, 16);
+  const bool codecPhase1Ok = initAmpPhaseBeforeI2s();
+  if (!codecPhase1Ok) {
+    KTANE_CONSOLE_OUT.println(
+        F("[Audio] Codec phase1 failed. Fix I2C (see scan above); skipping codec phase2."));
+  }
 
-  // Initialize I2S (default mode) using AudioTools I2SStream
+  audioInfo = AudioInfo(SAMPLE_RATE, kI2sLogicalChannels, 16);
+
+  // Start BCLK/LRCK before powering codec PLL (PLL reference = BCLK).
   i2sConfig = i2s.defaultConfig(TX_MODE);
   i2sConfig.copyFrom(audioInfo);
   i2sConfig.pin_bck = bckPin;
@@ -69,7 +188,14 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
   i2sConfig.pin_data = dataPin;
   i2sConfig.buffer_size = BUFFER_SAMPLES * sizeof(int16_t);
   i2sConfig.buffer_count = 4;
-  i2s.begin(i2sConfig);
+  if (!i2s.begin(i2sConfig)) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] I2S begin failed."));
+  }
+  delay(50);
+
+  if (codecPhase1Ok && !initAmpPhaseAfterI2s()) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] Codec phase2 failed. Continuing without DAC path."));
+  }
 
   critical_section_enter_blocking(&mixerLock);
   for (auto& voice : voices) {
@@ -139,11 +265,14 @@ static void mixActiveVoices(bool& mixedSamples, bool& voicesRemaining) {
 
 void updateAudioMixer() {
   if (!initialized) return;
+  if (filePlaybackExclusive.load(std::memory_order_acquire)) {
+    return;
+  }
 
   const size_t bufferBytes = BUFFER_SAMPLES * sizeof(int16_t);
 
   // Check if I2S output stream has space
-  if (i2s.availableForWrite() < bufferBytes) {
+  if (i2s.availableForWrite() < static_cast<int>(bufferBytes)) {
     return;
   }
 
@@ -155,13 +284,11 @@ void updateAudioMixer() {
   critical_section_exit(&mixerLock);
 
   if (!mixedSamples) {
-    // No active voices – send silence once and exit.
     std::memset(outputBuffer, 0, bufferBytes);
     i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer), bufferBytes);
     return;
   }
 
-  // Apply volume scaling
   for (size_t i = 0; i < BUFFER_SAMPLES; ++i) {
     int32_t scaled = (mixAccumulator[i] * masterVolumePercent) / 100;
     if (scaled > 32767) scaled = 32767;
@@ -169,7 +296,6 @@ void updateAudioMixer() {
     outputBuffer[i] = static_cast<int16_t>(scaled);
   }
 
-  // Write to I2S output stream
   i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer), bufferBytes);
 }
 
@@ -181,80 +307,155 @@ uint8_t getAudioMixerVolume() {
   return masterVolumePercent;
 }
 
-// Access the global volume from sd_card.cpp
-extern FatVolume volume;
-
 bool playSoundFromFile(const char* filePath) {
   if (!filePath || !initialized) {
     return false;
   }
 
-  // Ensure SD card is ready
   if (!sdCardReady() && !initSdCard()) {
-    Serial.println(F("[Audio] [File] SD card not available"));
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] SD card not available"));
     return false;
   }
 
-  Serial.print(F("[Audio] [File] Playing: "));
-  Serial.println(filePath);
+  KTANE_CONSOLE_OUT.print(F("[Audio] [File] Playing: "));
+  KTANE_CONSOLE_OUT.println(filePath);
 
-  // Extract directory and filename from path
-  const char* filename = strrchr(filePath, '/');
-  if (filename) {
-    filename++; // Skip the '/'
-  } else {
-    filename = filePath;
+  const char* relPath = filePath;
+  if (relPath[0] == '/') {
+    relPath++;
   }
 
-  // Get directory path (everything before the last '/')
-  char dirPath[256];
-  if (strrchr(filePath, '/')) {
-    size_t dirLen = strrchr(filePath, '/') - filePath;
-    strncpy(dirPath, filePath, dirLen);
-    dirPath[dirLen] = '\0';
-  } else {
-    strcpy(dirPath, "/");
+  char volPath[128];
+  if (relPath[0] == '\0') {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Empty path"));
+    return false;
   }
-
-  // Create audio source for WAV files from the directory
-  AudioSourceSDFAT source(dirPath, "wav");
-  
-  // Create WAV decoder
-  WAVDecoder decoder;
-  
-  // Create player with source, I2S output, and decoder
-  AudioPlayer player(source, i2s, decoder);
-
-  // Set up the player to play the specific file
-  // AudioSourceSDFAT can filter by filename pattern
-  // Use exact filename match (filename already extracted from path)
-  source.setFileFilter(filename);
-
-  // Begin the player
-  if (!player.begin()) {
-    Serial.println(F("[Audio] [File] Failed to begin player"));
+  const int plen = snprintf(volPath, sizeof(volPath), "/%s", relPath);
+  if (plen < 0 || static_cast<size_t>(plen) >= sizeof(volPath)) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Path too long"));
     return false;
   }
 
-  // Play the file by calling copy() in a loop until done
-  // This is blocking, but necessary for proper playback
-  unsigned long startTime = millis();
-  const unsigned long MAX_PLAY_TIME = 60000; // 60 second timeout
-  
-  while (player.isActive()) {
-    player.copy();
-    
-    // Safety timeout to prevent infinite loops
-    if (millis() - startTime > MAX_PLAY_TIME) {
-      Serial.println(F("[Audio] [File] Playback timeout"));
-      player.stop();
-      return false;
+  FatFile file;
+  if (!file.open(&volume, volPath, O_RDONLY)) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Failed to open file"));
+    return false;
+  }
+
+  WavInfo wavInfo;
+  if (!parseWavHeader(file, wavInfo)) {
+    file.close();
+    KTANE_CONSOLE_OUT.println(
+        F("[Audio] [File] Invalid or unsupported WAV (need mono/stereo 16-bit PCM)"));
+    return false;
+  }
+
+  if (!file.seekSet(wavInfo.dataOffset)) {
+    file.close();
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Seek failed"));
+    return false;
+  }
+
+  if (wavInfo.sampleRate == 0) {
+    file.close();
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Invalid sample rate"));
+    return false;
+  }
+
+  const unsigned frameBytes =
+      static_cast<unsigned>(wavInfo.numChannels) * sizeof(int16_t);
+  if (frameBytes == 0 || (wavInfo.dataSize % frameBytes) != 0) {
+    file.close();
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Bad WAV data size"));
+    return false;
+  }
+
+  if (wavInfo.sampleRate != SAMPLE_RATE) {
+    file.close();
+    KTANE_CONSOLE_OUT.print(F("[Audio] [File] WAV must be "));
+    KTANE_CONSOLE_OUT.print(SAMPLE_RATE);
+    KTANE_CONSOLE_OUT.println(F(" Hz (codec PLL fixed for this rate)."));
+    return false;
+  }
+
+  filePlaybackExclusive.store(true, std::memory_order_release);
+
+  uint32_t remaining = wavInfo.dataSize;
+  const unsigned long t0 = millis();
+  const uint32_t totalPcmFrames = wavInfo.dataSize / frameBytes;
+  const unsigned long estMs =
+      1000UL * totalPcmFrames / wavInfo.sampleRate + 5000UL;
+  const unsigned long kMaxMs = std::max(120000UL, estMs * 2);
+  bool timedOut = false;
+
+  while (remaining > 0) {
+    if (millis() - t0 > kMaxMs) {
+      KTANE_CONSOLE_OUT.println(F("[Audio] [File] Playback timeout"));
+      timedOut = true;
+      break;
     }
-    
-    // Small delay to prevent CPU spinning
-    delay(1);
+
+    size_t chunkBytes = std::min(static_cast<size_t>(remaining),
+                                 static_cast<size_t>(BUFFER_SAMPLES * frameBytes));
+    chunkBytes -= chunkBytes % frameBytes;
+    if (chunkBytes == 0) {
+      break;
+    }
+
+    size_t totalRead = 0;
+    while (totalRead < chunkBytes) {
+      const int n = file.read(fileReadChunk + totalRead, chunkBytes - totalRead);
+      if (n <= 0) {
+        remaining = 0;
+        break;
+      }
+      totalRead += static_cast<size_t>(n);
+    }
+    totalRead -= totalRead % frameBytes;
+    if (totalRead == 0) {
+      break;
+    }
+
+    if (wavInfo.numChannels == 1) {
+      const size_t monoSamples = totalRead / sizeof(int16_t);
+      const int16_t* pcm = reinterpret_cast<const int16_t*>(fileReadChunk);
+      for (size_t i = 0; i < monoSamples; ++i) {
+        int32_t scaled = (static_cast<int32_t>(pcm[i]) *
+                          static_cast<int32_t>(masterVolumePercent)) /
+                         100;
+        if (scaled > 32767) scaled = 32767;
+        if (scaled < -32768) scaled = -32768;
+        outputBuffer[i] = static_cast<int16_t>(scaled);
+      }
+      i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer),
+                monoSamples * sizeof(int16_t));
+    } else {
+      const size_t frames = totalRead / frameBytes;
+      const int16_t* interleaved =
+          reinterpret_cast<const int16_t*>(fileReadChunk);
+      for (size_t f = 0; f < frames; ++f) {
+        const int32_t L = interleaved[f * 2];
+        const int32_t R = interleaved[f * 2 + 1];
+        const int32_t m = (L + R) / 2;
+        int32_t scaled =
+            (m * static_cast<int32_t>(masterVolumePercent)) / 100;
+        if (scaled > 32767) scaled = 32767;
+        if (scaled < -32768) scaled = -32768;
+        outputBuffer[f] = static_cast<int16_t>(scaled);
+      }
+      i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer),
+                frames * sizeof(int16_t));
+    }
+
+    remaining -= static_cast<uint32_t>(totalRead);
   }
 
-  Serial.println(F("[Audio] [File] Playback complete"));
+  filePlaybackExclusive.store(false, std::memory_order_release);
+  file.close();
+
+  if (timedOut) {
+    return false;
+  }
+  KTANE_CONSOLE_OUT.println(F("[Audio] [File] Playback complete"));
   return true;
 }
