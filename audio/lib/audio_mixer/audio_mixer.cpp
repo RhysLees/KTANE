@@ -1,5 +1,439 @@
 #include <audio_mixer.h>
-#include <hardware/sync.h>
+
+#if defined(EDGE_AUDIO)
+
+#include <AudioTools.h>
+#include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <ktane_console.h>
+#include <audio_mixer_ipc.h>
+
+#define SAMPLE_RATE 44100
+#define MAX_VOICES 6
+#define MAX_STREAM_SLOTS KTANE_AUDIO_STREAM_SLOTS
+#define BUFFER_SAMPLES KTANE_AUDIO_BLOCK_SAMPLES
+constexpr int kI2sLogicalChannels = 1;
+
+struct MixerVoice {
+  const int16_t* data;
+  size_t length;
+  size_t position;
+  bool active;
+};
+
+struct MixerStreamVoice {
+  bool active = false;
+};
+
+static MixerVoice voices[MAX_VOICES];
+static MixerStreamVoice streamVoices[MAX_STREAM_SLOTS];
+static I2SStream i2s;
+static I2SConfig i2sConfig;
+static AudioInfo audioInfo;
+static volatile bool initialized = false;
+
+static std::atomic<uint8_t> g_volAtomic{20};
+
+static int32_t mixAccumulator[BUFFER_SAMPLES];
+static int16_t outputBuffer[BUFFER_SAMPLES];
+static uint8_t s_i2sBck = 0;
+static uint8_t s_i2sWs = 0;
+static uint8_t s_i2sData = 0;
+
+// --- IPC queue (core1 -> core0) ---
+enum AudioIpcType : uint8_t {
+  IPC_PLAY_RAM = 1,
+  IPC_SET_VOLUME = 2,
+  IPC_STREAM_ARM = 3,
+  IPC_STREAM_STOP = 4,
+};
+
+struct AudioIpcMsg {
+  uint8_t type;
+  uint32_t a;
+  uint32_t b;
+};
+
+static constexpr uint32_t kIpcCap = 32;
+static AudioIpcMsg s_ipcQ[kIpcCap];
+static std::atomic<uint32_t> s_ipcHead{0};
+static std::atomic<uint32_t> s_ipcTail{0};
+
+// --- Stream rings (core1 produces, core0 consumes) ---
+static constexpr uint32_t kRingCap = 8;
+
+struct StreamRing {
+  std::atomic<uint32_t> head{0};
+  std::atomic<uint32_t> tail{0};
+  int16_t pcm[kRingCap][BUFFER_SAMPLES];
+};
+
+static StreamRing g_streamRings[MAX_STREAM_SLOTS];
+static std::atomic<bool> g_streamFeedDone[MAX_STREAM_SLOTS];
+static std::atomic<bool> g_streamSlotIdle[MAX_STREAM_SLOTS];
+
+static uint8_t clampVolume(uint8_t percent) {
+  return percent > 100 ? 100 : percent;
+}
+
+static void resetVoice(MixerVoice& voice) {
+  voice.data = nullptr;
+  voice.length = 0;
+  voice.position = 0;
+  voice.active = false;
+}
+
+static bool ipcTryPop(AudioIpcMsg* out) {
+  uint32_t h = s_ipcHead.load(std::memory_order_relaxed);
+  uint32_t t = s_ipcTail.load(std::memory_order_acquire);
+  if (h == t) {
+    return false;
+  }
+  *out = s_ipcQ[h % kIpcCap];
+  s_ipcHead.store(h + 1, std::memory_order_release);
+  return true;
+}
+
+static bool ipcTryPush(const AudioIpcMsg& m) {
+  uint32_t t = s_ipcTail.load(std::memory_order_relaxed);
+  uint32_t h = s_ipcHead.load(std::memory_order_acquire);
+  if (t - h >= kIpcCap) {
+    return false;
+  }
+  s_ipcQ[t % kIpcCap] = m;
+  s_ipcTail.store(t + 1, std::memory_order_release);
+  return true;
+}
+
+extern "C" {
+
+void audioMixerIpcInit(void) {
+  s_ipcHead.store(0, std::memory_order_relaxed);
+  s_ipcTail.store(0, std::memory_order_relaxed);
+}
+
+int audioMixerIpcTryPushPlayRam(const int16_t* data, uint32_t length_samples) {
+  if (!data || length_samples == 0) {
+    return 0;
+  }
+  AudioIpcMsg m{};
+  m.type = IPC_PLAY_RAM;
+  m.a = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+  m.b = length_samples;
+  return ipcTryPush(m) ? 1 : 0;
+}
+
+int audioMixerIpcTryPushSetVolume(uint8_t percent) {
+  AudioIpcMsg m{};
+  m.type = IPC_SET_VOLUME;
+  m.a = percent;
+  return ipcTryPush(m) ? 1 : 0;
+}
+
+int audioMixerIpcTryPushStreamArm(uint8_t slot) {
+  if (slot >= MAX_STREAM_SLOTS) {
+    return 0;
+  }
+  AudioIpcMsg m{};
+  m.type = IPC_STREAM_ARM;
+  m.a = slot;
+  return ipcTryPush(m) ? 1 : 0;
+}
+
+int audioMixerIpcTryPushStreamStop(uint8_t slot) {
+  if (slot >= MAX_STREAM_SLOTS) {
+    return 0;
+  }
+  AudioIpcMsg m{};
+  m.type = IPC_STREAM_STOP;
+  m.a = slot;
+  return ipcTryPush(m) ? 1 : 0;
+}
+
+void audioStreamRingReset(uint8_t slot) {
+  if (slot >= MAX_STREAM_SLOTS) {
+    return;
+  }
+  g_streamRings[slot].head.store(0, std::memory_order_relaxed);
+  g_streamRings[slot].tail.store(0, std::memory_order_relaxed);
+  g_streamFeedDone[slot].store(false, std::memory_order_relaxed);
+}
+
+int audioStreamRingTryPushBlock(uint8_t slot, const int16_t* mono_block) {
+  if (slot >= MAX_STREAM_SLOTS || !mono_block) {
+    return 0;
+  }
+  StreamRing& r = g_streamRings[slot];
+  const uint32_t h = r.head.load(std::memory_order_relaxed);
+  const uint32_t t = r.tail.load(std::memory_order_acquire);
+  if (h - t >= kRingCap) {
+    return 0;
+  }
+  std::memcpy(r.pcm[h % kRingCap], mono_block,
+              BUFFER_SAMPLES * sizeof(int16_t));
+  r.head.store(h + 1, std::memory_order_release);
+  return 1;
+}
+
+int audioMixerStreamSlotIsIdle(uint8_t slot) {
+  if (slot >= MAX_STREAM_SLOTS) {
+    return 0;
+  }
+  return g_streamSlotIdle[slot].load(std::memory_order_acquire) ? 1 : 0;
+}
+
+}  // extern "C"
+
+static void drainMixerIpc(void) {
+  AudioIpcMsg m;
+  while (ipcTryPop(&m)) {
+    switch (m.type) {
+      case IPC_PLAY_RAM: {
+        const int16_t* data =
+            reinterpret_cast<const int16_t*>(static_cast<uintptr_t>(m.a));
+        const uint32_t len = m.b;
+        if (!data || len == 0) {
+          break;
+        }
+        for (auto& voice : voices) {
+          if (!voice.active) {
+            voice.data = data;
+            voice.length = len;
+            voice.position = 0;
+            voice.active = true;
+            break;
+          }
+        }
+        break;
+      }
+      case IPC_SET_VOLUME:
+        g_volAtomic.store(clampVolume(static_cast<uint8_t>(m.a)),
+                          std::memory_order_relaxed);
+        break;
+      case IPC_STREAM_ARM: {
+        const uint8_t slot = static_cast<uint8_t>(m.a);
+        if (slot < MAX_STREAM_SLOTS) {
+          audioStreamRingReset(slot);
+          streamVoices[slot].active = true;
+          g_streamSlotIdle[slot].store(false, std::memory_order_release);
+          g_streamFeedDone[slot].store(false, std::memory_order_relaxed);
+        }
+        break;
+      }
+      case IPC_STREAM_STOP: {
+        const uint8_t slot = static_cast<uint8_t>(m.a);
+        if (slot < MAX_STREAM_SLOTS) {
+          streamVoices[slot].active = false;
+          audioStreamRingReset(slot);
+          g_streamSlotIdle[slot].store(true, std::memory_order_release);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+static void mixActiveVoices(bool& mixedSamples, bool& voicesRemaining) {
+  mixedSamples = false;
+  voicesRemaining = false;
+
+  for (auto& voice : voices) {
+    if (!voice.active) {
+      continue;
+    }
+
+    size_t samplesRemaining = (voice.length > voice.position)
+                                  ? (voice.length - voice.position)
+                                  : 0;
+    if (samplesRemaining == 0) {
+      resetVoice(voice);
+      continue;
+    }
+
+    const size_t samplesToMix =
+        std::min(samplesRemaining, static_cast<size_t>(BUFFER_SAMPLES));
+    const int16_t* src = voice.data + voice.position;
+
+    for (size_t i = 0; i < samplesToMix; ++i) {
+      mixAccumulator[i] += static_cast<int32_t>(src[i]);
+    }
+
+    voice.position += samplesToMix;
+    mixedSamples = true;
+
+    if (voice.position >= voice.length) {
+      resetVoice(voice);
+    } else {
+      voicesRemaining = true;
+    }
+  }
+}
+
+static bool streamRingPopIntoAccumulator(uint8_t slot) {
+  StreamRing& r = g_streamRings[slot];
+  const uint32_t t = r.tail.load(std::memory_order_relaxed);
+  const uint32_t h = r.head.load(std::memory_order_acquire);
+  if (t == h) {
+    return false;
+  }
+  const int16_t* src = r.pcm[t % kRingCap];
+  for (size_t i = 0; i < BUFFER_SAMPLES; ++i) {
+    mixAccumulator[i] += static_cast<int32_t>(src[i]);
+  }
+  r.tail.store(t + 1, std::memory_order_release);
+  return true;
+}
+
+static bool streamRingEmpty(uint8_t slot) {
+  StreamRing& r = g_streamRings[slot];
+  const uint32_t t = r.tail.load(std::memory_order_acquire);
+  const uint32_t h = r.head.load(std::memory_order_acquire);
+  return t == h;
+}
+
+static void mixStreamVoices(bool& mixedSamples) {
+  for (uint8_t slot = 0; slot < MAX_STREAM_SLOTS; ++slot) {
+    if (!streamVoices[slot].active) {
+      continue;
+    }
+    if (streamRingPopIntoAccumulator(slot)) {
+      mixedSamples = true;
+      continue;
+    }
+    if (g_streamFeedDone[slot].load(std::memory_order_acquire) &&
+        streamRingEmpty(slot)) {
+      streamVoices[slot].active = false;
+      g_streamFeedDone[slot].store(false, std::memory_order_relaxed);
+      g_streamSlotIdle[slot].store(true, std::memory_order_release);
+    }
+  }
+}
+
+bool audioMixerReady() {
+  return initialized;
+}
+
+void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
+  if (initialized) {
+    return;
+  }
+
+  s_i2sBck = bckPin;
+  s_i2sWs = wsPin;
+  s_i2sData = dataPin;
+
+  audioMixerIpcInit();
+  for (unsigned i = 0; i < MAX_STREAM_SLOTS; ++i) {
+    audioStreamRingReset(static_cast<uint8_t>(i));
+    g_streamSlotIdle[i].store(true, std::memory_order_release);
+    streamVoices[i].active = false;
+  }
+
+  const bool codecPhase1Ok = initAmpPhaseBeforeI2s();
+  if (!codecPhase1Ok) {
+    KTANE_CONSOLE_OUT.println(
+        F("[Audio] Codec phase1 failed. Fix I2C (see scan above); skipping codec phase2."));
+  }
+
+  audioInfo = AudioInfo(SAMPLE_RATE, kI2sLogicalChannels, 16);
+
+  i2sConfig = i2s.defaultConfig(TX_MODE);
+  i2sConfig.copyFrom(audioInfo);
+  i2sConfig.pin_bck = bckPin;
+  i2sConfig.pin_ws = wsPin;
+  i2sConfig.pin_data = dataPin;
+  i2sConfig.buffer_size = BUFFER_SAMPLES * sizeof(int16_t);
+  i2sConfig.buffer_count = 4;
+  if (!i2s.begin(i2sConfig)) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] I2S begin failed."));
+  }
+  delay(50);
+
+  if (codecPhase1Ok && !initAmpPhaseAfterI2s()) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] Codec phase2 failed. Continuing without DAC path."));
+  }
+
+  for (auto& voice : voices) {
+    resetVoice(voice);
+  }
+
+  initialized = true;
+}
+
+bool playSound(const int16_t* data, unsigned int length) {
+  if (!initialized || data == nullptr || length == 0) {
+    return false;
+  }
+  return audioMixerIpcTryPushPlayRam(data, static_cast<uint32_t>(length)) != 0;
+}
+
+void updateAudioMixer() {
+  if (!initialized) {
+    return;
+  }
+
+  const size_t bufferBytes = BUFFER_SAMPLES * sizeof(int16_t);
+
+  if (i2s.availableForWrite() < static_cast<int>(bufferBytes)) {
+    return;
+  }
+
+  drainMixerIpc();
+
+  std::fill(std::begin(mixAccumulator), std::end(mixAccumulator), 0);
+
+  bool ramMixed = false;
+  bool voicesRemaining = false;
+  bool streamMixed = false;
+
+  mixActiveVoices(ramMixed, voicesRemaining);
+  mixStreamVoices(streamMixed);
+  (void)voicesRemaining;
+
+  const bool mixedSamples = ramMixed || streamMixed;
+  const uint8_t vol = g_volAtomic.load(std::memory_order_relaxed);
+
+  if (!mixedSamples) {
+    std::memset(outputBuffer, 0, bufferBytes);
+    i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer), bufferBytes);
+    return;
+  }
+
+  for (size_t i = 0; i < BUFFER_SAMPLES; ++i) {
+    int32_t scaled = (mixAccumulator[i] * static_cast<int32_t>(vol)) / 100;
+    if (scaled > 32767) {
+      scaled = 32767;
+    }
+    if (scaled < -32768) {
+      scaled = -32768;
+    }
+    outputBuffer[i] = static_cast<int16_t>(scaled);
+  }
+
+  i2s.write(reinterpret_cast<const uint8_t*>(outputBuffer), bufferBytes);
+}
+
+void setAudioMixerVolume(uint8_t volumePercent) {
+  (void)audioMixerIpcTryPushSetVolume(clampVolume(volumePercent));
+}
+
+uint8_t getAudioMixerVolume() {
+  return g_volAtomic.load(std::memory_order_relaxed);
+}
+
+// playSoundFromFile implemented in stream_feeder.cpp (EDGE_AUDIO).
+
+extern "C" void ktaneStreamFeederMarkDone(uint8_t slot) {
+  if (slot < MAX_STREAM_SLOTS) {
+    g_streamFeedDone[slot].store(true, std::memory_order_release);
+  }
+}
+
+#else  // !EDGE_AUDIO — single-core console build (legacy)
+
 #include <AudioTools.h>
 #include <algorithm>
 #include <cstdio>
@@ -8,15 +442,10 @@
 #include <ktane_console.h>
 #include "sd_card.h"
 
-// Must match TLV320 PLL + NDAC/MDAC (Adafruit example); KTANE_AUDIO WAVs are 44100 Hz.
 #define SAMPLE_RATE 44100
 #define MAX_VOICES 6
 #define MAX_FILE_VOICES 6
 #define BUFFER_SAMPLES 256
-// RP2040 AudioTools: cfg.channels==2 uses int32-packed frames, not int16 L,R.
-// Use channels==1 so writeBytes() uses writeExpandChannel → write16(L,R) per
-// sample (correct for TLV320 I2S stereo slots). Software stays mono; driver
-// duplicates to both slots.
 constexpr int kI2sLogicalChannels = 1;
 
 struct MixerVoice {
@@ -36,18 +465,14 @@ struct MixerFileVoice {
 
 static MixerVoice voices[MAX_VOICES];
 static MixerFileVoice fileVoices[MAX_FILE_VOICES];
-static I2SStream i2s;  // AudioTools I2SStream for I2S output
+static I2SStream i2s;
 static I2SConfig i2sConfig;
 static AudioInfo audioInfo;
 static volatile bool initialized = false;
-static bool lockInitialized = false;
-static critical_section_t mixerLock;
 static uint8_t masterVolumePercent = 20;
 
 static int32_t mixAccumulator[BUFFER_SAMPLES];
-// Mono PCM fed to I2SStream; driver expands each sample to L+R on the wire.
 static int16_t outputBuffer[BUFFER_SAMPLES];
-// SD read staging: up to BUFFER_SAMPLES stereo PCM frames from file (4 bytes each).
 static uint8_t fileReadChunk[BUFFER_SAMPLES * 4];
 static uint8_t s_i2sBck = 0;
 static uint8_t s_i2sWs = 0;
@@ -105,8 +530,6 @@ bool parseWavHeader(FatFile& file, WavInfo& info) {
 
     const uint32_t chunkSize = readLE32(chunkHeader + 4);
     const bool oddSize = chunkSize & 1;
-    // First byte of chunk payload — nextChunkPos must not include bytes already
-    // consumed reading fmt (fixes alignment after fmt for all standard WAVs).
     const uint32_t chunkPayloadStart = file.curPosition();
     const uint32_t nextChunkPos = chunkPayloadStart + chunkSize + (oddSize ? 1 : 0);
 
@@ -177,16 +600,15 @@ bool audioMixerReady() {
 }
 
 void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
-  if (initialized) return;
+  if (initialized) {
+    return;
+  }
 
   s_i2sBck = bckPin;
   s_i2sWs = wsPin;
   s_i2sData = dataPin;
 
-  if (!lockInitialized) {
-    critical_section_init(&mixerLock);
-    lockInitialized = true;
-  }
+  audioSdLockInit();
 
   const bool codecPhase1Ok = initAmpPhaseBeforeI2s();
   if (!codecPhase1Ok) {
@@ -196,7 +618,6 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
 
   audioInfo = AudioInfo(SAMPLE_RATE, kI2sLogicalChannels, 16);
 
-  // Start BCLK/LRCK before powering codec PLL (PLL reference = BCLK).
   i2sConfig = i2s.defaultConfig(TX_MODE);
   i2sConfig.copyFrom(audioInfo);
   i2sConfig.pin_bck = bckPin;
@@ -213,24 +634,26 @@ void initAudioMixer(uint8_t bckPin, uint8_t wsPin, uint8_t dataPin) {
     KTANE_CONSOLE_OUT.println(F("[Audio] Codec phase2 failed. Continuing without DAC path."));
   }
 
-  critical_section_enter_blocking(&mixerLock);
+  audioSdLock();
   for (auto& voice : voices) {
     resetVoice(voice);
   }
   for (auto& fv : fileVoices) {
     resetFileVoice(fv);
   }
-  critical_section_exit(&mixerLock);
+  audioSdUnlock();
 
   initialized = true;
 }
 
 bool playSound(const int16_t* data, unsigned int length) {
-  if (!initialized || data == nullptr || length == 0) return false;
+  if (!initialized || data == nullptr || length == 0) {
+    return false;
+  }
 
   bool queued = false;
 
-  critical_section_enter_blocking(&mixerLock);
+  audioSdLock();
   for (auto& voice : voices) {
     if (!voice.active) {
       voice.data = data;
@@ -241,7 +664,7 @@ bool playSound(const int16_t* data, unsigned int length) {
       break;
     }
   }
-  critical_section_exit(&mixerLock);
+  audioSdUnlock();
 
   return queued;
 }
@@ -253,7 +676,9 @@ static void mixActiveVoices(bool& mixedSamples, bool& voicesRemaining) {
   voicesRemaining = false;
 
   for (auto& voice : voices) {
-    if (!voice.active) continue;
+    if (!voice.active) {
+      continue;
+    }
 
     size_t samplesRemaining = (voice.length > voice.position)
                                   ? (voice.length - voice.position)
@@ -263,7 +688,7 @@ static void mixActiveVoices(bool& mixedSamples, bool& voicesRemaining) {
       continue;
     }
 
-    size_t samplesToMix =
+    const size_t samplesToMix =
         std::min(samplesRemaining, static_cast<size_t>(BUFFER_SAMPLES));
     const int16_t* src = voice.data + voice.position;
 
@@ -345,11 +770,12 @@ static void mixFileVoices(bool& mixedSamples) {
 }
 
 void updateAudioMixer() {
-  if (!initialized) return;
+  if (!initialized) {
+    return;
+  }
 
   const size_t bufferBytes = BUFFER_SAMPLES * sizeof(int16_t);
 
-  // Check if I2S output stream has space
   if (i2s.availableForWrite() < static_cast<int>(bufferBytes)) {
     return;
   }
@@ -358,10 +784,10 @@ void updateAudioMixer() {
   bool voicesRemaining = false;
   bool fileMixed = false;
 
-  critical_section_enter_blocking(&mixerLock);
+  audioSdLock();
   mixActiveVoices(ramMixed, voicesRemaining);
   mixFileVoices(fileMixed);
-  critical_section_exit(&mixerLock);
+  audioSdUnlock();
   (void)voicesRemaining;
 
   const bool mixedSamples = ramMixed || fileMixed;
@@ -374,8 +800,12 @@ void updateAudioMixer() {
 
   for (size_t i = 0; i < BUFFER_SAMPLES; ++i) {
     int32_t scaled = (mixAccumulator[i] * masterVolumePercent) / 100;
-    if (scaled > 32767) scaled = 32767;
-    if (scaled < -32768) scaled = -32768;
+    if (scaled > 32767) {
+      scaled = 32767;
+    }
+    if (scaled < -32768) {
+      scaled = -32768;
+    }
     outputBuffer[i] = static_cast<int16_t>(scaled);
   }
 
@@ -416,7 +846,46 @@ bool playSoundFromFile(const char* filePath) {
     return false;
   }
 
-  critical_section_enter_blocking(&mixerLock);
+  audioSdLock();
+
+  FatFile probe;
+  if (!probe.open(&volume, volPath, O_RDONLY)) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Failed to open file"));
+    audioSdUnlock();
+    return false;
+  }
+
+  WavInfo wavInfo;
+  if (!parseWavHeader(probe, wavInfo)) {
+    probe.close();
+    KTANE_CONSOLE_OUT.println(
+        F("[Audio] [File] Invalid or unsupported WAV (need mono/stereo 16-bit PCM)"));
+    audioSdUnlock();
+    return false;
+  }
+  probe.close();
+
+  if (wavInfo.sampleRate == 0) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Invalid sample rate"));
+    audioSdUnlock();
+    return false;
+  }
+
+  const unsigned frameBytes =
+      static_cast<unsigned>(wavInfo.numChannels) * sizeof(int16_t);
+  if (frameBytes == 0 || (wavInfo.dataSize % frameBytes) != 0) {
+    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Bad WAV data size"));
+    audioSdUnlock();
+    return false;
+  }
+
+  if (wavInfo.sampleRate != SAMPLE_RATE) {
+    KTANE_CONSOLE_OUT.print(F("[Audio] [File] WAV must be "));
+    KTANE_CONSOLE_OUT.print(SAMPLE_RATE);
+    KTANE_CONSOLE_OUT.println(F(" Hz (codec PLL fixed for this rate)."));
+    audioSdUnlock();
+    return false;
+  }
 
   MixerFileVoice* slot = nullptr;
   for (auto& fv : fileVoices) {
@@ -427,7 +896,7 @@ bool playSoundFromFile(const char* filePath) {
   }
 
   if (slot == nullptr) {
-    critical_section_exit(&mixerLock);
+    audioSdUnlock();
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] No free file stream (mixer busy)"));
     return false;
   }
@@ -435,49 +904,15 @@ bool playSoundFromFile(const char* filePath) {
   resetFileVoice(*slot);
 
   if (!slot->file.open(&volume, volPath, O_RDONLY)) {
-    critical_section_exit(&mixerLock);
+    audioSdUnlock();
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Failed to open file"));
-    return false;
-  }
-
-  WavInfo wavInfo;
-  if (!parseWavHeader(slot->file, wavInfo)) {
-    resetFileVoice(*slot);
-    critical_section_exit(&mixerLock);
-    KTANE_CONSOLE_OUT.println(
-        F("[Audio] [File] Invalid or unsupported WAV (need mono/stereo 16-bit PCM)"));
     return false;
   }
 
   if (!slot->file.seekSet(wavInfo.dataOffset)) {
     resetFileVoice(*slot);
-    critical_section_exit(&mixerLock);
+    audioSdUnlock();
     KTANE_CONSOLE_OUT.println(F("[Audio] [File] Seek failed"));
-    return false;
-  }
-
-  if (wavInfo.sampleRate == 0) {
-    resetFileVoice(*slot);
-    critical_section_exit(&mixerLock);
-    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Invalid sample rate"));
-    return false;
-  }
-
-  const unsigned frameBytes =
-      static_cast<unsigned>(wavInfo.numChannels) * sizeof(int16_t);
-  if (frameBytes == 0 || (wavInfo.dataSize % frameBytes) != 0) {
-    resetFileVoice(*slot);
-    critical_section_exit(&mixerLock);
-    KTANE_CONSOLE_OUT.println(F("[Audio] [File] Bad WAV data size"));
-    return false;
-  }
-
-  if (wavInfo.sampleRate != SAMPLE_RATE) {
-    resetFileVoice(*slot);
-    critical_section_exit(&mixerLock);
-    KTANE_CONSOLE_OUT.print(F("[Audio] [File] WAV must be "));
-    KTANE_CONSOLE_OUT.print(SAMPLE_RATE);
-    KTANE_CONSOLE_OUT.println(F(" Hz (codec PLL fixed for this rate)."));
     return false;
   }
 
@@ -486,9 +921,11 @@ bool playSoundFromFile(const char* filePath) {
   slot->numChannels = wavInfo.numChannels;
   slot->active = true;
 
-  critical_section_exit(&mixerLock);
+  audioSdUnlock();
 
   KTANE_CONSOLE_OUT.print(F("[Audio] [File] Queued: "));
   KTANE_CONSOLE_OUT.println(filePath);
   return true;
 }
+
+#endif  // EDGE_AUDIO

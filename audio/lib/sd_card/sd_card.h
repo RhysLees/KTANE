@@ -12,6 +12,12 @@ constexpr uint8_t SD_MOSI = 15;  // GPIO15 (SPI TX / PICO)
 // Initializes the SD card reader on SPI. Returns true on success.
 bool initSdCard();
 
+// Serializes all FatFs / SPI SD traffic with the audio mixer (core1) so two
+// cores never talk to the card at once (corrupted reads → static, hangs).
+void audioSdLockInit();
+void audioSdLock();
+void audioSdUnlock();
+
 // Returns true once the SD card has been initialized successfully.
 bool sdCardReady();
 

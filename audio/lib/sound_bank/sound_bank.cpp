@@ -1,11 +1,14 @@
 #include "sound_bank.h"
 
 #include <SdFat.h>
+#include <algorithm>
 #include <vector>
 #include <cstring>
 
 #include "can_bus.h"
 #include "sd_card.h"
+
+extern "C" __attribute__((weak)) void ktaneAudioBlockingYield(void) {}
 
 // Access the global volume object from sd_card.cpp (matching working sdtest.cpp pattern)
 extern FatVolume volume;
@@ -117,7 +120,8 @@ bool parseWavHeader(FatFile& file, WavInfo& info) {
   bool foundFmt = false;
   bool foundData = false;
 
-  while (file.available() > 0) {
+  // Use 32-bit available count; int available() breaks chunk walks on large WAVs.
+  while (file.available32() > 0) {
     uint8_t chunkHeader[8];
     if (!readBytesExactly(file, chunkHeader, sizeof(chunkHeader))) {
       return false;
@@ -183,8 +187,9 @@ bool parseWavHeader(FatFile& file, WavInfo& info) {
     return false;
   }
 
-  if (info.numChannels != 1 || info.bitsPerSample != 16) {
-    Serial.print(F("[SoundBank] Unsupported WAV format (need mono 16-bit, got "));
+  if ((info.numChannels != 1 && info.numChannels != 2) ||
+      info.bitsPerSample != 16) {
+    Serial.print(F("[SoundBank] Unsupported WAV format (need mono/stereo 16-bit, got "));
     Serial.print(info.numChannels);
     Serial.print(F(" channel(s), "));
     Serial.print(info.bitsPerSample);
@@ -202,7 +207,7 @@ bool parseWavHeader(FatFile& file, WavInfo& info) {
   return true;
 }
 
-SoundBankStatus loadEntryFromSd(SoundCacheEntry& entry) {
+SoundBankStatus loadEntryFromSdImpl(SoundCacheEntry& entry) {
   if (!sdCardReady()) {
     if (!initSdCard()) {
       return SoundBankStatus::SdUnavailable;
@@ -262,14 +267,6 @@ SoundBankStatus loadEntryFromSd(SoundCacheEntry& entry) {
     return SoundBankStatus::FileReadError;
   }
 
-  if (wavInfo.dataSize % sizeof(int16_t) != 0) {
-    Serial.print(F("[SoundBank] Warning: odd sample count in "));
-    Serial.println(entry.filePath);
-  }
-
-  size_t sampleCount = static_cast<size_t>(wavInfo.dataSize / sizeof(int16_t));
-  entry.samples.resize(sampleCount);
-
   if (!file.seekSet(wavInfo.dataOffset)) {
     Serial.print(F("[SoundBank] Failed to seek audio data for "));
     Serial.println(entry.filePath);
@@ -279,21 +276,90 @@ SoundBankStatus loadEntryFromSd(SoundCacheEntry& entry) {
     return SoundBankStatus::FileReadError;
   }
 
-  size_t bytesToRead = sampleCount * sizeof(int16_t);
-  size_t totalRead = 0;
-  uint8_t* bufferPtr = reinterpret_cast<uint8_t*>(entry.samples.data());
+  if (wavInfo.numChannels == 1) {
+    if (wavInfo.dataSize % sizeof(int16_t) != 0) {
+      Serial.print(F("[SoundBank] Warning: odd byte count in "));
+      Serial.println(entry.filePath);
+    }
+    const size_t sampleCount =
+        static_cast<size_t>(wavInfo.dataSize / sizeof(int16_t));
+    entry.samples.resize(sampleCount);
 
-  while (totalRead < bytesToRead) {
-    int chunk = file.read(bufferPtr + totalRead, bytesToRead - totalRead);
-    if (chunk <= 0) {
-      Serial.print(F("[SoundBank] Read error while loading "));
+    size_t bytesToRead = sampleCount * sizeof(int16_t);
+    size_t totalRead = 0;
+    uint8_t* bufferPtr = reinterpret_cast<uint8_t*>(entry.samples.data());
+
+    while (totalRead < bytesToRead) {
+      int chunk = file.read(bufferPtr + totalRead, bytesToRead - totalRead);
+      if (chunk <= 0) {
+        Serial.print(F("[SoundBank] Read error while loading "));
+        Serial.println(entry.filePath);
+        entry.samples.clear();
+        entry.loaded = false;
+        file.close();
+        return SoundBankStatus::FileReadError;
+      }
+      const size_t prevTotal = totalRead;
+      totalRead += static_cast<size_t>(chunk);
+      if ((totalRead / 4096u) > (prevTotal / 4096u)) {
+        ktaneAudioBlockingYield();
+      }
+    }
+  } else {
+    constexpr unsigned kFrameBytes = 2 * sizeof(int16_t);
+    if (wavInfo.dataSize % kFrameBytes != 0) {
+      Serial.print(F("[SoundBank] Stereo WAV data size not multiple of frame: "));
+      Serial.println(entry.filePath);
+      file.close();
+      return SoundBankStatus::FileReadError;
+    }
+    const size_t monoSamples = static_cast<size_t>(wavInfo.dataSize / kFrameBytes);
+    entry.samples.resize(monoSamples);
+
+    uint8_t readChunk[1024];
+    size_t fileOffset = 0;
+    size_t outIdx = 0;
+
+    while (fileOffset < wavInfo.dataSize) {
+      size_t want = std::min(static_cast<size_t>(sizeof(readChunk)),
+                             static_cast<size_t>(wavInfo.dataSize - fileOffset));
+      want -= want % kFrameBytes;
+      if (want == 0) {
+        break;
+      }
+      const int n = file.read(readChunk, want);
+      if (n <= 0) {
+        Serial.print(F("[SoundBank] Read error while loading "));
+        Serial.println(entry.filePath);
+        entry.samples.clear();
+        entry.loaded = false;
+        file.close();
+        return SoundBankStatus::FileReadError;
+      }
+      const size_t got = static_cast<size_t>(n);
+      const size_t gotAligned = got - (got % kFrameBytes);
+      const int16_t* pcm = reinterpret_cast<const int16_t*>(readChunk);
+      const size_t frames = gotAligned / kFrameBytes;
+      for (size_t f = 0; f < frames; ++f) {
+        const int32_t L = pcm[f * 2];
+        const int32_t R = pcm[f * 2 + 1];
+        entry.samples[outIdx++] =
+            static_cast<int16_t>((L + R) / 2);
+      }
+      const size_t prevOff = fileOffset;
+      fileOffset += gotAligned;
+      if ((fileOffset / 4096u) > (prevOff / 4096u)) {
+        ktaneAudioBlockingYield();
+      }
+    }
+    if (outIdx != monoSamples) {
+      Serial.print(F("[SoundBank] Short read stereo "));
       Serial.println(entry.filePath);
       entry.samples.clear();
       entry.loaded = false;
       file.close();
       return SoundBankStatus::FileReadError;
     }
-    totalRead += static_cast<size_t>(chunk);
   }
 
   file.close();
@@ -366,25 +432,22 @@ SoundBankStatus getSoundFromBank(uint8_t audioMessageId,
     return SoundBankStatus::SoundNotRegistered;
   }
 
-  // For large files (>1MB), we'll stream instead of loading into RAM
-  // Check file size first
+  // For large files (>1MB), stream instead of loading into RAM.
   FatFile root;
   if (root.openRoot(&volume)) {
     const char* relPath = entry->filePath;
     if (relPath[0] == '/') relPath++;
-    
+
     FatFile testFile;
     if (testFile.open(&root, relPath, O_RDONLY)) {
       uint32_t fileSize = testFile.fileSize();
       testFile.close();
       root.close();
-      
-      // If file is larger than 1MB, return a special status to indicate streaming
+
       if (fileSize > 1024 * 1024) {
-        // Return file path for streaming instead of data
         *dataOut = nullptr;
         *lengthOut = 0;
-        return SoundBankStatus::FileTooLarge;  // We'll add this status
+        return SoundBankStatus::FileTooLarge;
       }
     } else {
       root.close();
@@ -392,7 +455,7 @@ SoundBankStatus getSoundFromBank(uint8_t audioMessageId,
   }
 
   if (!entry->loaded) {
-    SoundBankStatus status = loadEntryFromSd(*entry);
+    SoundBankStatus status = loadEntryFromSdImpl(*entry);
     if (status != SoundBankStatus::Success) {
       return status;
     }

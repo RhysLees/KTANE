@@ -6,6 +6,10 @@
 #include <sd_card.h>
 #include <sound_bank.h>
 
+#if defined(EDGE_AUDIO)
+#include <stream_feeder.h>
+#endif
+
 static const __FlashStringHelper* getSoundName(uint8_t messageId) {
   switch (messageId) {
     case AUDIO_PLAY_BEEP_NORMAL: return F("Normal beep");
@@ -27,11 +31,82 @@ static const __FlashStringHelper* getSoundName(uint8_t messageId) {
   }
 }
 
-static void logSoundQueued(const __FlashStringHelper* source, const __FlashStringHelper* sound) {
+static void logSoundQueued(const __FlashStringHelper* source,
+                           const __FlashStringHelper* sound) {
   KTANE_CONSOLE_OUT.print(F("[Audio] "));
   KTANE_CONSOLE_OUT.print(source);
   KTANE_CONSOLE_OUT.print(F(" queued: "));
   KTANE_CONSOLE_OUT.println(sound);
+}
+
+// Core 1: long SD reads — keep CAN + module state serviced (mixer runs on core 0).
+extern "C" void ktaneAudioBlockingYield(void) {
+  handleCanMessages();
+  updateModuleState();
+}
+
+static constexpr uint8_t kPendingPlayCap = 8;
+static uint8_t s_pendingPlays[kPendingPlayCap];
+static uint8_t s_pendingHead = 0;
+static uint8_t s_pendingTail = 0;
+static uint8_t s_pendingCount = 0;
+
+static bool enqueuePendingAudioPlay(uint8_t messageId) {
+  if (s_pendingCount >= kPendingPlayCap) {
+    return false;
+  }
+  s_pendingPlays[s_pendingTail] = messageId;
+  s_pendingTail = static_cast<uint8_t>((s_pendingTail + 1) % kPendingPlayCap);
+  s_pendingCount++;
+  return true;
+}
+
+static void processOnePendingAudioPlay() {
+  if (s_pendingCount == 0) {
+    return;
+  }
+  const uint8_t messageId = s_pendingPlays[s_pendingHead];
+  s_pendingHead = static_cast<uint8_t>((s_pendingHead + 1) % kPendingPlayCap);
+  s_pendingCount--;
+
+  setModuleStateStatus(MODULE_STATUS_ACTIVE);
+
+  const int16_t* soundData = nullptr;
+  size_t soundLength = 0;
+  SoundBankStatus bankStatus = getSoundFromBank(messageId, &soundData, &soundLength);
+
+  if (bankStatus == SoundBankStatus::Success) {
+    if (playSound(soundData, static_cast<unsigned int>(soundLength))) {
+      logSoundQueued(F("[CAN]"), getSoundName(messageId));
+    } else {
+      KTANE_CONSOLE_OUT.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
+    }
+  } else if (bankStatus == SoundBankStatus::FileTooLarge) {
+    const char* path = getSoundFilePath(messageId);
+    if (path && playSoundFromFile(path)) {
+      logSoundQueued(F("[CAN] [Stream]"), getSoundName(messageId));
+    } else {
+      KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to stream sound '"));
+      KTANE_CONSOLE_OUT.println(getSoundName(messageId));
+    }
+  } else if (bankStatus == SoundBankStatus::SoundNotRegistered) {
+    KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
+    KTANE_CONSOLE_OUT.println(messageId, HEX);
+  } else {
+    KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to load sound "));
+    KTANE_CONSOLE_OUT.print(getSoundName(messageId));
+    KTANE_CONSOLE_OUT.print(F(" ("));
+    const char* path = getSoundFilePath(messageId);
+    if (path) {
+      KTANE_CONSOLE_OUT.print(path);
+    } else {
+      KTANE_CONSOLE_OUT.print(F("unmapped"));
+    }
+    KTANE_CONSOLE_OUT.print(F("): "));
+    KTANE_CONSOLE_OUT.println(soundBankStatusToString(bankStatus));
+  }
+
+  setModuleStateStatus(MODULE_STATUS_IDLE);
 }
 
 void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len) {
@@ -54,44 +129,9 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
       return;
     }
 
-    setModuleStateStatus(MODULE_STATUS_ACTIVE);
-
-    const int16_t* soundData = nullptr;
-    size_t soundLength = 0;
-    SoundBankStatus bankStatus = getSoundFromBank(messageId, &soundData, &soundLength);
-
-    if (bankStatus == SoundBankStatus::Success) {
-      if (playSound(soundData, static_cast<unsigned int>(soundLength))) {
-        logSoundQueued(F("[CAN]"), getSoundName(messageId));
-      } else {
-        KTANE_CONSOLE_OUT.println(F("[Audio] [CAN] Mixer busy, could not queue sound."));
-      }
-    } else if (bankStatus == SoundBankStatus::FileTooLarge) {
-      const char* path = getSoundFilePath(messageId);
-      if (path && playSoundFromFile(path)) {
-        logSoundQueued(F("[CAN] [Stream]"), getSoundName(messageId));
-      } else {
-        KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to stream sound '"));
-        KTANE_CONSOLE_OUT.println(getSoundName(messageId));
-      }
-    } else if (bankStatus == SoundBankStatus::SoundNotRegistered) {
-      KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Unknown sound message id: 0x"));
-      KTANE_CONSOLE_OUT.println(messageId, HEX);
-    } else {
-      KTANE_CONSOLE_OUT.print(F("[Audio] [CAN] Failed to load sound"));
-      KTANE_CONSOLE_OUT.print(getSoundName(messageId));
-      KTANE_CONSOLE_OUT.print(F(" ("));
-      const char* path = getSoundFilePath(messageId);
-      if (path) {
-        KTANE_CONSOLE_OUT.print(path);
-      } else {
-        KTANE_CONSOLE_OUT.print(F("unmapped"));
-      }
-      KTANE_CONSOLE_OUT.print(F("): "));
-      KTANE_CONSOLE_OUT.println(soundBankStatusToString(bankStatus));
+    if (!enqueuePendingAudioPlay(messageId)) {
+      KTANE_CONSOLE_OUT.println(F("[Audio] [CAN] Play queue full; dropping request."));
     }
-
-    setModuleStateStatus(MODULE_STATUS_IDLE);
   }
 }
 
@@ -133,13 +173,38 @@ void setup() {
   KTANE_CONSOLE_OUT.println(F("[Audio] Ready."));
 }
 
+#if defined(EDGE_AUDIO)
+
+// Core 0: real-time I2S only.
 void loop() {
+  updateAudioMixer();
+}
+
+void setup1() {}
+
+// Core 1: CAN, SD, stream feeder, pending play resolution.
+void loop1() {
   handleCanMessages();
   updateModuleState();
+  processOnePendingAudioPlay();
+  audioStreamFeederPump();
+}
+
+#else
+
+void loop() {
+  for (int i = 0; i < 8; ++i) {
+    updateAudioMixer();
+  }
+  handleCanMessages();
+  updateModuleState();
+  processOnePendingAudioPlay();
 }
 
 void setup1() {}
 
 void loop1() {
-  updateAudioMixer();
+  delay(10);
 }
+
+#endif

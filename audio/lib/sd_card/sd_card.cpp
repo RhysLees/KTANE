@@ -2,10 +2,30 @@
 
 #include <SdFat.h>
 #include <SPI.h>
+#include <pico/mutex.h>
 
 // Global SD card objects (matching working sdtest.cpp pattern exactly)
 SdSpiCard card;
 FatVolume volume;
+
+static mutex_t g_audioSdMutex;
+static bool g_audioSdMutexReady = false;
+
+void audioSdLockInit() {
+  if (!g_audioSdMutexReady) {
+    mutex_init(&g_audioSdMutex);
+    g_audioSdMutexReady = true;
+  }
+}
+
+void audioSdLock() {
+  audioSdLockInit();
+  mutex_enter_blocking(&g_audioSdMutex);
+}
+
+void audioSdUnlock() {
+  mutex_exit(&g_audioSdMutex);
+}
 
 namespace {
 constexpr uint32_t SD_SPI_CLOCK_HZ = 12000000;  // 12 MHz is safe for most cards
