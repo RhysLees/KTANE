@@ -10,7 +10,8 @@ namespace
         CommandNone = 0,
         CommandDrawTag,
         CommandDrawCredit,
-        CommandClear
+        CommandClear,
+        CommandScrub
     };
 
     struct EpaperCommand
@@ -129,16 +130,32 @@ namespace
         epaper.hibernate();
     }
 
-    void executeClear()
+    void executeFill(uint16_t color)
     {
         initializeDisplay();
         epaper.setFullWindow();
         epaper.firstPage();
         do
         {
-            epaper.fillScreen(GxEPD_WHITE);
+            epaper.fillScreen(color);
         } while (epaper.nextPage());
         epaper.hibernate();
+    }
+
+    void executeClear()
+    {
+        executeFill(GxEPD_WHITE);
+    }
+
+    void executeScrub()
+    {
+        const uint16_t scrubColors[] = {GxEPD_BLACK, GxEPD_RED, GxEPD_WHITE};
+        constexpr int kScrubPasses = 10;
+        for (int pass = 0; pass < kScrubPasses; ++pass)
+        {
+            const bool lastPass = pass == kScrubPasses - 1;
+            executeFill(lastPass ? GxEPD_WHITE : scrubColors[pass % 3]);
+        }
     }
 
     void processCommand(const EpaperCommand &command)
@@ -154,6 +171,9 @@ namespace
         case CommandClear:
             executeClear();
             break;
+        case CommandScrub:
+            executeScrub();
+            break;
         default:
             break;
         }
@@ -163,6 +183,7 @@ namespace
 void epaperTaskSetup()
 {
     initializeDisplay();
+    executeClear();
 }
 
 void epaperTaskLoop()
@@ -205,6 +226,17 @@ void epaperClear()
 {
     EpaperCommand command;
     command.type = CommandClear;
+
+    while (!enqueueCommand(command))
+    {
+        delay(1);
+    }
+}
+
+void epaperScrub()
+{
+    EpaperCommand command;
+    command.type = CommandScrub;
 
     while (!enqueueCommand(command))
     {

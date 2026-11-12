@@ -17,3 +17,4 @@ void epaperTaskLoop();
 void epaperDrawTag(const String &serial);
 void epaperDrawCredit();
 void epaperClear();
+void epaperScrub();
