@@ -1,0 +1,5 @@
+# Copy to can_test_flash_map.ps1 (gitignored) if COM order does not match your wiring.
+$FlashMap = @{
+    MasterSerial = 'E660A49317123A2C'   # was COM4
+    SlaveSerial  = 'E660A49317574324'   # was COM6
+}

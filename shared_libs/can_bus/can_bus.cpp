@@ -14,10 +14,12 @@
 
 static const SPISettings kCanSpi(10000000, MSBFIRST, SPI_MODE0);
 static const uint8_t kUserQueueCap = 24;
-static const uint8_t kRawQueueCap = 8;
-static const uint8_t kRxQueueCap = 32;
+static const uint8_t kRawQueueCap = 16;
+static const uint8_t kRxQueueCap = 48;
 static const uint8_t kLogQueueCap = 8;
-static const uint8_t kMaxDispatchPerCall = 8;
+static const uint8_t kMaxDispatchPerCall = 16;
+static const uint8_t kMaxDispatchPerService = 48;
+static const uint8_t kMaxDrainPerService = 16;
 static const uint8_t kMaxTxAttempts = 3;
 
 volatile bool canInterruptFlag = false;
@@ -635,7 +637,8 @@ static bool stepNegotiation() {
         return neg.phase != NegPhase::Idle;
       }
       uint8_t probe[3] = {ID_PROBE, neg.moduleType, neg.candidate};
-      if (!enqueueRaw(CAN_INSTANCE_ID(neg.moduleType, 0x00), probe, 3, false)) {
+      const bool front = rawCount >= (kRawQueueCap / 2);
+      if (!enqueueRaw(CAN_INSTANCE_ID(neg.moduleType, 0x00), probe, 3, front)) {
         return false;
       }
       idConflictDetected = false;
@@ -777,7 +780,7 @@ static bool pushRx(uint16_t id, const uint8_t* data, uint8_t len) {
 }
 
 static void drainController() {
-  for (uint8_t n = 0; n < 8; n++) {
+  for (uint8_t n = 0; n < kMaxDrainPerService; n++) {
     uint8_t status = mcpReadStatus();
     if ((status & MCP_STAT_RXIF_MASK) == 0) {
       break;
@@ -838,13 +841,20 @@ static void pollOverflow() {
 }
 
 static void dispatchReceived() {
-  uint8_t budget = kMaxDispatchPerCall;
-  while (budget > 0 && rxCount > 0) {
-    RxFrame frame = rxQueue[rxHead];
-    rxHead = (rxHead + 1) % kRxQueueCap;
-    rxCount--;
-    budget--;
-    deliverFrame(frame);
+  uint8_t totalBudget = kMaxDispatchPerService;
+  while (totalBudget > 0 && rxCount > 0) {
+    uint8_t batch = kMaxDispatchPerCall;
+    if (batch > totalBudget) {
+      batch = totalBudget;
+    }
+    while (batch > 0 && rxCount > 0) {
+      RxFrame frame = rxQueue[rxHead];
+      rxHead = (rxHead + 1) % kRxQueueCap;
+      rxCount--;
+      batch--;
+      totalBudget--;
+      deliverFrame(frame);
+    }
   }
   if (rxCount > 0) {
     canInterruptFlag = true;
@@ -853,6 +863,7 @@ static void dispatchReceived() {
 
 void initCanBus(uint16_t fullCanId) {
   thisModuleId = fullCanId;
+  decodeCanId(fullCanId, &currentModuleType, &currentInstanceId);
   pinMode(CAN_INT_PIN, INPUT);
   if (!isrAttached) {
     attachInterrupt(digitalPinToInterrupt(CAN_INT_PIN), onCanInterrupt, FALLING);
@@ -885,6 +896,19 @@ void setCanBusLogging(bool enabled) {
 
 CanBusCounters getCanBusCounters() {
   return counters;
+}
+
+void resetCanBusCounters() {
+  counters = {};
+  lastDropLog = 0;
+}
+
+uint8_t getCanRxBacklog() {
+  return rxCount;
+}
+
+bool isCanNegotiating() {
+  return neg.phase != NegPhase::Idle;
 }
 
 bool isCanIdReady() {
@@ -922,6 +946,15 @@ void handleCanMessages() {
   completeTransmissions();
   submitTransmissions();
   printOneLog();
+
+  if (rxCount > 0) {
+    drainController();
+    serviceDepth++;
+    dispatchReceived();
+    serviceDepth--;
+    completeTransmissions();
+    submitTransmissions();
+  }
 
   if (rxCount > 0 || !digitalRead(CAN_INT_PIN) || canInterruptFlag) {
     canInterruptFlag = true;
@@ -993,6 +1026,8 @@ const char* getModuleTypeName(uint8_t moduleType) {
     case CAN_TYPE_AUDIO: return "AUDIO";
     case CAN_TYPE_SIMON: return "SIMON";
     case CAN_TYPE_SERIAL_DISPLAY: return "SERIAL_DISPLAY";
+    case CAN_TYPE_DEBUGGER: return "DEBUGGER";
+    case CAN_TYPE_DEBUGGER_SENDER: return "DEBUGGER_SENDER";
     case CAN_TYPE_BROADCAST: return "BROADCAST";
     default: return "UNKNOWN";
   }
@@ -1010,6 +1045,27 @@ bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId) {
     assignUniqueId(moduleType);
   }
   return false;
+}
+
+bool sendIdNegotiationFrame(uint8_t moduleType, const uint8_t data[3]) {
+  if (data == nullptr || !canBusInitialized) {
+    return false;
+  }
+  if (data[0] != ID_PROBE && data[0] != ID_TAKEN) {
+    return false;
+  }
+  if (data[1] != moduleType) {
+    return false;
+  }
+  const bool highPriority = data[0] == ID_TAKEN;
+  if (!enqueueRaw(CAN_INSTANCE_ID(moduleType, 0x00), data, 3, highPriority)) {
+    return false;
+  }
+  if (serviceDepth == 0) {
+    completeTransmissions();
+    submitTransmissions();
+  }
+  return true;
 }
 
 bool assignUniqueId(uint8_t moduleType) {

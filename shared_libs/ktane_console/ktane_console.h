@@ -2,15 +2,30 @@
 
 #include <Arduino.h>
 
-// Default Stream for firmware log / debug output. Most modules use USB CDC Serial.
-// With -DKTANE_PICOPROBE_UART, logs go to Serial1 on GP0 (TX) / GP1 (RX) — Pico Probe UART
-// bridge — so USB CDC stays free for other use.
+// Default Stream for firmware log / debug output.
+// -DKTANE_PICOPROBE_UART → Serial1 on GP0 (TX) / GP1 (RX) (Picoprobe bridge).
+// -DKTANE_TEST_DUAL_CONSOLE → USB Serial + UART mirror (harnesses without a probe).
+// Otherwise → USB CDC Serial.
 
-#if defined(KTANE_PICOPROBE_UART)
+#if defined(KTANE_TEST_DUAL_CONSOLE)
+
+class KtaneDualConsole : public Print {
+public:
+  size_t write(uint8_t c) override;
+  void flush() override;
+};
+
+extern KtaneDualConsole ktaneDualConsole;
+#define KTANE_CONSOLE_OUT ktaneDualConsole
+
+#elif defined(KTANE_PICOPROBE_UART)
+
 #define KTANE_CONSOLE_OUT Serial1
+
 #else
+
 #define KTANE_CONSOLE_OUT Serial
+
 #endif
 
-// Call once from setup() before logging on KTANE_CONSOLE_OUT.
 void ktaneConsoleInit(unsigned long baud = 115200);

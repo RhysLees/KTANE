@@ -224,6 +224,13 @@ void registerRawCanCallback(RawCanMessageCallback callback);
 // accepts this module's type and CAN_ID_BROADCAST.
 void setCanBusLogging(bool enabled);
 CanBusCounters getCanBusCounters();
+void resetCanBusCounters();
+
+// RX frames still waiting for callbacks (diagnostics / harnesses).
+uint8_t getCanRxBacklog();
+
+// True while assignUniqueId() is probing instances.
+bool isCanNegotiating();
 
 // True once init has succeeded and assignUniqueId() is not still probing.
 // Fixed-id modules are ready as soon as the controller is up.
@@ -234,6 +241,10 @@ bool isCanIdReady();
 // On exhaustion the module keeps instance 1.
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
 bool assignUniqueId(uint8_t moduleType);
+
+// 3-byte ID_PROBE / ID_TAKEN to the type's instance-0 address. For harnesses.
+bool sendIdNegotiationFrame(uint8_t moduleType, const uint8_t data[3]);
+
 void updateCanId(uint16_t newCanId);
 uint8_t getCurrentInstanceId();
 uint16_t getCurrentModuleId();
