@@ -8,7 +8,7 @@ description: >-
 
 # CAN harnesses
 
-Four Pico W sketches, same `platformio.ini` shape: `board = rpipicow`, `-DMODULE_DEBUG`, `-DKTANE_PICOPROBE_UART`, `lib_deps` is only `mcp_can`, `lib_extra_dirs = ../shared_libs`. None of them is a puzzle. `-DMODULE_DEBUG` is not read by the sketches.
+Four Pico W sketches, same `platformio.ini` shape: `board = rpipicow`, `-DMODULE_DEBUG`, `-DKTANE_PICOPROBE_UART`, `lib_deps` is only `mcp_can`, `lib_extra_dirs = ../../../shared_libs`. None of them is a puzzle. Sketches live under `support/debugger/`. `-DMODULE_DEBUG` is not read by the sketches.
 
 Wiring for all four: SPI0 CS GP17, INT GP20, 8 MHz crystal, 500 kbit/s. Console on GP0/GP1.
 
@@ -47,5 +47,5 @@ It will not see frames whose destination is some other id, unless you add `regis
 |---|---|
 | Does the MCP2515 answer on SPI? | `can_test_send` |
 | Do two transceivers exchange any frame? | `can_test_send` + `can_test_receive` |
-| Does this board get a unique Simon id and a discovery ack? | `can_debug_send` against `timer/` |
+| Does this board get a unique Simon id and a discovery ack? | `can_debug_send` against `modules/timer/` |
 | Who is actually transmitting KTANE frames? | `can_debug_receive` |

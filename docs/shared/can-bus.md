@@ -4,7 +4,7 @@
 
 The wire format, id map, and message tables are in [CAN protocol](../architecture/can-protocol.md). This page is how a sketch calls the library.
 
-Gameplay, audio, the serial tag, and the timer do not include `mcp_can.h`. The harness sketches under `test_modules/` do, and they are outside this guide.
+Gameplay, audio, the serial tag, and the timer do not include `mcp_can.h`. The harness sketches under `support/debugger/` do, and they are outside this guide.
 
 ## Calls
 

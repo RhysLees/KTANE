@@ -7,7 +7,6 @@ set -u
 
 firmwareDir="firmware"
 buildDir="build"
-EXCLUDE_NAMES=(DOCS shared_libs build firmware .git .vscode .pio)
 
 if [[ -t 1 ]]; then
   CYAN='\033[0;36m'
@@ -20,19 +19,40 @@ else
   CYAN='' GRAY='' GREEN='' YELLOW='' RED='' NC=''
 fi
 
-is_excluded() {
-  local n=$1 e
-  for e in "${EXCLUDE_NAMES[@]}"; do
-    [[ "$n" == "$e" ]] && return 0
+relative_up() {
+  local path=$1 depth
+  path="${path//\\//}"
+  depth=$(awk -F'/' '{print NF}' <<<"$path")
+  local i
+  for ((i = 0; i < depth; i++)); do
+    printf '../'
   done
-  return 1
 }
 
-is_debug_or_test() {
-  case "$1" in
-    can_debug* | can_test*) return 0 ;;
-    *) return 1 ;;
-  esac
+leaf_name() {
+  local path=$1
+  path="${path//\\//}"
+  basename "$path"
+}
+
+discover_firmware_modules() {
+  modules=()
+  local root child rel exclude
+  for root in modules edgework support; do
+    [[ -d "$root" ]] || continue
+  for child in "$root"/*/; do
+      [[ -d "$child" ]] || continue
+      exclude=0
+      if [[ "$root" == support && "$(basename "$child")" == debugger ]]; then
+        exclude=1
+      fi
+      ((exclude)) && continue
+      [[ -f "${child}platformio.ini" ]] || continue
+      rel="${child%/}"
+      modules+=("$rel")
+      echo -e "${GRAY}  • Found module: ${rel}${NC}"
+    done
+  done
 }
 
 file_size_kb() {
@@ -52,20 +72,10 @@ echo -e "${CYAN}=============================${NC}"
 
 echo -e "${CYAN}🔍 Auto-detecting module directories...${NC}"
 modules=()
-shopt -s nullglob
-for d in */; do
-  [[ -d "$d" ]] || continue
-  name="${d%/}"
-  is_excluded "$name" && continue
-  [[ -f "${d}platformio.ini" ]] || continue
-  is_debug_or_test "$name" && continue
-  modules+=("$name")
-  echo -e "${GRAY}  • Found module: ${name}${NC}"
-done
-shopt -u nullglob
+discover_firmware_modules
 
 if ((${#modules[@]} == 0)); then
-  echo -e "${RED}❌ No modules found! Make sure your module directories contain platformio.ini files.${NC}" >&2
+  echo -e "${RED}❌ No modules found! Make sure firmware directories contain platformio.ini files.${NC}" >&2
   exit 1
 fi
 
@@ -87,8 +97,9 @@ successCount=0
 failCount=0
 
 for module in "${modules[@]}"; do
+  leaf=$(leaf_name "$module")
   echo ""
-  echo -e "${YELLOW}🔨 Building ${module} module...${NC}"
+  echo -e "${YELLOW}🔨 Building ${module} ...${NC}"
 
   if [[ ! -d "$module" ]]; then
     echo -e "${RED}❌ Module directory '${module}' not found${NC}" >&2
@@ -100,25 +111,26 @@ for module in "${modules[@]}"; do
   build_status=$?
 
   if [[ $build_status -eq 0 ]]; then
-    echo -e "${GREEN}✅ ${module} build successful${NC}"
+    echo -e "${GREEN}✅ ${leaf} build successful${NC}"
     ((successCount++)) || true
 
+    up=$(relative_up "$module")
     found_any=0
     while IFS= read -r uf2; do
       [[ -z "$uf2" ]] && continue
       [[ -f "$uf2" ]] || continue
       found_any=1
       base=$(basename "$uf2")
-      dest="${firmwareDir}/${module}_${base}"
+      dest="${firmwareDir}/${leaf}_${base}"
       cp -f "$uf2" "$dest"
-      echo -e "${GREEN}📦 Copied ${base} to ${module}_${base}${NC}"
-    done < <(find "${buildDir}/${module}" -type f -name '*.uf2' 2>/dev/null)
+      echo -e "${GREEN}📦 Copied ${base} to ${leaf}_${base}${NC}"
+    done < <(find "${up}${buildDir}/${leaf}" -type f -name '*.uf2' 2>/dev/null)
 
     if [[ $found_any -eq 0 ]]; then
-      echo -e "${YELLOW}⚠️  No uf2 files found for ${module}${NC}"
+      echo -e "${YELLOW}⚠️  No uf2 files found for ${leaf}${NC}"
     fi
   else
-    echo -e "${RED}❌ ${module} build failed${NC}" >&2
+    echo -e "${RED}❌ ${leaf} build failed${NC}" >&2
     echo -e "${RED}${build_output}${NC}" >&2
     ((failCount++)) || true
   fi

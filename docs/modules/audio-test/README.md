@@ -41,7 +41,7 @@ Change `audio_test` to prove a file, a clock, or a buffer setting. Copy a settin
 Card contents and codec pins match [Audio setup](../audio/setup.md). The SPI clock here is 25 MHz. The bomb audio sketch tries 10 MHz and falls back to 1 MHz.
 
 ```powershell
-cd audio_test
+cd support/audio_test
 pio run --target upload
 pio device monitor
 ```

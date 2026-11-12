@@ -8,7 +8,7 @@ description: >-
 
 # audio_test
 
-`audio_test/` is a Pico W bench sketch for the audio board. It is not on the bomb protocol. `lib_extra_dirs` includes `../shared_libs` and `../audio/lib`, so it links `sound_bank`, `sd_card`, `amp`, and `audio_mixer` headers for pins and paths.
+`support/audio_test/` is a Pico W bench sketch for the audio board. It is not on the bomb protocol. `lib_extra_dirs` includes `../shared_libs` and `../audio/lib`, so it links `sound_bank`, `sd_card`, `amp`, and `audio_mixer` headers for pins and paths.
 
 `src/main.cpp` plays `AUDIO_PLAY_TITLE` (`/sounds/title.wav`) in a loop.
 

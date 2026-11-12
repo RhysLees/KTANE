@@ -13,7 +13,7 @@ Checked-in `monitor_port` values are macOS paths (`/dev/cu.usbmodem11102`). On W
 ## Build one module
 
 ```powershell
-cd timer
+cd modules/timer
 pio run
 pio run --target upload
 pio device monitor
@@ -33,9 +33,9 @@ From the repository root:
 
 The script:
 
-1. Scans root directories for `platformio.ini`.
-2. Skips `DOCS`, `shared_libs`, `build`, `firmware`, `.git`, `.vscode`, `.pio`, and names matching `can_debug*` or `can_test*`.
-3. Runs `pio run` in each remaining directory. That includes `audio_test` as well as the bomb modules. `docs/` has no `platformio.ini`, so it is ignored. `test_modules/` is nested, so those four sketches are ignored.
+1. Scans `modules/`, `edgework/`, and `support/` for child directories with `platformio.ini`.
+2. Skips `support/debugger/` (use `build_debug.ps1` for those harnesses).
+3. Runs `pio run` in each match. That includes `support/audio_test` as well as the bomb modules.
 4. Copies each `.uf2` into `firmware/` as `<module>_<uf2 name>`.
 
 A failed module increments the failure count and the script continues with the next directory.
@@ -60,7 +60,7 @@ Debug builds are the default: `build_type = debug` and `debug_build_flags = -O0 
 | `pschatzmann/arduino-audio-tools` | audio, audio_test | I2S and WAV. |
 | `adafruit/Adafruit_TLV320_I2S` | audio, audio_test | Headphone codec on `Wire1`. |
 
-Shared code is compiled through `lib_extra_dirs = ../shared_libs`. Those folders have no `library.properties`. `audio_test` also lists `../audio/lib` so it can reuse the SD pin header and the sound-bank paths.
+Shared code is compiled through `lib_extra_dirs = ../../shared_libs` from firmware directories. Those folders have no `library.properties`. `support/audio_test` also lists `../audio/lib` so it can reuse the SD pin header and the sound-bank paths.
 
 ## Flash a UF2 without the probe
 

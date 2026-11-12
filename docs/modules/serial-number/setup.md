@@ -27,7 +27,7 @@ Power the panel from the rail its board expects, and share ground with the Pico.
 ## Flash
 
 ```powershell
-cd serial_number
+cd edgework/serial_number
 pio run --target upload
 pio device monitor
 ```

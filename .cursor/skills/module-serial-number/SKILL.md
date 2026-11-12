@@ -1,14 +1,14 @@
 ---
 name: module-serial-number
 description: >-
-  Serial-number edgework module (serial_number/): fixed CAN id, 3-color
-  e-paper tag on SPI1, drawing on core 1. Use when editing serial_number/,
+  Serial-number edgework module (edgework/serial_number/): fixed CAN id, 3-color
+  e-paper tag on SPI1, drawing on core 1. Use when editing edgework/serial_number/,
   the tag layout, or SERIAL_DISPLAY commands.
 ---
 
 # Serial number module
 
-`serial_number/` on a Pico (`board = rpipico`). Fixed id `CAN_ID_SERIAL_DISPLAY` (`CAN_TYPE_SERIAL_DISPLAY` `0x20`, instance 0). It is edgework, not a solvable puzzle. `initModuleState(MODULE_STATE_NO_LED)`.
+`edgework/serial_number/` on a Pico (`board = rpipico`). Fixed id `CAN_ID_SERIAL_DISPLAY` (`CAN_TYPE_SERIAL_DISPLAY` `0x20`, instance 0). It is edgework, not a solvable puzzle. `initModuleState(MODULE_STATE_NO_LED)`.
 
 Build flag `-DEDGE_SERIAL_NUMBER` is set. Current sources do not branch on it.
 

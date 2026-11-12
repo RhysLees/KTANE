@@ -24,7 +24,7 @@ Do not move I2C back to GP4/GP5 unless you mean to. Do not use GP0 or GP1 for th
 ## Flash
 
 ```powershell
-cd timer
+cd modules/timer
 pio run --target upload
 pio device monitor
 ```

@@ -41,7 +41,7 @@ Both cores can touch the card. Every SdFat call in this module takes `audioSdLoc
 ## Flash
 
 ```powershell
-cd audio
+cd support/audio
 pio run --target upload
 pio device monitor
 ```

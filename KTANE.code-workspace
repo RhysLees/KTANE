@@ -4,24 +4,20 @@
 			"path": "."
 		},
 		{
-			"name": "audio_console",
-			"path": "audio_console"
-		},
-		{
-			"name": "audio",
-			"path": "audio"
-		},
-		{
 			"name": "timer",
-			"path": "timer"
+			"path": "modules/timer"
 		},
 		{
 			"name": "simon_says",
-			"path": "simon_says"
+			"path": "modules/simon_says"
 		},
 		{
 			"name": "serial_number",
-			"path": "serial_number"
+			"path": "edgework/serial_number"
+		},
+		{
+			"name": "audio",
+			"path": "support/audio"
 		}
 	],
 	"settings": {}

@@ -28,11 +28,11 @@ Only the two boards at the physical ends of the twisted pair enable the on-board
 
 | Path | Board | CAN id | Owns |
 |---|---|---|---|
-| `timer/` | `rpipicow` | `CAN_ID_TIMER` (`0x000`) | Clock, strikes, serial generation, module table, WiFi UI |
-| `simon_says/` | `rpipico` | `assignUniqueId(CAN_TYPE_SIMON)` | Buttons, color LEDs, vowel / strike mapping |
-| `serial_number/` | `rpipico` | `CAN_ID_SERIAL_DISPLAY` (`0x400`) | 3-color serial tag |
-| `audio/` | `rpipicow` | `CAN_ID_AUDIO` (`0x020`) | TLV320DAC3100, I2S mixer, SD WAVs |
-| `audio_test/` | `rpipicow` | none | One WAV on the audio hardware, off the protocol |
+| `modules/timer/` | `rpipicow` | `CAN_ID_TIMER` (`0x000`) | Clock, strikes, serial generation, module table, WiFi UI |
+| `modules/simon_says/` | `rpipico` | `assignUniqueId(CAN_TYPE_SIMON)` | Buttons, color LEDs, vowel / strike mapping |
+| `edgework/serial_number/` | `rpipico` | `CAN_ID_SERIAL_DISPLAY` (`0x400`) | 3-color serial tag |
+| `support/audio/` | `rpipicow` | `CAN_ID_AUDIO` (`0x020`) | TLV320DAC3100, I2S mixer, SD WAVs |
+| `support/audio_test/` | `rpipicow` | none | One WAV on the audio hardware, off the protocol |
 
 Infrastructure (`0x00` timer, `0x01` audio) and edgework (`0x20`–`0x2F`) use a fixed instance of 0. Gameplay and needy modules negotiate an instance so two copies can share the bus. Instance 0 on those types is only the negotiation address.
 
@@ -60,11 +60,15 @@ A core blocked in a multi-second refresh or an SD read must not be the only plac
 
 ```text
 KTANE/
-├── timer/                 Pico W master
-├── simon_says/            gameplay module, and the template for the next one
-├── serial_number/         e-paper edgework
-├── audio/                 sound module
-├── audio_test/            audio-board bench sketch
+├── modules/
+│   ├── timer/             Pico W master
+│   └── simon_says/        gameplay module, template for the next one
+├── edgework/
+│   └── serial_number/     e-paper serial tag
+├── support/
+│   ├── audio/             sound module
+│   ├── audio_test/        audio-board bench sketch
+│   └── debugger/          CAN harness sketches
 ├── shared_libs/
 │   ├── can_bus/           wire protocol and MCP2515 driver
 │   ├── module_state/      registration, heartbeat, strikes, serial
@@ -75,7 +79,7 @@ KTANE/
 └── docs/                  this guide
 ```
 
-`build_all.ps1` discovers every root directory that contains `platformio.ini`, except names it excludes and names matching `can_debug*` / `can_test*`. `test_modules/` is a nested folder, so those sketches stay out of the all-modules build.
+`build_all.ps1` scans `modules/`, `edgework/`, and `support/` (except `support/debugger/`). Harness sketches build with `build_debug.ps1`.
 
 ## Rules that keep modules in sync
 

@@ -11,12 +11,18 @@ build/
 firmware/*.uf2
 !firmware/.gitkeep
 
+# Generated compile database and language-server cache
+**/compile_commands.json
+**/.cache/
+
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.bak
+*.orig
 
 # OS files
 .DS_Store

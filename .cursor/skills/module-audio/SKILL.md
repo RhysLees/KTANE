@@ -1,14 +1,14 @@
 ---
 name: module-audio
 description: >-
-  Audio module (audio/): Pico W, TLV320DAC3100, I2S mixer, SD sound bank.
-  Real-life bomb audio, not a manual puzzle. Use when editing audio/, adding
+  Audio module (support/audio/): Pico W, TLV320DAC3100, I2S mixer, SD sound bank.
+  Real-life bomb audio, not a manual puzzle. Use when editing support/audio/, adding
   a sound, changing volume, or moving work between the two cores.
 ---
 
 # Audio module
 
-`audio/` on a Pico W (`board = rpipicow`). Fixed id `CAN_ID_AUDIO`. `initModuleState(MODULE_STATE_NO_LED)`. Not a solvable module. Other modules request sounds; this one plays them.
+`support/audio/` on a Pico W (`board = rpipicow`). Fixed id `CAN_ID_AUDIO`. `initModuleState(MODULE_STATE_NO_LED)`. Not a solvable module. Other modules request sounds; this one plays them.
 
 `-DEDGE_AUDIO` selects the two-core scheduler. `-DPIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH` compiles the Bluetooth stack. `lib/bluetooth/` can scan and open an A2DP source, and `main.cpp` never calls it. Playback is I2S into the TLV320.
 

@@ -20,13 +20,12 @@ Headers and `.cpp` files are the source of truth. Several READMEs still describe
 
 | Path | Role |
 |---|---|
-| `timer/` | Pico W master. Countdown, strikes, edgework, WiFi setup UI. Does not use `module_state`. |
-| `simon_says/` | Gameplay module. Pattern for every future puzzle module. |
-| `serial_number/` | Fixed-ID edgework display (3-color e-paper). |
-| `audio/` | Fixed-ID sound module (TLV320 + SD). Real-life addition, not a manual puzzle. |
-| `audio_test/` | Bench sketch: one WAV from SD through the same codec. |
-| `can_test_send/`, `can_test_receive/` | Raw MCP2515 bring-up. No KTANE framing. |
-| `can_debug_send/`, `can_debug_receive/` | Protocol bring-up through `can_bus`. |
+| `modules/timer/` | Pico W master. Countdown, strikes, edgework, WiFi setup UI. Does not use `module_state`. |
+| `modules/simon_says/` | Gameplay module. Pattern for every future puzzle module. |
+| `edgework/serial_number/` | Fixed-ID edgework display (3-color e-paper). |
+| `support/audio/` | Fixed-ID sound module (TLV320 + SD). Real-life addition, not a manual puzzle. |
+| `support/audio_test/` | Bench sketch: one WAV from SD through the same codec. |
+| `support/debugger/can_test_*`, `can_debug_*` | MCP2515 and `can_bus` harness sketches (`build_debug.ps1`). |
 | `shared_libs/can_bus/` | Wire protocol and MCP2515 driver. |
 | `shared_libs/module_state/` | Registration, heartbeat, strikes, serial, status LED. Every module except the timer. |
 | `shared_libs/ktane_console/` | Log stream (`Serial` or Picoprobe `Serial1`). |
@@ -34,7 +33,7 @@ Headers and `.cpp` files are the source of truth. Several READMEs still describe
 | `firmware/` | UF2 files copied by `build_all.ps1`. |
 | `build/<module>/` | PlatformIO build output (`build_dir` in each `platformio.ini`). |
 
-Planned manual modules already have CAN type codes and no firmware yet: wires, button, keypad, who's on first, memory, Morse, complicated wires, wire sequences, maze, password, needy venting gas / capacitor / knob, and edgework panels (indicators, batteries, ports). Add each as its own top-level PlatformIO project, cloned from `simon_says/`.
+Planned manual modules already have CAN type codes and no firmware yet: wires, button, keypad, who's on first, memory, Morse, complicated wires, wire sequences, maze, password, needy venting gas / capacitor / knob, and edgework panels (indicators, batteries, ports). Add each under `modules/`, cloned from `modules/simon_says/`.
 
 ## Bus
 
@@ -52,7 +51,7 @@ Full codes and payloads: [ktane-can-bus](../ktane-can-bus/SKILL.md). Module life
 
 ## Gameplay module skeleton
 
-Match `simon_says/src/main.cpp`.
+Match `modules/simon_says/src/main.cpp`.
 
 ```cpp
 #include <Arduino.h>
@@ -93,7 +92,7 @@ Fixed-id modules (audio, serial display, future edgework panels) pass `CAN_ID_*`
 
 ```ini
 [platformio]
-build_dir = ../build/my_module
+build_dir = ../../build/my_module
 default_envs = my_module
 
 [env]
@@ -109,7 +108,7 @@ build_flags =
 lib_deps =
     coryjfowler/mcp_can@^1.5.1
 lib_extra_dirs =
-    ../shared_libs
+    ../../shared_libs
 
 [env:my_module]
 debug_tool = cmsis-dap
@@ -117,7 +116,7 @@ build_type = debug
 debug_build_flags = -O0 -ggdb3 -g3
 ```
 
-Use `board = rpipicow` only when the sketch needs WiFi or Bluetooth. Build from the module directory with `pio run`. `build_all.ps1` discovers every directory that contains `platformio.ini` and copies UF2 files to `firmware/`.
+Use `board = rpipicow` only when the sketch needs WiFi or Bluetooth. Build from the module directory with `pio run`. `build_all.ps1` scans `modules/`, `edgework/`, and `support/` (except `support/debugger/`) and copies UF2 files to `firmware/`.
 
 ## Rules that keep the bomb in sync
 
@@ -127,7 +126,7 @@ Use `board = rpipicow` only when the sketch needs WiFi or Bluetooth. Build from 
 - Generate puzzles from `getSerialNumber()`, `getStrikeCount()`, and `getEdgework()` after the timer has sent them. Read the manual in `DOCS/` for the real rule table.
 - `randomSeed(rp2040.hwrand32())` on boards that need entropy. The RP2040 boot state is a poor seed.
 - Set `Wire` / `SPI` pins before `begin()`. `can_bus` calls `SPI.begin()` itself and owns SPI0. Put SD cards and e-paper on SPI1.
-- Two cores share the die. `setup1` / `loop1` is core 1. Flash writes (`EEPROM.commit`) stall core 1. Lock SdFat with the mutex in `audio/lib/sd_card` if both cores touch the card.
+- Two cores share the die. `setup1` / `loop1` is core 1. Flash writes (`EEPROM.commit`) stall core 1. Lock SdFat with the mutex in `support/audio/lib/sd_card` if both cores touch the card.
 - Keep ArduinoJson on major version 6 (`bblanchon/ArduinoJson@^6.21.0`). Version 7 removes `DynamicJsonDocument`.
 
 ## Which skill to open

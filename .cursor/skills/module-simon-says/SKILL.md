@@ -1,14 +1,14 @@
 ---
 name: module-simon-says
 description: >-
-  Simon Says gameplay module (simon_says/): buttons, color LEDs, vowel and
-  strike mapping, CAN audio. Use when editing simon_says/ or copying it as
+  Simon Says gameplay module (modules/simon_says/): buttons, color LEDs, vowel and
+  strike mapping, CAN audio. Use when editing modules/simon_says/ or copying it as
   the template for a new puzzle module.
 ---
 
 # Simon Says
 
-`simon_says/` on a Pico (`board = rpipico`). Reference gameplay module: dynamic CAN id, `module_state`, puzzle rules from the manual, sounds sent to the audio module.
+`modules/simon_says/` on a Pico (`board = rpipico`). Reference gameplay module: dynamic CAN id, `module_state`, puzzle rules from the manual, sounds sent to the audio module.
 
 `src/main.cpp` owns the bus. `lib/simon_says/` owns the puzzle and the GPIO. The README's pin table and its "starts at 3 colors" line disagree with the header. Trust `simon_says.h`.
 

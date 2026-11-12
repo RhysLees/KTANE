@@ -1,15 +1,15 @@
 ---
 name: module-timer
 description: >-
-  Timer module (timer/): KTANE master on a Pico W. Countdown, strikes,
-  game state, CAN fan-out, and the WiFi setup UI. Use when editing timer/,
+  Timer module (modules/timer/): KTANE master on a Pico W. Countdown, strikes,
+  game state, CAN fan-out, and the WiFi setup UI. Use when editing modules/timer/,
   GameStateManager, the countdown, strikes, or the web API. This module
   does not use module_state.
 ---
 
 # Timer module
 
-`timer/` on a Pico W (`board = rpipicow`). It is the only master. It broadcasts game state and collects `MODULE_*` frames. It does not call `initModuleState`.
+`modules/timer/` on a Pico W (`board = rpipicow`). It is the only master. It broadcasts game state and collects `MODULE_*` frames. It does not call `initModuleState`.
 
 `src/main.cpp` order: console, `Wire` on GP8/GP9, `initCanBus(CAN_ID_TIMER)`, strike display, countdown, `GameStateManager` config, `initWebServer`. `loop` is `gameState.tick()`, refresh both HT16K33s, `handleCanMessages()`, `updateWebServer()`.
 

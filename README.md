@@ -65,14 +65,14 @@ The project uses a sophisticated shared library system for code reuse and consis
 ./build_all.ps1
 
 # Individual module build (from module directory)
-cd timer
+cd modules/timer
 pio run
 ```
 
 ### Uploading Firmware
 ```bash
 # Upload to connected board (from module directory)  
-cd simon_says
+cd modules/simon_says
 pio run --target upload
 ```
 
@@ -155,18 +155,20 @@ See [CAN Bus Library Documentation](shared_libs/can_bus/) for complete list of:
 
 ```
 KTANE/
-├── shared_libs/              # Shared libraries for all modules
-│   ├── can_bus/             # Core CAN communication
-│   ├── heartbeat/           # Module health monitoring  
-│   └── README.md            # Library documentation
-├── timer/                   # Master timer/game controller
-├── simon_says/             # Simon Says puzzle module
-├── audio/                  # Centralized audio system
-├── serial_number/          # Bomb information display
-├── firmware/               # Compiled firmware files (.uf2)
-├── DOCS/                   # Game manuals and documentation
-├── build_all.ps1          # Build automation script
-└── BUILD_README.md        # Build system documentation
+├── modules/                 # Timer master + gameplay puzzles
+│   ├── timer/
+│   └── simon_says/
+├── edgework/                # Serial, indicators, ports, …
+│   └── serial_number/
+├── support/                 # Audio, bench tests, CAN harnesses
+│   ├── audio/
+│   ├── audio_test/
+│   └── debugger/
+├── shared_libs/             # CAN, module_state, console
+├── firmware/                # Compiled firmware files (.uf2)
+├── docs/                    # Project documentation
+├── build_all.ps1            # Build automation script
+└── BUILD_README.md          # Build system documentation
 ```
 
 ## 🎯 Game Mechanics

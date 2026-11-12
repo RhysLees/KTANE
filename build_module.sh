@@ -8,7 +8,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 
 firmwareDir="firmware"
 buildDir="build"
-EXCLUDE_NAMES=(DOCS shared_libs build firmware .git .vscode .pio)
+EXCLUDE_NAMES=(DOCS docs shared_libs build firmware .git .vscode .pio dumps)
 
 if [[ -t 1 ]]; then
   CYAN='\033[0;36m'
@@ -41,19 +41,37 @@ file_size_kb() {
   awk -v b="$bytes" 'BEGIN { printf "%.2f", b / 1024 }'
 }
 
-# Populate global array `modules` (sorted), all dirs with platformio.ini except excluded roots.
+relative_up() {
+  local path=$1 depth
+  path="${path//\\//}"
+  depth=$(awk -F'/' '{print NF}' <<<"$path")
+  local i
+  for ((i = 0; i < depth; i++)); do
+    printf '../'
+  done
+}
+
+leaf_name() {
+  local path=$1
+  path="${path//\\//}"
+  basename "$path"
+}
+
+# Populate global array `modules` (sorted paths: modules/timer, support/audio, …).
 discover_modules() {
   modules=()
-  local name
-  shopt -s nullglob
-  for d in */; do
-    [[ -d "$d" ]] || continue
-    name="${d%/}"
-    is_excluded "$name" && continue
-    [[ -f "${d}platformio.ini" ]] || continue
-    modules+=("$name")
+  local root child rel
+  for root in modules edgework support support/debugger; do
+    [[ -d "$root" ]] || continue
+    shopt -s nullglob
+    for child in "$root"/*/; do
+      [[ -d "$child" ]] || continue
+      [[ -f "${child}platformio.ini" ]] || continue
+      rel="${child%/}"
+      modules+=("$rel")
+    done
+    shopt -u nullglob
   done
-  shopt -u nullglob
   if ((${#modules[@]} > 0)); then
     local _tmp=("${modules[@]}")
     modules=()
@@ -63,10 +81,31 @@ discover_modules() {
   fi
 }
 
+# Match full path or leaf name (timer, audio, can_debug_send, …).
 module_is_known() {
-  local want=$1 m
+  local want=$1 m leaf
+  want="${want//\\//}"
   for m in "${modules[@]}"; do
     [[ "$m" == "$want" ]] && return 0
+    leaf=$(leaf_name "$m")
+    [[ "$leaf" == "$want" ]] && return 0
+  done
+  return 1
+}
+
+resolve_module_path() {
+  local want=$1 m leaf
+  want="${want//\\//}"
+  for m in "${modules[@]}"; do
+    if [[ "$m" == "$want" ]]; then
+      printf '%s' "$m"
+      return 0
+    fi
+    leaf=$(leaf_name "$m")
+    if [[ "$leaf" == "$want" ]]; then
+      printf '%s' "$m"
+      return 0
+    fi
   done
   return 1
 }
@@ -83,47 +122,49 @@ Options:
 
 Examples:
   ./build_module.sh              # interactive selection
-  ./build_module.sh audio_console
+  ./build_module.sh audio
   ./build_module.sh audio timer
 EOF
 }
 
 build_one() {
-  local module=$1
-  local build_output build_status found_any uf2 base dest sz
+  local modulePath=$1
+  local leaf build_output build_status found_any uf2 base dest sz up
 
+  leaf=$(leaf_name "$modulePath")
   echo ""
-  echo -e "${YELLOW}🔨 Building ${module} module...${NC}"
+  echo -e "${YELLOW}🔨 Building ${modulePath} ...${NC}"
 
-  if [[ ! -d "$module" ]]; then
-    echo -e "${RED}❌ Module directory '${module}' not found${NC}" >&2
+  if [[ ! -d "$modulePath" ]]; then
+    echo -e "${RED}❌ Module directory '${modulePath}' not found${NC}" >&2
     return 1
   fi
 
-  build_output=$(cd "$module" && pio run 2>&1) || true
+  build_output=$(cd "$modulePath" && pio run 2>&1) || true
   build_status=$?
 
   if [[ $build_status -eq 0 ]]; then
-    echo -e "${GREEN}✅ ${module} build successful${NC}"
+    echo -e "${GREEN}✅ ${leaf} build successful${NC}"
+    up=$(relative_up "$modulePath")
     found_any=0
     while IFS= read -r uf2; do
       [[ -z "$uf2" ]] && continue
       [[ -f "$uf2" ]] || continue
       found_any=1
       base=$(basename "$uf2")
-      dest="${firmwareDir}/${module}_${base}"
+      dest="${firmwareDir}/${leaf}_${base}"
       mkdir -p "$firmwareDir"
       cp -f "$uf2" "$dest"
-      echo -e "${GREEN}📦 Copied ${base} to ${module}_${base}${NC}"
-    done < <(find "${buildDir}/${module}" -type f -name '*.uf2' 2>/dev/null)
+      echo -e "${GREEN}📦 Copied ${base} to ${leaf}_${base}${NC}"
+    done < <(find "${up}${buildDir}/${leaf}" -type f -name '*.uf2' 2>/dev/null)
 
     if [[ $found_any -eq 0 ]]; then
-      echo -e "${YELLOW}⚠️  No uf2 files found for ${module}${NC}"
+      echo -e "${YELLOW}⚠️  No uf2 files found for ${leaf}${NC}"
     fi
     return 0
   fi
 
-  echo -e "${RED}❌ ${module} build failed${NC}" >&2
+  echo -e "${RED}❌ ${leaf} build failed${NC}" >&2
   echo -e "${RED}${build_output}${NC}" >&2
   return 1
 }
@@ -139,11 +180,11 @@ while (($# > 0)); do
     -l | --list)
       discover_modules
       if ((${#modules[@]} == 0)); then
-        echo -e "${RED}❌ No modules found (need platformio.ini in a subfolder).${NC}" >&2
+        echo -e "${RED}❌ No modules found (need platformio.ini under modules/, edgework/, or support/).${NC}" >&2
         exit 1
       fi
       echo -e "${CYAN}Modules:${NC}"
-      printf '%s\n' "${modules[@]}"
+      for m in "${modules[@]}"; do printf '%s (%s)\n' "$(leaf_name "$m")" "$m"; done
       exit 0
       ;;
     --)
@@ -165,9 +206,17 @@ done
 
 discover_modules
 if ((${#modules[@]} == 0)); then
-  echo -e "${RED}❌ No modules found! Add directories with platformio.ini under the repo root.${NC}" >&2
+  echo -e "${RED}❌ No modules found! Add directories with platformio.ini under modules/, edgework/, or support/.${NC}" >&2
   exit 1
 fi
+
+# Menu shows leaf names; builds use full paths.
+menu_labels=()
+menu_paths=()
+for m in "${modules[@]}"; do
+  menu_paths+=("$m")
+  menu_labels+=("$(leaf_name "$m")")
+done
 
 if ((${#to_build[@]} == 0)); then
   if [[ ! -t 0 ]]; then
@@ -179,13 +228,18 @@ if ((${#to_build[@]} == 0)); then
   echo -e "${CYAN}===================================${NC}"
   echo ""
   PS3="$(echo -e "${YELLOW}Enter number: ${NC}")"
-  select choice in "${modules[@]}" "Cancel"; do
+  select choice in "${menu_labels[@]}" "Cancel"; do
     if [[ "$choice" == "Cancel" ]]; then
       echo "Cancelled."
       exit 0
     fi
     if [[ -n "${choice:-}" ]]; then
-      to_build=("$choice")
+      resolved=$(resolve_module_path "$choice") || resolved=""
+      if [[ -z "$resolved" ]]; then
+        echo -e "${RED}Invalid selection.${NC}" >&2
+        continue
+      fi
+      to_build=("$resolved")
       break
     fi
     echo -e "${RED}Invalid selection.${NC}" >&2
@@ -193,10 +247,15 @@ if ((${#to_build[@]} == 0)); then
   echo ""
 fi
 
-# Validate names
+# Validate names and resolve to paths
+resolved_build=()
 bad=()
 for name in "${to_build[@]}"; do
-  module_is_known "$name" || bad+=("$name")
+  if module_is_known "$name"; then
+    resolved_build+=("$(resolve_module_path "$name")")
+  else
+    bad+=("$name")
+  fi
 done
 if ((${#bad[@]} > 0)); then
   echo -e "${RED}❌ Unknown module(s): ${bad[*]}${NC}" >&2
@@ -206,11 +265,11 @@ fi
 
 echo -e "${CYAN}🔧 KTANE single-module build${NC}"
 echo -e "${CYAN}============================${NC}"
-echo -e "${GREEN}📋 Building: ${to_build[*]}${NC}"
+echo -e "${GREEN}📋 Building: ${resolved_build[*]}${NC}"
 
 successCount=0
 failCount=0
-for module in "${to_build[@]}"; do
+for module in "${resolved_build[@]}"; do
   if build_one "$module"; then
     ((successCount++)) || true
   else
@@ -227,9 +286,10 @@ echo -e "${RED}❌ Failed: ${failCount}${NC}"
 if ((successCount > 0)); then
   echo ""
   echo -e "${GREEN}📁 Copied UF2(s) under '${firmwareDir}':${NC}"
-  for module in "${to_build[@]}"; do
+  for module in "${resolved_build[@]}"; do
+    leaf=$(leaf_name "$module")
     shopt -s nullglob
-    for f in "${firmwareDir}/${module}"_*.uf2; do
+    for f in "${firmwareDir}/${leaf}"_*.uf2; do
       [[ -f "$f" ]] || continue
       sz=$(file_size_kb "$f")
       echo -e "${GRAY}  • $(basename "$f") (${sz} KB)${NC}"

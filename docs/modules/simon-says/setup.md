@@ -29,7 +29,7 @@ Leave GP0 and GP1 free. Simon does not use I2C or SPI1.
 ## Flash
 
 ```powershell
-cd simon_says
+cd modules/simon_says
 pio run --target upload
 pio device monitor
 ```

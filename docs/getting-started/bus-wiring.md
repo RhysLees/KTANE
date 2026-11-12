@@ -43,7 +43,7 @@ SPI0 is taken. SD cards and the e-paper panel use SPI1. Do not call `SPI.begin()
 
 Modules can boot in any order. A gameplay module probes for a free instance until `isCanIdReady()`, then registers once a second until the timer answers `TIMER_MODULE_DISCOVERED`. The timer can boot last. Heartbeats before the game run every 3 seconds, and the timer allows 6 seconds of silence during discovery.
 
-Bring-up that isolates the controller from the protocol lives in `test_modules/` and is outside this guide. If a new board is silent, confirm the crystal is 8 MHz before changing protocol code.
+Bring-up that isolates the controller from the protocol lives in `support/debugger/` and is outside this guide. If a new board is silent, confirm the crystal is 8 MHz before changing protocol code.
 
 ## Per-module wiring
 
