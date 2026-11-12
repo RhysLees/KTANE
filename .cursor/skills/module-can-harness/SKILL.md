@@ -39,7 +39,7 @@ Until it sees `TIMER_MODULE_DISCOVERED` it sends `MODULE_REGISTER` to `CAN_ID_TI
 
 Also uses `can_bus`. Prints traffic addressed to it and tracks senders (id, type name, first seen, last seen, count) with a 5 s timeout, up to 8 senders. Use it beside the timer when a module should be heartbeating and the timer UI disagrees.
 
-It will not see frames whose destination is some other id, unless you add `registerRawCanCallback`. `handleCanMessages` drops those before normal callbacks. A raw callback is the way to snoop the whole bus from this sketch.
+It will not see frames whose destination is some other id, unless you add `registerRawCanCallback`. That also opens the MCP2515 masks, so the debug node then has to read every frame. `handleCanMessages` drops other destinations before normal callbacks. A raw callback is the way to snoop the whole bus from this sketch.
 
 ## Which sketch to flash
 

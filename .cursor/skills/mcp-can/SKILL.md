@@ -88,7 +88,7 @@ Bus-off usually means missing termination, a third J1 jumper, or a speed/crystal
 
 ## Masks
 
-Two masks, six filters. `init_Mask(num, ext, data)` and `init_Filt(num, ext, data)`. For standard ids the library shifts the 11-bit id to the top of the 32-bit register; copy `examples/Standard_MaskFilter` rather than inventing the shift. This project accepts every id in hardware and filters in `handleCanMessages` (`id == thisModuleId || id == CAN_ID_BROADCAST`).
+Two masks, six filters. `init_Mask(num, ext, data)` and `init_Filt(num, ext, data)`. For standard ids the library shifts the 11-bit id to the top of the 32-bit register; copy `examples/Standard_MaskFilter` rather than inventing the shift. `can_bus` programs the masks itself after `begin(MCP_STDEXT, ...)`: RXB0 matches the module type (instance bits ignored) and RXB1 matches `CAN_ID_BROADCAST`. `handleCanMessages` still delivers only `thisModuleId` or `CAN_ID_BROADCAST`. A raw callback opens both masks.
 
 ## Wiring shared by every module
 

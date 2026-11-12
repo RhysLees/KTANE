@@ -40,6 +40,7 @@ Define `MODULE_STATE_DEFAULT_LED_PIN` before the include to change the default. 
 
 `updateModuleState()` / `ModuleState::update()`:
 
+- Does not register, heartbeat, or send status until `isCanIdReady()`. `assignUniqueId()` returns before the instance is chosen; the first register goes out on the first `updateModuleState()` after negotiation finishes.
 - Sends `MODULE_REGISTER` every `MODULE_STATE_REGISTER_INTERVAL` (1 s) until the timer replies `TIMER_MODULE_DISCOVERED`.
 - Sends `MODULE_HEARTBEAT` every `MODULE_STATE_HEARTBEAT_INTERVAL_DISCOVERY` (3 s) until the game is running, then every `MODULE_STATE_HEARTBEAT_INTERVAL_GAME` (1 s).
 - Flashes the status LED 500 ms on / 500 ms off until discovered, then off.

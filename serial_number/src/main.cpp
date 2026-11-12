@@ -79,7 +79,12 @@ void setup() {
     }
   }
 
-  delay(5000);
+  // Give the e-paper task time to start, but keep draining CAN.
+  const unsigned long waitUntil = millis() + 5000;
+  while ((long)(millis() - waitUntil) < 0) {
+    handleCanMessages();
+    updateModuleState();
+  }
 }
 
 void loop() {

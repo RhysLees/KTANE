@@ -198,13 +198,40 @@ enum IdMessage : uint8_t {
 typedef void (*CanMessageCallback)(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len);
 typedef void (*RawCanMessageCallback)(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp);
 
+struct CanBusCounters {
+  uint32_t rxDelivered;
+  uint32_t rxHwOverflow;
+  uint32_t rxDropped;
+  uint32_t txCompleted;
+  uint32_t txRetried;
+  uint32_t txDropped;
+};
+
 void initCanBus(uint16_t fullCanId);
 void handleCanMessages();
-void sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
+
+// Copies the frame into a queue and returns. Does not wait for a free
+// MCP2515 buffer or for the frame to leave the transceiver. handleCanMessages()
+// loads free TX buffers and retries a one-shot failure. False if the frame
+// was not queued (bad length, or the queue was full of higher-priority frames).
+bool sendCanMessage(uint16_t receiverID, const uint8_t* data, uint8_t dataLen);
+
 void registerCanCallback(CanMessageCallback callback);
 void registerRawCanCallback(RawCanMessageCallback callback);
 
-// ID negotiation functions
+// Hardware masks stay open while any raw callback is registered so it can
+// see frames addressed to other modules. Otherwise the controller only
+// accepts this module's type and CAN_ID_BROADCAST.
+void setCanBusLogging(bool enabled);
+CanBusCounters getCanBusCounters();
+
+// True once init has succeeded and assignUniqueId() is not still probing.
+// Fixed-id modules are ready as soon as the controller is up.
+bool isCanIdReady();
+
+// ID negotiation functions. assignUniqueId() only starts probing; it does not
+// block. Poll isCanIdReady(), or keep calling handleCanMessages() from loop.
+// On exhaustion the module keeps instance 1.
 bool negotiateInstanceId(uint8_t moduleType, uint8_t* assignedId);
 bool assignUniqueId(uint8_t moduleType);
 void updateCanId(uint16_t newCanId);

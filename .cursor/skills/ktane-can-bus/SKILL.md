@@ -11,7 +11,9 @@ description: >-
 
 `shared_libs/can_bus/`. Include `<can_bus.h>`. Link it by `lib_extra_dirs = ../shared_libs`. The folder is a PlatformIO library (`library.properties` is not required because `lib_extra_dirs` compiles the sources).
 
-`initCanBus` configures the MCP2515 (see [mcp-can](../mcp-can/SKILL.md)) at 500 kbit/s, 8 MHz, CS GP17, INT GP20, masks open, one-shot TX. It stores `thisModuleId` and attaches a falling-edge ISR.
+`initCanBus` configures the MCP2515 (see [mcp-can](../mcp-can/SKILL.md)) at 500 kbit/s, 8 MHz, CS GP17, INT GP20, one-shot TX, and attaches a falling-edge ISR. It does not `delay` or recurse if `begin` fails; `handleCanMessages` retries once a second.
+
+Masks accept this module's type (any instance) and `CAN_ID_BROADCAST`. A registered raw callback opens the masks again so that node can see other destinations. SPI reads of RX buffers are one transaction (`READ RX BUFFER`), and TX is a load plus RTS with no wait for TXREQ to clear.
 
 ## Id layout
 
@@ -50,9 +52,12 @@ constexpr uint16_t CAN_INSTANCE_ID(uint8_t moduleType, uint8_t instanceId);
 
 ## Frame format
 
-`sendCanMessage(receiverId, data, len)`:
+`sendCanMessage(receiverId, data, len)` queues the frame and returns. It does not wait for a free buffer or for the transceiver. `false` means the frame was not queued.
 
-- `len` is 1..6. Longer calls are dropped with a console line.
+- `len` is 1..6. Longer calls are dropped.
+- The sender id is written when a TX buffer is loaded, so a frame queued during id negotiation goes out with the final id.
+- Latest `TIMER_TIME`, `TIMER_STRIKES`, `TIMER_COUNTDOWN`, `MODULE_HEARTBEAT`, and `MODULE_STATUS` replace an older queued copy of the same type and destination. Strikes, solved, register, game start/stop, and serial halves are kept ahead of heartbeats when the queue is full.
+- A one-shot error (no ACK, arbitration loss) is retried up to three attempts from `handleCanMessages`. Nothing in this path calls `delay`.
 - On the wire the MCP2515 DLC is `len + 2`. Bytes 0..1 are the sender's full id, big-endian. Bytes 2.. are `data`.
 - The receiver callback is `void(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len)` where `id` is the destination id and `data` is already the caller's bytes. `data[0]` is the message type for every bomb message.
 - Callbacks run only when the destination is `thisModuleId` or `CAN_ID_BROADCAST`. Register with `registerCanCallback` (max 8).
@@ -60,18 +65,17 @@ constexpr uint16_t CAN_INSTANCE_ID(uint8_t moduleType, uint8_t instanceId);
 
 `handleCanMessages()` drains the controller. Call it every loop on one core. It is not safe to call from both cores.
 
-Id negotiation does not use `sendCanMessage`. `assignUniqueId` sends a raw 3-byte frame `[ID_PROBE, type, candidate]` to `CAN_INSTANCE_ID(type, 0)` via `CAN.sendMsgBuf`. A module that already holds that instance replies `[ID_TAKEN, type, instance]`. Instance 0 is never a live gameplay id. Negotiation starts at instance 1, three probes, 200 ms plus jitter. On total failure it keeps instance 1.
+Id negotiation does not use `sendCanMessage`. `assignUniqueId` only arms a state machine; it returns as soon as the first probe is scheduled. `handleCanMessages` sends each raw 3-byte `[ID_PROBE, type, candidate]` to `CAN_INSTANCE_ID(type, 0)` and waits on `millis()`, so `loop` keeps running. A module that already holds that instance replies `[ID_TAKEN, type, instance]`. `ID_TAKEN` counts only when the instance matches the candidate being probed. Instance 0 is never a live gameplay id. Negotiation starts at instance 1, three probes, 200 ms plus jitter, then one confirmation probe. On total failure it keeps instance 1. `isCanIdReady()` is false until that finishes. `module_state` will not register or heartbeat before then.
 
 ```cpp
 initCanBus(CAN_INSTANCE_ID(CAN_TYPE_WIRES, 0x00));
 assignUniqueId(CAN_TYPE_WIRES);
-uint16_t me = getCurrentModuleId();
-uint8_t instance = getCurrentInstanceId();
+// instance is valid only after isCanIdReady() becomes true inside loop
 ```
 
 Fixed modules call `initCanBus(CAN_ID_AUDIO)` and do not negotiate. `assignUniqueId` returns false on the timer.
 
-`updateCanId` changes the local filter id after negotiation. `can_bus.cpp` calls it. Modules should not.
+`updateCanId` stores the id used as the sender prefix and as the software filter. Hardware filters match the whole module type, so they stay put. `can_bus.cpp` calls `updateCanId`. Modules should not.
 
 ## Message types
 
@@ -136,4 +140,4 @@ Id negotiation, raw frames, not callbacks: `ID_PROBE` `0x01`, `ID_TAKEN` `0x02`.
 
 ## Logging
 
-`logCanMessage` prints direction, ids, type name, and bytes when `senderId != 0`. Negotiation frames are not passed through it. Logs go to `KTANE_CONSOLE_OUT`.
+`logCanMessage` prints direction, ids, type name, and bytes when `senderId != 0`. Automatic TX/RX logs are off. Call `setCanBusLogging(true)` to queue them; `handleCanMessages` prints at most one line per call so the UART cannot stall the MCP2515. Negotiation frames are not logged. Drops and RX overflows print at most once a second. `getCanBusCounters()` returns delivered, overflow, retry, and drop counts.

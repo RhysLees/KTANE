@@ -35,32 +35,39 @@ void ModuleState::begin(int statusLedPinParam) {
     setLedPin(statusLedPinParam);
     refreshModuleId();
     statusDirty = true;
-    
-    // Send initial registration
-    sendRegisterNow();
+
+    // Dynamic modules are still probing here. Hold registration until the
+    // instance id is final so we do not announce ourselves as instance 0.
+    if (isCanIdReady()) {
+        sendRegisterNow();
+    } else {
+        lastRegisterAttempt = millis() - MODULE_STATE_REGISTER_INTERVAL;
+        lastHeartbeat = millis() - MODULE_STATE_HEARTBEAT_INTERVAL_DISCOVERY;
+    }
 }
 
 void ModuleState::update() {
     if (!enabled) return;
 
     refreshModuleId();
-    
-    if (statusDirty && isDiscovered && communicationsEnabled) {
-        sendStatusUpdate();
-    }
-    
+
     unsigned long now = millis();
-    
-    // Send registration if not discovered
-    if (communicationsEnabled && !isDiscovered &&
-        (now - lastRegisterAttempt >= MODULE_STATE_REGISTER_INTERVAL)) {
-        sendRegister();
-    }
-    
-    // Send heartbeat at appropriate interval
-    if (communicationsEnabled &&
-        (now - lastHeartbeat >= getCurrentHeartbeatInterval())) {
-        sendHeartbeat();
+
+    // Transmit only with the final id. Strikes queued through sendCanFrame()
+    // stay in the CAN queue and go out once negotiation finishes.
+    if (communicationsEnabled && isCanIdReady()) {
+        if (statusDirty && isDiscovered) {
+            sendStatusUpdate();
+        }
+
+        if (!isDiscovered &&
+            (now - lastRegisterAttempt >= MODULE_STATE_REGISTER_INTERVAL)) {
+            sendRegister();
+        }
+
+        if (now - lastHeartbeat >= getCurrentHeartbeatInterval()) {
+            sendHeartbeat();
+        }
     }
     
     // Update LED state (manual override takes precedence)
@@ -537,8 +544,7 @@ bool ModuleState::sendCanFrame(uint16_t receiverId, const uint8_t* data, uint8_t
     }
 
     refreshModuleId();
-    sendCanMessage(receiverId, data, len);
-    return true;
+    return sendCanMessage(receiverId, data, len);
 }
 
 bool ModuleState::sendStatusUpdate(bool force) {

@@ -41,20 +41,10 @@ void setup()
   // Initialize CAN bus with SIMON type and negotiate unique ID
   initCanBus(CAN_INSTANCE_ID(CAN_TYPE_SIMON, 0x00));
   assignUniqueId(CAN_TYPE_SIMON);
-  
-  // Register CAN message callback
   registerCanCallback(onCanMessage);
-  
-  uint8_t instanceId = getCurrentInstanceId();
-  uint16_t finalCanId = getCurrentModuleId();
-  
+
   KTANE_CONSOLE_OUT.println("CAN bus initialized");
-  KTANE_CONSOLE_OUT.print("Module Type: SIMON");
-  KTANE_CONSOLE_OUT.print(" | Instance ID: ");
-  KTANE_CONSOLE_OUT.print(instanceId);
-  KTANE_CONSOLE_OUT.print(" | CAN ID: 0x");
-  KTANE_CONSOLE_OUT.println(finalCanId, HEX);
-  KTANE_CONSOLE_OUT.println();
+  KTANE_CONSOLE_OUT.println("Negotiating SIMON instance id...");
   KTANE_CONSOLE_OUT.println("Sending MODULE_REGISTER every 1 second until timer responds...");
   KTANE_CONSOLE_OUT.println();
 }
@@ -62,39 +52,38 @@ void setup()
 void loop()
 {
   static unsigned long lastSend = 0;
+  static bool announcedId = false;
   unsigned long now = millis();
-  
+
+  handleCanMessages();
+
+  if (!announcedId && isCanIdReady()) {
+    announcedId = true;
+    KTANE_CONSOLE_OUT.print("Module Type: SIMON | Instance ID: ");
+    KTANE_CONSOLE_OUT.print(getCurrentInstanceId());
+    KTANE_CONSOLE_OUT.print(" | CAN ID: 0x");
+    KTANE_CONSOLE_OUT.println(getCurrentModuleId(), HEX);
+  }
+
   // Send MODULE_REGISTER every 1 second until registered
   // Once registered, send MODULE_HEARTBEAT every 1 second
-  if(now - lastSend >= 1000) {
+  if (isCanIdReady() && now - lastSend >= 1000) {
     lastSend = now;
-    
+
     if (!isRegistered) {
-      // Registration phase - send MODULE_REGISTER
-      KTANE_CONSOLE_OUT.print("[");
-      KTANE_CONSOLE_OUT.print(now / 1000);
-      KTANE_CONSOLE_OUT.print("s] Sending MODULE_REGISTER to TIMER");
-      
       uint8_t registerData[] = {MODULE_REGISTER};
-      sendCanMessage(CAN_ID_TIMER, registerData, 1);
-      
-      KTANE_CONSOLE_OUT.println(" - Sent");
-    } else {
-      // Registered - send MODULE_HEARTBEAT
       KTANE_CONSOLE_OUT.print("[");
       KTANE_CONSOLE_OUT.print(now / 1000);
-      KTANE_CONSOLE_OUT.print("s] Sending MODULE_HEARTBEAT to TIMER");
-      
+      KTANE_CONSOLE_OUT.print("s] MODULE_REGISTER ");
+      KTANE_CONSOLE_OUT.println(sendCanMessage(CAN_ID_TIMER, registerData, 1) ? "queued" : "dropped");
+    } else {
       uint8_t heartbeatData[] = {MODULE_HEARTBEAT};
-      sendCanMessage(CAN_ID_TIMER, heartbeatData, 1);
-      
-      KTANE_CONSOLE_OUT.println(" - Sent");
+      KTANE_CONSOLE_OUT.print("[");
+      KTANE_CONSOLE_OUT.print(now / 1000);
+      KTANE_CONSOLE_OUT.print("s] MODULE_HEARTBEAT ");
+      KTANE_CONSOLE_OUT.println(sendCanMessage(CAN_ID_TIMER, heartbeatData, 1) ? "queued" : "dropped");
     }
   }
   
-  // Process incoming CAN messages
-  handleCanMessages();
-  
-  delay(10);
 }
 

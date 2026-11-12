@@ -44,7 +44,7 @@ Planned manual modules already have CAN type codes and no firmware yet: wires, b
 - Gameplay and needy modules call `assignUniqueId(CAN_TYPE_...)` so two copies can share the bus. Instance 0 is only the negotiation address.
 - `CAN_ID_BROADCAST` (`0x7E0`) is the timer's fan-out address.
 
-`sendCanMessage` prepends the sender's 16-bit id, so the caller's payload is at most 6 bytes. Callbacks already have that prefix removed: `data[0]` is the message type. Speed is 500 kbit/s, MCP2515 crystal 8 MHz, SPI0 CS GP17, INT GP20. Only the two modules at the physical ends of the bus enable the J1 120 ohm jumper.
+`sendCanMessage` queues the caller's bytes and returns without waiting on the controller or the wire. `handleCanMessages` loads free TX buffers, drains RX, and advances id negotiation. Do not use `delay` on the core that owns CAN. The caller's payload is at most 6 bytes; the sender's 16-bit id is prefixed when the buffer is loaded. Callbacks already have that prefix removed: `data[0]` is the message type. Speed is 500 kbit/s, MCP2515 crystal 8 MHz, SPI0 CS GP17, INT GP20. Only the two modules at the physical ends of the bus enable the J1 120 ohm jumper.
 
 Full codes and payloads: [ktane-can-bus](../ktane-can-bus/SKILL.md). Module lifecycle: [ktane-module-state](../ktane-module-state/SKILL.md).
 

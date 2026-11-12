@@ -221,12 +221,6 @@ void onCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t l
   KTANE_CONSOLE_OUT.println();
 }
 
-// Raw callback for ALL messages (before filtering)
-void onRawCanMessage(uint16_t id, uint16_t senderId, const uint8_t* data, uint8_t len, unsigned long timestamp) {
-  // This will be called for all messages, even if they're filtered out
-  // Useful for debugging - you can see everything on the bus
-}
-
 void setup()
 {
   ktaneConsoleInit(115200);
@@ -245,12 +239,8 @@ void setup()
   KTANE_CONSOLE_OUT.println(CAN_ID_DEBUGGER, HEX);
   KTANE_CONSOLE_OUT.println();
   
-  // Register callback for filtered messages
   registerCanCallback(onCanMessage);
-  
-  // Register raw callback to see ALL messages (optional, for debugging)
-  registerRawCanCallback(onRawCanMessage);
-  
+
   KTANE_CONSOLE_OUT.println("Listening for messages...");
   KTANE_CONSOLE_OUT.println("Messages addressed to DEBUGGER or BROADCAST will be displayed");
   KTANE_CONSOLE_OUT.println();
@@ -290,9 +280,6 @@ void loop()
     printGameState();
   }
   
-  // Process incoming CAN messages
   handleCanMessages();
-  
-  delay(1);
 }
 
